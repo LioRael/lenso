@@ -18,6 +18,7 @@ import {
   bindManageOperation,
   createAgentTools,
   createManageAdapter,
+  createManageSelection,
   defineManage,
   describeManage,
   selectManageOperations,
@@ -630,7 +631,8 @@ test("agent and oRPC invoke the same service with isolated fresh evidence and re
     );
   try {
     const tools = await createAgentTools(adapter);
-    expect(tools.map((tool) => tool.name)).toEqual(["operation_0"]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0]!.name).toMatch(/^operation_[a-f0-9]{32}_0$/);
     expect(await tools[0]!.invoke({ tenantId: "north" })).toEqual({
       tenantId: "north",
       subjectId: "alice",
@@ -729,24 +731,22 @@ test("opaque catalog keys cannot redirect through redacted display identifiers",
     defineOperation({ plugin, method: "read", input: z.object({}), description: "Read" }),
   );
   const running = await startApp({ plugins: [first, collision] });
+  const selection = createManageSelection({ running, plugins: [first, collision], operations });
   try {
     const adapter = createManageAdapter({
-      running,
-      plugins: [first, collision],
-      operations,
+      selection,
       binding: () => ({}),
       canList: () => true,
     });
     const catalog = await adapter.catalog();
     expect(catalog.map((entry) => entry.pluginId)).toEqual(["[REDACTED]", "[REDACTED]"]);
-    expect(catalog.map((entry) => entry.key)).toEqual(["operation_0", "operation_1"]);
+    expect(catalog[0]!.key).toMatch(/^operation_[a-f0-9]{32}_0$/);
+    expect(catalog[1]!.key).toMatch(/^operation_[a-f0-9]{32}_1$/);
     const tools = await createAgentTools(adapter);
     expect(await tools[0]!.invoke({})).toBe(1);
     expect(await tools[1]!.invoke({})).toBe(2);
     const router = createManageRouter({
-      running,
-      plugins: [first, collision],
-      operations,
+      selection,
       evidence: () => ({ evidence: null }),
       binding: () => ({}),
       canList: () => true,
@@ -762,6 +762,7 @@ test("opaque catalog keys cannot redirect through redacted display identifiers",
     ).toBe(1);
     await expect(adapter.invokeEntry("operation_00", {})).rejects.toThrow();
   } finally {
+    selection.close();
     await running.stop();
     if (old === undefined) delete process.env.MANAGE_TEST_SECRET;
     else process.env.MANAGE_TEST_SECRET = old;

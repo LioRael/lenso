@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { EngineError, type EngineDiagnostic } from "./diagnostics";
 import { resolveApplicationTarget, type ApplicationTarget } from "./application";
+import { conditionArgs } from "./resolution";
 
 export interface EngineDevCycle {
   readonly watchFiles: readonly string[];
@@ -11,18 +12,22 @@ export interface EngineDevCycle {
 }
 
 export function devConditionArgs(args: readonly string[] = process.execArgv): string[] {
-  return args.filter(
-    (arg, index) =>
-      arg.startsWith("--conditions=") ||
-      arg === "--conditions" ||
-      args[index - 1] === "--conditions",
-  );
+  return conditionArgs(args);
 }
 
 /** Each cycle imports a fresh config/dependency graph and owns its build resources. */
 export async function startEngineDevCycle(
   target: string | ApplicationTarget,
   entry?: string,
+): Promise<EngineDevCycle> {
+  return startObservedEngineDevCycle(target, entry);
+}
+
+/** Supervisor-only invalidation updates, including inputs acquired before a failed hook. */
+export async function startObservedEngineDevCycle(
+  target: string | ApplicationTarget,
+  entry?: string,
+  observe?: (paths: readonly string[], directories: readonly string[], replace: boolean) => void,
 ): Promise<EngineDevCycle> {
   const { root, config } = resolveApplicationTarget(target);
   const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
@@ -40,6 +45,7 @@ export async function startEngineDevCycle(
     },
   );
   let failure: EngineError | undefined;
+  let currentWatchFiles: readonly string[] = [];
   let stopped = false;
   let closing: Promise<void> | undefined;
   let sequence = 0;
@@ -59,14 +65,36 @@ export async function startEngineDevCycle(
       ipc(message: unknown) {
         if (!message || typeof message !== "object" || !("type" in message)) return;
         if (
+          message.type === "watch-inputs" &&
+          "watchFiles" in message &&
+          Array.isArray(message.watchFiles) &&
+          message.watchFiles.every((path) => typeof path === "string") &&
+          "sourceDirectories" in message &&
+          Array.isArray(message.sourceDirectories) &&
+          message.sourceDirectories.every((path) => typeof path === "string")
+        ) {
+          currentWatchFiles = Object.freeze([...message.watchFiles]);
+          observe?.(
+            currentWatchFiles,
+            message.sourceDirectories,
+            "replace" in message && message.replace === true,
+          );
+        }
+        if (
           message.type === "prepared" &&
           "watchFiles" in message &&
           Array.isArray(message.watchFiles) &&
           message.watchFiles.every((path) => typeof path === "string") &&
           "entry" in message &&
-          typeof message.entry === "string"
-        )
+          typeof message.entry === "string" &&
+          "sourceDirectories" in message &&
+          Array.isArray(message.sourceDirectories) &&
+          message.sourceDirectories.every((path) => typeof path === "string")
+        ) {
+          currentWatchFiles = Object.freeze([...message.watchFiles]);
+          observe?.(currentWatchFiles, message.sourceDirectories, true);
           resolvePrepared({ watchFiles: message.watchFiles, entry: message.entry });
+        }
         if (message.type === "closed") stopped = true;
         if (message.type === "failed" && "error" in message) {
           failed(new EngineError(message.error as EngineDiagnostic));
@@ -124,9 +152,11 @@ export async function startEngineDevCycle(
     );
   }, 30000);
   try {
-    const { watchFiles, entry: chosenEntry } = await prepared;
+    const { entry: chosenEntry } = await prepared;
     return Object.freeze({
-      watchFiles: Object.freeze([...watchFiles]),
+      get watchFiles() {
+        return currentWatchFiles;
+      },
       entry: chosenEntry,
       ready() {
         if (failure) return Promise.reject(failure);

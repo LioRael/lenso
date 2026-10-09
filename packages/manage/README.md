@@ -42,6 +42,64 @@ callbacks, never business handlers. `canList(operation)` must check the current
 entry identity's operation-level permission. It filters catalog and gates invocation;
 the real service still enforces realm/audience, object, owner and tenant policies.
 
+### Selection lifetime and replacement
+
+For retained tools or routers, prepare the selection once and register its close
+with the host's existing cleanup:
+
+```ts
+import { createManageSelection, createManageAdapter } from "@lenso/manage";
+import { createManageRouter } from "@lenso/manage/orpc";
+
+const selection = createManageSelection({ running, plugins, operations });
+onCleanup(() => selection.close());
+const adapter = createManageAdapter({ selection, binding, canList });
+const router = createManageRouter({
+  selection,
+  evidence: extractRequestEvidence,
+  binding: bindRequestOperation,
+  canList: listForRequestEvidence,
+});
+```
+
+Preparation validates the complete selection and exact accessible instances once.
+It copies and freezes operation declarations and source metadata, retaining the
+exact plugin, schema and function identities. Original array/declaration edits
+cannot add operations or retarget existing handles. Schemas, plugins and trusted
+callbacks are application code, not deep-copied or globally frozen; changes to
+that code require a new selection. Local key and plugin/method indexes serve
+invocations; no process-wide selection or credential cache is used.
+
+There is no in-place update or inferred revocation from edits to the original
+config arrays. To replace a config, explicitly close the old selection and
+prepare a new one from the new declarations. `close()` is synchronous and
+idempotent: it revokes future catalog access and dispatch from every attached
+adapter, router and retained agent handle, and clears the selection's indexes,
+declarations and borrowed runtime reference. Keys have a selection-local nonce,
+so an old key cannot address a replacement selection. Closing never stops the
+borrowed app; stopping the app is not a substitute for closing a retained
+selection. Host policies/callbacks and active requests own any references they
+retain themselves.
+
+Each request extracts current trusted evidence and creates only a request-bound
+adapter over the prepared selection. Neither evidence, actors, catalog admission
+nor execution bindings are cached. Input is validated once and binding runs once
+per invocation. Target validity is checked after asynchronous admission, input
+validation and binding, then validity and visibility are checked again immediately
+before dispatch, after confirmation/approval waits. `canList` is a visibility
+gate, not execution authority: the binding and real service still authenticate
+and authorize execution, including current object/tenant policies.
+
+Closing during any pre-dispatch wait prevents execution. An already dispatched
+service call is not cancelled, retried or rolled back by closing the selection;
+its request may retain the runtime until the call settles. Close revokes dispatch,
+not effects that have already occurred.
+
+The existing `{running, plugins, operations, ...policies}` options remain
+supported: an adapter prepares a private selection, and a router prepares one
+selection for its lifetime, not one per request. Use an explicit selection when
+the host needs to revoke retained handles or release their runtime references.
+
 Bindings may supply an actual `signal`. Engine checks it before gates, after gate
 waits, before dispatch and after service completion, retaining the abort reason
 in the in-process cause chain. An aborted gate wait prevents dispatch; cancellation
@@ -56,7 +114,7 @@ Prefer evidence or an actor produced by current Auth, not an identity copied fro
 input. Never use a shared mutable current actor/credential or global Context.
 
 - `catalog()` returns safe versioned entries, including schema availability and
-  an adapter-scoped opaque `key`. Display identifiers may be redacted; dispatch
+  a selection-scoped opaque `key`. Display identifiers may be redacted; dispatch
   uses `invokeEntry(key, input)`, not redacted display strings. Keys are local to
   the configured selection, not durable IDs or receipts across deployments.
 - `invoke(pluginId, method, input)` remains available for trusted in-process callers.

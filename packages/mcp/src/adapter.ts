@@ -1,5 +1,5 @@
 import type { Plugin } from "@lenso/core";
-import { createAgentTools, createManageAdapter } from "@lenso/manage";
+import { createAgentTools, createManageSelection, type ManageSelection } from "@lenso/manage";
 import {
   boundedJson,
   type Operation,
@@ -102,19 +102,28 @@ function failure(code: string): CallToolResult {
 export async function createMcpAdapter<I, O extends Operation = Operation>(
   options: McpAdapterOptions<I, O>,
 ) {
+  const { running, plugins, operations, ...policies } = options;
+  const selection = createManageSelection({ running, plugins, operations });
+  try {
+    return await adapterForSelection(selection, policies);
+  } catch (error) {
+    selection.close();
+    throw error;
+  }
+}
+
+async function adapterForSelection<I, O extends Operation>(
+  selection: ManageSelection<O>,
+  options: Omit<McpAdapterOptions<I, O>, "running" | "plugins" | "operations">,
+) {
   const maxInput = positive(options.maxInputBytes, 256 * 1024);
   const maxOutput = positive(options.maxOutputBytes, 1024 * 1024, 256);
   const maxCatalog = positive(options.maxCatalogBytes, 256 * 1024);
   const maxConcurrent = positive(options.maxConcurrentCalls, 4);
   const timeout = positive(options.requestTimeoutMs, 30_000);
-  const operations = Object.freeze([...options.operations]);
-  const plugins = Object.freeze([...options.plugins]);
   if ([options.binding, options.canList, options.authorize].some((fn) => typeof fn !== "function"))
     throw new TypeError("MCP requires trusted binding, catalog and invocation policies.");
-  const canonical = createManageAdapter<O>({
-    running: options.running,
-    plugins,
-    operations,
+  const canonical = selection.createAdapter({
     canList: () => true,
     binding: () => {
       throw new Error("Metadata adapter cannot invoke.");
@@ -128,7 +137,7 @@ export async function createMcpAdapter<I, O extends Operation = Operation>(
   const tools = agentTools.map((item, index): Tool => {
     const operation = catalog[index]!;
     const tool: Tool = {
-      name: item.name,
+      name: `operation_${index}`,
       title: `${operation.pluginId}.${operation.method}`,
       description: [
         item.description,
@@ -150,6 +159,7 @@ export async function createMcpAdapter<I, O extends Operation = Operation>(
     return tool;
   });
   boundedJson({ tools }, maxCatalog);
+  const toolByKey = new Map(catalog.map((operation, index) => [operation.key, tools[index]!]));
   let closed = false;
   let closePromise: Promise<void> | undefined;
   const pending = new Set<Promise<unknown>>();
@@ -204,11 +214,20 @@ export async function createMcpAdapter<I, O extends Operation = Operation>(
         throw new McpError(ErrorCode.InternalError, "Adapter is busy.");
       try {
         return await tracked(request, async (context) => {
-          const visible: Tool[] = [];
-          for (const [index, operation] of operations.entries()) {
-            if ((await options.canList(operation, context)) === true) visible.push(tools[index]!);
-            context.signal.throwIfAborted();
-          }
+          const scoped = selection.createAdapter({
+            maxOutputBytes: maxCatalog,
+            binding: () => {
+              throw new Error("Metadata adapter cannot invoke.");
+            },
+            canList: async (operation) => {
+              const visible = await options.canList(operation, context);
+              context.signal.throwIfAborted();
+              return visible;
+            },
+          });
+          const visible = (await scoped.catalog()).map((operation) =>
+            toolByKey.get(operation.key)!,
+          );
           // Return a fresh finite copy, preventing callers mutating subsequent discovery.
           return JSON.parse(boundedJson({ tools: visible }, maxCatalog)) as { tools: Tool[] };
         });
@@ -222,7 +241,7 @@ export async function createMcpAdapter<I, O extends Operation = Operation>(
       request: McpRequestContext<I>,
     ): Promise<CallToolResult> {
       const match = /^operation_(0|[1-9][0-9]*)$/.exec(name);
-      if (!match || !operations[Number(match[1])])
+      if (!match || !catalog[Number(match[1])])
         throw new McpError(ErrorCode.InvalidParams, "Unknown tool.");
       if (closed) return failure("adapter-closed");
       if (pending.size >= maxConcurrent) return failure("adapter-busy");
@@ -238,10 +257,7 @@ export async function createMcpAdapter<I, O extends Operation = Operation>(
       }
       try {
         const value = await tracked(request, async (context) => {
-          const scoped = createManageAdapter<O>({
-            running: options.running,
-            plugins,
-            operations,
+          const scoped = selection.createAdapter({
             maxOutputBytes: maxOutput,
             canList: async (operation) => {
               const visible = await options.canList(operation, context);
@@ -261,26 +277,22 @@ export async function createMcpAdapter<I, O extends Operation = Operation>(
               };
             },
           });
-          const result = await scoped.invokeEntry(name, input);
+          const result = await scoped.invokeEntry(catalog[Number(match[1])]!.key, input);
           context.signal.throwIfAborted();
           return result;
         });
         return { content: [{ type: "text", text: boundedJson(value, maxOutput) }] };
       } catch (error) {
-        return failure(
-          error instanceof EngineError
-            ? error.diagnostic.code
-            : request.signal.aborted
-              ? "request-cancelled"
-              : "invocation-failed",
-        );
+        return failure(error instanceof EngineError ? error.diagnostic.code : "invocation-failed");
       }
     },
     close(): Promise<void> {
       if (closePromise) return closePromise;
       closed = true;
       for (const controller of controllers) controller.abort();
-      closePromise = Promise.allSettled(pending).then(() => {});
+      closePromise = Promise.allSettled(pending).then(() => {
+        selection.close();
+      });
       return closePromise;
     },
   });

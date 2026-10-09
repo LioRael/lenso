@@ -107,6 +107,7 @@ const help = {
     "unavailable-operation",
     "initialization-failed",
     "invocation-failed",
+    "aborted",
     "cleanup-failed",
     "invocation-and-cleanup-failed",
     "build-failed",
