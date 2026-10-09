@@ -1,0 +1,16 @@
+bun.lock
+  h_9d56aba080c170 377-417,786-787,1388-1389
+packages/payments/README.md
+  h_9d56aba080c170 23,127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "92e5785721223b8398fa53255aca242e09a762e7",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

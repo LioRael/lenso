@@ -1,0 +1,56 @@
+packages/webhooks/README.md
+  h_9d56aba080c170 1-157
+packages/webhooks/examples/host.ts
+  h_9d56aba080c170 1-35
+packages/webhooks/examples/receiver.ts
+  h_9d56aba080c170 1-47
+packages/webhooks/migrations/0001_webhooks.sql
+  h_9d56aba080c170 1-125
+packages/webhooks/package.json
+  h_9d56aba080c170 1-53
+packages/webhooks/src/config.ts
+  h_9d56aba080c170 1-43
+packages/webhooks/src/contracts.ts
+  h_9d56aba080c170 1-174
+packages/webhooks/src/index.ts
+  h_9d56aba080c170 1-11
+packages/webhooks/src/manage.ts
+  h_9d56aba080c170 1-74
+packages/webhooks/src/network.ts
+  h_9d56aba080c170 1-220
+packages/webhooks/src/plugin.ts
+  h_9d56aba080c170 1-26
+packages/webhooks/src/postgres.ts
+  h_9d56aba080c170 1-434
+packages/webhooks/src/service.ts
+  h_9d56aba080c170 1-307
+packages/webhooks/src/signing.ts
+  h_9d56aba080c170 1-64
+packages/webhooks/src/task.ts
+  h_9d56aba080c170 1-21
+packages/webhooks/test/network.test.ts
+  h_9d56aba080c170 1-207
+packages/webhooks/test/packed-consumer.ts
+  h_9d56aba080c170 1-31
+packages/webhooks/test/postgres.test.ts
+  h_9d56aba080c170 1-564
+packages/webhooks/test/public.test.ts
+  h_9d56aba080c170 1-59
+packages/webhooks/test/signing.test.ts
+  h_9d56aba080c170 1-69
+packages/webhooks/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/webhooks/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "15bb66163c8de9fe462dc43cd2f5dd5c152f475a",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

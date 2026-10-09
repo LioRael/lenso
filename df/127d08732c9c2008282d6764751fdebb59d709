@@ -1,0 +1,62 @@
+.changeset/audit-scoped-manage.md
+  h_9d56aba080c170 1-5
+.changeset/authorization-inspection-manage.md
+  h_9d56aba080c170 1-5
+.changeset/quiet-catalog-tasks.md
+  h_9d56aba080c170 1-5
+.changeset/tasks-scheduler-management.md
+  h_9d56aba080c170 1-8
+bun.lock
+  h_9d56aba080c170 122-125,156-160,188,205-206,210,213-216,218,223-224,226,334,372-376,401-402,458-463,492-493,504-505,508,513-514,517
+packages/audit/README.md
+  h_9d56aba080c170 18,21-27
+packages/audit/src/manage.ts
+  h_9d56aba080c170 5,38-52,54-58,76,81-139
+packages/authorization/README.md
+  h_9d56aba080c170 12
+packages/authorization/package.json
+  h_9d56aba080c170 31-34,58,66-67,70-71,76-79,82-90
+packages/authorization/src/manage.ts
+  h_9d56aba080c170 1-108
+packages/authorization/test/manage.test.ts
+  h_9d56aba080c170 1-66
+packages/scheduler/README.md
+  h_9d56aba080c170 15-34
+packages/scheduler/package.json
+  h_9d56aba080c170 36-39,43,56-57,68-69,71-72,75-83
+packages/scheduler/src/manage.ts
+  h_9d56aba080c170 1-238
+packages/scheduler/test/manage.test.ts
+  h_9d56aba080c170 1-223
+packages/tasks/README.md
+  h_9d56aba080c170 18-32
+packages/tasks/src/contracts.ts
+  h_9d56aba080c170 57-76,133-134
+packages/tasks/src/d1.ts
+  h_9d56aba080c170 16,400-430
+packages/tasks/src/errors.ts
+  h_9d56aba080c170 9,20
+packages/tasks/src/index.ts
+  h_9d56aba080c170 7,16,296-317
+packages/tasks/src/postgres.ts
+  h_9d56aba080c170 20,482-522
+packages/tasks/src/query.ts
+  h_9d56aba080c170 1-45
+packages/tasks/test/core.test.ts
+  h_9d56aba080c170 94-135
+packages/tasks/test/postgres.test.ts
+  h_9d56aba080c170 41-79
+packages/tasks/test/query-d1.test.ts
+  h_9d56aba080c170 1-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "df127d08732c9c2008282d6764751fdebb59d709",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
