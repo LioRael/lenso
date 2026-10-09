@@ -1,5 +1,14 @@
 # @lenso/media
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [615b1a4]
+- Updated dependencies [df127d0]
+  - @lenso/core@0.3.1
+  - @lenso/tasks@0.4.0
+
 ## 0.1.1
 
 ### Patch Changes

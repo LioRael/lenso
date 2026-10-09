@@ -1,5 +1,18 @@
 # @lenso/payments
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [615b1a4]
+- Updated dependencies [df127d0]
+- Updated dependencies [df127d0]
+  - @lenso/engine@0.5.0
+  - @lenso/core@0.3.1
+  - @lenso/scheduler@0.3.0
+  - @lenso/tasks@0.4.0
+  - @lenso/manage@0.4.1
+
 ## 0.1.2
 
 ### Patch Changes

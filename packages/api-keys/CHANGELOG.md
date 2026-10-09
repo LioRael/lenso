@@ -1,5 +1,14 @@
 # @lenso/api-keys
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [615b1a4]
+  - @lenso/engine@0.5.0
+  - @lenso/core@0.3.1
+  - @lenso/manage@0.4.1
+
 ## 0.1.2
 
 ### Patch Changes

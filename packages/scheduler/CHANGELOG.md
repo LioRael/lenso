@@ -1,5 +1,23 @@
 # @lenso/scheduler
 
+## 0.3.0
+
+### Minor Changes
+
+- df127d0: Add an authorized, bounded Manage task-schema catalog.
+- df127d0: Add optional bounded Tasks queries with explicit task filters, immutable job-ID pagination, and metadata-only summaries for D1 and PostgreSQL providers. Legacy providers report unsupported queries without changing their existing contracts.
+
+  Add an opt-in Scheduler Manage companion that reuses scheduler authorization and revision operations, accepts trusted actor and AbortSignal context, validates registered task input, and omits schedule input and job results from management reads. Hosts retain ownership of workers and tick drivers.
+
+### Patch Changes
+
+- Updated dependencies [615b1a4]
+- Updated dependencies [df127d0]
+  - @lenso/engine@0.5.0
+  - @lenso/core@0.3.1
+  - @lenso/tasks@0.4.0
+  - @lenso/manage@0.4.1
+
 ## 0.2.1
 
 ### Patch Changes
