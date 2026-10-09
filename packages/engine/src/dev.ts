@@ -1,10 +1,12 @@
-import { watch, realpathSync, readdirSync, statSync, type FSWatcher } from "node:fs";
-import { resolve, relative, extname, sep } from "node:path";
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import { isDevReadyMessage } from "./dev-ready";
-import { devConditionArgs, startEngineDevCycle, type EngineDevCycle } from "./engine-dev";
+import { devConditionArgs, startObservedEngineDevCycle, type EngineDevCycle } from "./engine-dev";
 import { diagnostic, EngineError, type EngineDiagnostic } from "./diagnostics";
 import type { ApplicationTarget } from "./application";
 import { checkedEntry } from "./engine-host";
+import { SourceInputs } from "./source-inputs";
+import { InputWatches } from "./input-watches";
 
 export type DevSupervisorEvent =
   | { type: "starting" }
@@ -75,8 +77,10 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
     finish = complete;
   });
   const cleanupFailures: unknown[] = [];
-  const watchers = new Map<string, FSWatcher>();
-  const ignored = new Set([".lenso", "dist", "node_modules", ".git", ".turbo", ".wrangler"]);
+  const watchers = new InputWatches(root, changed, report);
+  let watchFiles: readonly string[] = [];
+  let sourceDirectories: readonly string[] = [];
+  let chosenEntry = resolve(root, options.entry ?? "src/server.ts");
 
   function emit(event: DevSupervisorEvent) {
     try {
@@ -117,78 +121,16 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
       void restart().catch(report);
     }, 100);
   }
-  function watchPath(watchedPath: string, sourceOnly = false) {
-    const canonical = realpathSync(watchedPath);
-    if (watchers.has(canonical)) return;
-    const directory = statSync(canonical).isDirectory();
-    const sourceExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"];
-    const observed = new Map<string, string>();
-    function fingerprint(path: string): string | undefined {
-      try {
-        const stat = statSync(path, { bigint: true });
-        return `${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
-      } catch {
-        return undefined;
-      }
-    }
-    function remember(path: string) {
-      const value = fingerprint(path);
-      if (value !== undefined) observed.set(path, value);
-    }
-    function baseline(path: string) {
-      let entries;
-      try {
-        entries = readdirSync(path, { withFileTypes: true });
-      } catch (cause) {
-        if (
-          ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(
-            (cause as NodeJS.ErrnoException).code ?? "",
-          )
-        )
-          return;
-        throw cause;
-      }
-      for (const directoryEntry of entries) {
-        if (ignored.has(directoryEntry.name)) continue;
-        const child = resolve(path, directoryEntry.name);
-        if (directoryEntry.isDirectory()) {
-          if (!sourceOnly) remember(child);
-          baseline(child);
-        } else if (!sourceOnly || sourceExtensions.includes(extname(child))) remember(child);
-      }
-    }
-    if (directory) {
-      if (!sourceOnly) remember(canonical);
-      baseline(canonical);
-    } else remember(canonical);
-    const watcher = watch(canonical, { recursive: directory }, (_event, filename) => {
-      const changedPath = filename
-        ? resolve(directory ? canonical : resolve(canonical, ".."), filename.toString())
-        : canonical;
-      if (
-        relative(root, changedPath)
-          .split(sep)
-          .some((part) => ignored.has(part))
-      )
-        return;
-      if (sourceOnly && !sourceExtensions.includes(extname(changedPath))) return;
-      // macOS can deliver pre-watch writes late; unchanged input is not invalidation.
-      const current = fingerprint(changedPath);
-      if (current === observed.get(changedPath)) return;
-      if (current === undefined) observed.delete(changedPath);
-      else observed.set(changedPath, current);
-      changed();
-    });
-    watcher.on("error", report);
-    watchers.set(canonical, watcher);
-  }
-  function resetWatches(paths: readonly string[] = []) {
-    for (const watcher of watchers.values()) watcher.close();
-    watchers.clear();
-    if (closed) return;
-    // Observe newly added configs/imports even after a failed build.
-    watchPath(root, true);
-    for (const path of paths) watchPath(path);
+  async function recoveryWatches() {
+    const inputs = new SourceInputs(root);
+    await inputs.configuration(root);
+    for (const path of ["lenso.engine.ts", options.config ?? "lenso.config.ts", chosenEntry])
+      await inputs.add(resolve(root, path));
+    if (!closed)
+      watchers.replace(
+        [...watchFiles, ...inputs.files],
+        [...sourceDirectories, ...inputs.directories],
+      );
   }
   function restart(): Promise<void> {
     queued = true;
@@ -200,13 +142,39 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
         await stopActive();
         if (closed) break;
         emit({ type: "starting" });
-        resetWatches();
+        if (!watchFiles.length) {
+          const inputs = new SourceInputs(root);
+          await inputs.configuration(root);
+          watchers.replace([
+            ...inputs.files,
+            resolve(root, "lenso.engine.ts"),
+            resolve(root, options.config ?? "lenso.config.ts"),
+            chosenEntry,
+          ]);
+        }
         let engine: EngineDevCycle;
         try {
-          engine = await startEngineDevCycle({ root, config: options.config }, options.entry);
+          engine = await startObservedEngineDevCycle(
+            { root, config: options.config },
+            options.entry,
+            (paths, directories, replace) => {
+              watchFiles = replace ? paths : [...new Set([...watchFiles, ...paths])];
+              sourceDirectories = replace
+                ? directories
+                : [...new Set([...sourceDirectories, ...directories])];
+              if (!closed) {
+                try {
+                  watchers.replace(watchFiles, sourceDirectories);
+                } catch (error) {
+                  report(error);
+                }
+              }
+            },
+          );
         } catch (error) {
           if (includesCleanup(diagnostic(error))) cleanupFailures.push(error);
           report(error);
+          await recoveryWatches();
           continue;
         }
         if (closed) {
@@ -218,7 +186,9 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
           break;
         }
         try {
-          resetWatches(engine.watchFiles);
+          chosenEntry = engine.entry;
+          watchFiles = [...engine.watchFiles, resolve(root, "lenso.engine.ts")];
+          watchers.replace(watchFiles, sourceDirectories);
           const entry = await checkedEntry(root, engine.entry, "dev");
           const child = Bun.spawn([process.execPath, ...devConditionArgs(), entry], {
             cwd: root,
@@ -274,8 +244,7 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
     return (closing ??= (async () => {
       closed = true;
       if (debounce) clearTimeout(debounce);
-      for (const watcher of watchers.values()) watcher.close();
-      watchers.clear();
+      watchers.close();
       try {
         await restarting;
         await stopActive();

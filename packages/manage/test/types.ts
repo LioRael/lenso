@@ -6,6 +6,7 @@ import {
   defineManage,
   selectManageOperations,
   createManageAdapter,
+  createManageSelection,
 } from "../src";
 import { createManageRouter } from "../src/orpc";
 
@@ -37,6 +38,22 @@ function actualBindingTypes(running: PluginContext) {
   createManageAdapter({ ...options, binding: () => ({ context: { credential: 123 } }) });
   // @ts-expect-error Contextual declarations require a context in the real entry binding.
   createManageAdapter({ ...options, binding: () => ({}) });
+  const selection = createManageSelection(options);
+  selection.createAdapter({
+    canList: () => true,
+    binding: () => ({ context: { credential: "trusted" } }),
+  });
+  selection.createAdapter({
+    canList: () => true,
+    // @ts-expect-error Prepared selections retain their operation context contract.
+    binding: () => ({ context: { credential: 123 } }),
+  });
+  createManageAdapter({
+    selection,
+    canList: () => true,
+    // @ts-expect-error Selection-based adapters cannot erase contextual binding requirements.
+    binding: () => ({}),
+  });
   createManageRouter({
     ...options,
     evidence: () => ({ evidence: "trusted" }),
@@ -46,6 +63,19 @@ function actualBindingTypes(running: PluginContext) {
     ...options,
     evidence: () => ({ evidence: "trusted" }),
     // @ts-expect-error The request adapter also checks the actual service context.
+    binding: () => ({ context: { credential: 123 } }),
+  });
+  createManageRouter({
+    selection,
+    evidence: () => ({ evidence: "trusted" }),
+    canList: () => true,
+    binding: (_operation, _input, evidence) => ({ context: { credential: evidence.evidence } }),
+  });
+  createManageRouter({
+    selection,
+    evidence: () => ({ evidence: "trusted" }),
+    canList: () => true,
+    // @ts-expect-error Selection-based routers preserve the actual context type.
     binding: () => ({ context: { credential: 123 } }),
   });
   const launch: OperationBinding<typeof read> = (_operation, _input, app) => {

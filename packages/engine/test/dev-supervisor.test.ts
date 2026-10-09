@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdtemp, mkdir, rm } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createDevSupervisor, type DevSupervisorEvent } from "../src/dev";
@@ -291,3 +291,326 @@ test("an unreadable unrelated directory does not prevent dev startup", async () 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("only imported JSON is a source invalidation input", async () => {
+  const root = await fixture();
+  await Bun.write(join(root, "value.json"), '{"value":"first"}');
+  await Bun.write(join(root, "data.json"), '{"ordinary":"data"}');
+  await Bun.write(
+    join(root, "src/server.ts"),
+    `
+    import value from '../value.json';
+    const timer=setInterval(()=>{},1000);
+    process.send?.({type:'lenso:dev-ready',capabilities:[value.value]});
+    process.on('SIGTERM',()=>{clearInterval(timer);process.disconnect?.()});`,
+  );
+  const ready: string[] = [];
+  const supervisor = await createDevSupervisor({
+    root,
+    onEvent(event) {
+      if (event.type === "ready") ready.push(event.capabilities![0]!);
+    },
+  });
+  try {
+    await until(() => ready.length === 1);
+    await Bun.write(join(root, "data.json"), '{"ordinary":"changed"}');
+    await Bun.sleep(500);
+    expect(ready).toEqual(["first"]);
+    await Bun.write(join(root, "value.json"), '{"value":"second"}');
+    await until(() => ready.length === 2);
+    expect(ready).toEqual(["first", "second"]);
+  } finally {
+    await supervisor.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("linked package source graphs outside the app root invalidate, including nested imported JSON", async () => {
+  const root = await fixture();
+  const linked = await mkdtemp(join(tmpdir(), "lenso-dev-linked-"));
+  await mkdir(join(root, "node_modules"));
+  await symlink(linked, join(root, "node_modules/linked"));
+  await Bun.write(join(linked, "package.json"), '{"name":"linked","exports":"./code/main.ts"}');
+  await Bun.write(join(linked, "code/main.ts"), "export {default} from './value.json'");
+  const value = join(linked, "code/value.json");
+  await Bun.write(value, '{"message":"first"}');
+  await Bun.write(
+    join(root, "src/server.ts"),
+    `
+    import value from 'linked';
+    const timer=setInterval(()=>{},1000);
+    process.send?.({type:'lenso:dev-ready',capabilities:[value.message]});
+    process.on('SIGTERM',()=>{clearInterval(timer);process.disconnect?.()});`,
+  );
+  const ready: string[] = [];
+  const supervisor = await createDevSupervisor({
+    root,
+    stdout: "ignore",
+    stderr: "ignore",
+    onEvent(event) {
+      if (event.type === "ready") ready.push(event.capabilities![0]!);
+    },
+  });
+  try {
+    await until(() => ready.length === 1);
+    await Bun.write(value, '{"message":"second"}');
+    await until(() => ready.length === 2);
+    expect(ready).toEqual(["first", "second"]);
+  } finally {
+    await supervisor.close();
+    await rm(root, { recursive: true, force: true });
+    await rm(linked, { recursive: true, force: true });
+  }
+});
+
+test("failed config imports recover on nested relative source and missing bare package repair", async () => {
+  for (const kind of ["relative", "package"]) {
+    const root = await fixture();
+    const specifier = kind === "relative" ? "./new/nested/module" : "repair-package";
+    await Bun.write(
+      join(root, "lenso.engine.ts"),
+      `import ${JSON.stringify(specifier)}; export default {plugins:[]}`,
+    );
+    await Bun.write(
+      join(root, "src/server.ts"),
+      `
+      const timer=setInterval(()=>{},1000);
+      process.send?.({type:'lenso:dev-ready'});
+      process.on('SIGTERM',()=>{clearInterval(timer);process.disconnect?.()});`,
+    );
+    const events: DevSupervisorEvent[] = [];
+    const supervisor = await createDevSupervisor({
+      root,
+      stdout: "ignore",
+      stderr: "ignore",
+      onEvent(event) {
+        events.push(event);
+      },
+    });
+    try {
+      expect(events.some((event) => event.type === "failed")).toBe(true);
+      if (kind === "relative") await Bun.write(join(root, "new/nested/module.ts"), "export {}");
+      else {
+        await Bun.write(join(root, "node_modules/repair-package/entry.js"), "export {}");
+        await Bun.write(
+          join(root, "node_modules/repair-package/package.json"),
+          '{"name":"repair-package","main":"entry.js"}',
+        );
+      }
+      await until(() => events.some((event) => event.type === "ready"));
+      expect(events.filter((event) => event.type === "ready")).toHaveLength(1);
+    } finally {
+      await supervisor.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+}, 20000);
+
+test("explicit inputs acquired before failed generation recover, then revoked watches stay revoked", async () => {
+  const root = await fixture();
+  const data = join(root, "business.json");
+  await Bun.write(data, '{"ready":false}');
+  const config = join(root, "lenso.engine.ts");
+  await Bun.write(
+    config,
+    `
+    export default {plugins:[{name:'explicit-recovery',setup(c){
+      c.watch('business.json');
+      c.generate('test',async()=>{if(!(await Bun.file(c.root+'/business.json').json()).ready) throw Error('not ready');return []});
+    }}]}`,
+  );
+  await Bun.write(
+    join(root, "src/server.ts"),
+    `
+    const timer=setInterval(()=>{},1000);
+    process.send?.({type:'lenso:dev-ready'});
+    process.on('SIGTERM',()=>{clearInterval(timer);process.disconnect?.()});`,
+  );
+  const events: DevSupervisorEvent[] = [];
+  const supervisor = await createDevSupervisor({
+    root,
+    stdout: "ignore",
+    stderr: "ignore",
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+  const ready = () => events.filter((event) => event.type === "ready");
+  try {
+    expect(events.some((event) => event.type === "failed")).toBe(true);
+    await Bun.write(data, '{"ready":true}');
+    await until(() => ready().length === 1);
+    await Bun.write(
+      config,
+      `export default {plugins:[{name:'revoked',setup(c){
+      const first=c.watch('business.json'); const second=c.watch('business.json');
+      first(); second();
+    }}]}`,
+    );
+    await until(() => ready().length === 2);
+    await Bun.write(data, '{"ready":false}');
+    await Bun.sleep(400);
+    expect(ready()).toHaveLength(2);
+  } finally {
+    await supervisor.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("manifest and extended config changes invalidate the current graph", async () => {
+  const root = await fixture();
+  await Bun.write(join(root, "tsconfig.json"), '{"extends":"./resolution.json"}');
+  await Bun.write(join(root, "resolution.json"), '{"compilerOptions":{}}');
+  await Bun.write(join(root, "package.json"), '{"name":"dev-fixture","type":"module"}');
+  await Bun.write(
+    join(root, "src/server.ts"),
+    `
+    const timer=setInterval(()=>{},1000);
+    process.send?.({type:'lenso:dev-ready'});
+    process.on('SIGTERM',()=>{clearInterval(timer);process.disconnect?.()});`,
+  );
+  let ready = 0;
+  const supervisor = await createDevSupervisor({
+    root,
+    stdout: "ignore",
+    stderr: "ignore",
+    onEvent(event) {
+      if (event.type === "ready") ready++;
+    },
+  });
+  try {
+    await until(() => ready === 1);
+    await Bun.write(join(root, "resolution.json"), '{"compilerOptions":{"strict":true}}');
+    await until(() => ready === 2);
+    await Bun.write(join(root, "package.json"), '{"name":"dev-fixture-renamed","type":"module"}');
+    await until(() => ready === 3);
+  } finally {
+    await supervisor.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("changes during generation queue a serial restart, and reentrant close owns all cleanup", async () => {
+  const root = await fixture();
+  const value = join(root, "value.ts");
+  const gate = join(root, ".lenso/generating");
+  await Bun.write(value, "export default 'first'");
+  await Bun.write(
+    join(root, "lenso.engine.ts"),
+    `
+    import {writeFileSync,unlinkSync} from 'node:fs';
+    export default {plugins:[{name:'serial',setup(c){
+      writeFileSync(c.root+'/exclusive.lock','owned',{flag:'wx'});
+      c.onCleanup(()=>unlinkSync(c.root+'/exclusive.lock'));
+      c.generate('slow',async()=>{await Bun.write(c.root+'/.lenso/generating','yes');await Bun.sleep(250);return []});
+    }}]}`,
+  );
+  await Bun.write(
+    join(root, "src/server.ts"),
+    `
+    import value from '../value';
+    const timer=setInterval(()=>{},1000);
+    process.send?.({type:'lenso:dev-ready',capabilities:[value]});
+    process.on('SIGTERM',()=>{clearInterval(timer);process.disconnect?.()});`,
+  );
+  const events: DevSupervisorEvent[] = [];
+  const supervisor = await createDevSupervisor({
+    root,
+    stdout: "ignore",
+    stderr: "ignore",
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+  const ready = () => events.filter((event) => event.type === "ready");
+  try {
+    await until(() => ready().length === 1);
+    await rm(gate);
+    await Bun.write(value, "export default 'second'");
+    await until(() => Bun.file(gate).exists());
+    await Bun.write(value, "export default 'third'");
+    await until(() => ready().some((event) => event.capabilities?.[0] === "third"));
+    await Bun.sleep(400);
+    expect(events.filter((event) => event.type === "failed")).toEqual([]);
+    const closing = supervisor.close();
+    expect(supervisor.close()).toBe(closing);
+    await closing;
+    expect(await Bun.file(join(root, "exclusive.lock")).exists()).toBe(false);
+    const starts = events.filter((event) => event.type === "starting").length;
+    await Bun.write(value, "export default 'after-close'");
+    await Bun.sleep(200);
+    expect(events.filter((event) => event.type === "starting")).toHaveLength(starts);
+  } finally {
+    await supervisor.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 20000);
+
+test("missing declared path aliases and linked wildcard exports recover from new source in arbitrary directories", async () => {
+  for (const kind of ["alias", "wildcard"]) {
+    const root = await fixture();
+    const linked = await mkdtemp(join(tmpdir(), "lenso-dev-wildcard-"));
+    const specifier = kind === "alias" ? "@input/created" : "linked/feature/created";
+    const leaf =
+      kind === "alias"
+        ? join(root, "arbitrary/place/created.ts")
+        : join(linked, "free/directory/created.ts");
+    if (kind === "alias")
+      await Bun.write(
+        join(root, "tsconfig.json"),
+        JSON.stringify({
+          compilerOptions: { baseUrl: ".", paths: { "@input/*": ["arbitrary/place/*"] } },
+        }),
+      );
+    else {
+      await mkdir(join(root, "node_modules"));
+      await symlink(linked, join(root, "node_modules/linked"));
+      await Bun.write(
+        join(linked, "package.json"),
+        JSON.stringify({
+          name: "linked",
+          type: "module",
+          exports: { "./feature/*": { import: "./free/directory/*.ts" } },
+        }),
+      );
+    }
+    await Bun.write(
+      join(root, "lenso.config.ts"),
+      `import ${JSON.stringify(specifier)}; export default {plugins:[]}`,
+    );
+    await Bun.write(
+      join(root, "src/server.ts"),
+      `
+      import value from ${JSON.stringify(specifier)};
+      const timer=setInterval(()=>{},1000);
+      process.send?.({type:'lenso:dev-ready',capabilities:[value]});
+      process.on('SIGTERM',()=>{clearInterval(timer);process.disconnect?.()});`,
+    );
+    const events: DevSupervisorEvent[] = [];
+    const supervisor = await createDevSupervisor({
+      root,
+      stdout: "ignore",
+      stderr: "ignore",
+      onEvent(event) {
+        events.push(event);
+      },
+    });
+    try {
+      expect(events.some((event) => event.type === "failed")).toBe(true);
+      await Bun.write(leaf, "export default 'repaired'");
+      await until(() => events.some((event) => event.type === "ready"));
+      expect(
+        events.filter((event) => event.type === "ready").map((event) => event.capabilities),
+      ).toEqual([["repaired"]]);
+      await Bun.write(leaf, "export default 'current-source'");
+      await until(() => events.filter((event) => event.type === "ready").length === 2);
+      expect(
+        events.filter((event) => event.type === "ready").map((event) => event.capabilities),
+      ).toEqual([["repaired"], ["current-source"]]);
+    } finally {
+      await supervisor.close();
+      await rm(root, { recursive: true, force: true });
+      await rm(linked, { recursive: true, force: true });
+    }
+  }
+}, 20000);

@@ -13,6 +13,14 @@ let readyFailure: { error: unknown } | undefined;
 function send(message: unknown) {
   process.send?.(redact(message, environmentSecrets()));
 }
+function watchInputs(replace = false) {
+  send({
+    type: "watch-inputs",
+    watchFiles: engine.session.invalidationInputs(),
+    sourceDirectories: engine.session.localSourceDirectories(),
+    replace,
+  });
+}
 async function close(failure?: { error: unknown }): Promise<void> {
   return (closing ??= (async () => {
     let error = failure === undefined ? undefined : diagnostic(failure.error);
@@ -50,9 +58,11 @@ function onMessage(message: unknown) {
       if (closing || readyFailure !== undefined) return;
       try {
         await engine.session.dev("ready");
+        watchInputs(true);
         send({ type: "ack", id: "id" in message ? message.id : null });
       } catch (cause) {
         readyFailure = { error: cause };
+        watchInputs(true);
         // The parent must stop the runtime before asking us to clean up.
         send({ type: "failed", error: diagnostic(cause) });
       }
@@ -65,15 +75,23 @@ process.on("disconnect", onSignal);
 queue = queue.then(async () => {
   try {
     await engine.prepare();
+    const entry = resolve(
+      root,
+      overrides.entry ?? engine.session.snapshot().convention.entry ?? "src/server.ts",
+    );
+    await engine.session.observeDevEntry(entry);
+    watchInputs();
     await engine.session.generate();
     await engine.session.dev("beforeStart");
     const snapshot = engine.session.snapshot();
     send({
       type: "prepared",
       watchFiles: snapshot.watchFiles,
-      entry: resolve(root, overrides.entry ?? snapshot.convention.entry ?? "src/server.ts"),
+      sourceDirectories: engine.session.localSourceDirectories(),
+      entry,
     });
   } catch (cause) {
+    watchInputs();
     await close({ error: cause });
   }
 });

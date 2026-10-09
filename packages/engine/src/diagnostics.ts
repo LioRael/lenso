@@ -192,6 +192,7 @@ function describeError(
       ...base,
       ...safeDetail(error.diagnostic, seen, depth),
       ...(error.diagnostic.causes ||
+      error.diagnostic.code === "aborted" ||
       error.cause === undefined ||
       (error.cause instanceof EngineError &&
         sameProjection(error.diagnostic, error.cause.diagnostic))

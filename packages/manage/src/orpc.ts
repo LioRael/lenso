@@ -3,25 +3,28 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { EvidenceInput, FetchAuthContext } from "@lenso/auth/fetch";
 import { AuthError } from "@lenso/auth";
 import { EngineError } from "@lenso/engine/diagnostics";
+import { type Operation, type OperationBoundOptions } from "@lenso/engine/operations";
 import {
-  validateOperations,
-  type Operation,
-  type OperationBoundOptions,
-} from "@lenso/engine/operations";
-import { createManageAdapter, type ManageAdapterOptions } from "./adapter";
+  createManageAdapter,
+  createManageSelection,
+  type ManageRequestOptions,
+  type ManageSelection,
+  type ManageSelectionOptions,
+} from "./adapter";
 
-export interface ManageRouterOptions<E, O extends Operation = Operation> extends Omit<
-  ManageAdapterOptions<O>,
+export type ManageRouterOptions<E, O extends Operation = Operation> = Omit<
+  ManageRequestOptions<O>,
   "binding" | "canList"
-> {
-  readonly evidence: (context: FetchAuthContext) => EvidenceInput<E> | Promise<EvidenceInput<E>>;
-  readonly binding: (
-    operation: O,
-    input: unknown,
-    evidence: EvidenceInput<E>,
-  ) => OperationBoundOptions<NoInfer<O>> | Promise<OperationBoundOptions<NoInfer<O>>>;
-  readonly canList: (operation: O, evidence: EvidenceInput<E>) => boolean | Promise<boolean>;
-}
+> &
+  (ManageSelectionOptions<O> | { readonly selection: ManageSelection<O> }) & {
+    readonly evidence: (context: FetchAuthContext) => EvidenceInput<E> | Promise<EvidenceInput<E>>;
+    readonly binding: (
+      operation: O,
+      input: unknown,
+      evidence: EvidenceInput<E>,
+    ) => OperationBoundOptions<NoInfer<O>> | Promise<OperationBoundOptions<NoInfer<O>>>;
+    readonly canList: (operation: O, evidence: EvidenceInput<E>) => boolean | Promise<boolean>;
+  };
 
 type InvocationEnvelope =
   | {
@@ -161,10 +164,19 @@ function publicCode(error: unknown): PublicCode {
 }
 
 export function createManageRouter<E, O extends Operation>(options: ManageRouterOptions<E, O>) {
-  const { running, evidence: extractEvidence, binding, canList, maxOutputBytes } = options;
-  const plugins = Object.freeze([...options.plugins]);
-  const operations = Object.freeze([...options.operations]);
-  validateOperations(plugins, operations);
+  const selection = "selection" in options ? options.selection : createManageSelection(options);
+  return routerForSelection(selection, options);
+}
+
+function routerForSelection<E, O extends Operation>(
+  selection: ManageSelection<O>,
+  {
+    evidence: extractEvidence,
+    binding,
+    canList,
+    maxOutputBytes,
+  }: Pick<ManageRouterOptions<E, O>, "evidence" | "binding" | "canList" | "maxOutputBytes">,
+) {
   const base = os.$context<FetchAuthContext>().errors({
     BAD_REQUEST: { ...classifications.BAD_REQUEST, data: safeErrorData },
     UNAUTHORIZED: { ...classifications.UNAUTHORIZED, data: safeErrorData },
@@ -185,9 +197,7 @@ export function createManageRouter<E, O extends Operation>(options: ManageRouter
     try {
       const evidence = await extractEvidence(context);
       const adapter = createManageAdapter({
-        running,
-        plugins,
-        operations,
+        selection,
         ...(maxOutputBytes === undefined ? {} : { maxOutputBytes }),
         binding: (operation, input) => binding(operation, input, evidence),
         canList: (operation) => canList(operation, evidence),

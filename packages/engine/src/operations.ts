@@ -39,6 +39,18 @@ export async function executeOperation(
   input: unknown,
   context?: unknown,
 ): Promise<unknown> {
+  return executeWithErrorMapping(running, operation, input, context, (error) =>
+    operationError(operation, error),
+  );
+}
+
+async function executeWithErrorMapping(
+  running: OperationRuntime,
+  operation: Operation,
+  input: unknown,
+  context: unknown,
+  mapError: (error: unknown) => unknown,
+): Promise<unknown> {
   const attributes = {
     "lenso.instance.id": running.instanceId,
     "lenso.plugin.id": operation.plugin.id,
@@ -75,7 +87,7 @@ export async function executeOperation(
           ? await method.call(service, input, context)
           : await method.call(service, input);
       } catch (error) {
-        throw operationError(operation, error);
+        throw mapError(error);
       }
     } catch (error) {
       labels.outcome = "failure";
@@ -164,6 +176,8 @@ export interface OperationInvocationOptions<C = unknown> {
   /** Trusted entry callbacks verify this invocation, not booleans from business input. */
   readonly confirm?: () => boolean | Promise<boolean>;
   readonly approve?: () => boolean | Promise<boolean>;
+  /** Revalidate entry admission after asynchronous gates, immediately before service dispatch. */
+  readonly beforeExecute?: () => void | Promise<void>;
 }
 
 export type OperationBoundOptions<O extends Operation> = [O] extends [never]
@@ -201,6 +215,46 @@ export function operationError(operation: Operation, error: unknown): unknown {
     // A broken projector cannot replace the original failure.
   }
   return error;
+}
+
+function cancellationError(
+  running: OperationRuntime,
+  operation: Operation,
+  signal: AbortSignal,
+): EngineError {
+  return new EngineError(
+    {
+      code: "aborted",
+      phase: "invoke",
+      message: "Operation cancelled; external effects may have occurred.",
+      ...operationLocation(operation),
+      instanceId: running.instanceId,
+    },
+    { cause: signal.reason },
+  );
+}
+
+function checkCancellation(
+  running: OperationRuntime,
+  operation: Operation,
+  signal: AbortSignal | undefined,
+): void {
+  if (signal?.aborted) throw cancellationError(running, operation, signal);
+}
+
+function observedCancellation(
+  running: OperationRuntime,
+  operation: Operation,
+  signal: AbortSignal | undefined,
+  error: unknown,
+): unknown {
+  // Primitive equality cannot distinguish cancellation from an unrelated business throw.
+  return signal?.aborted &&
+    error !== null &&
+    (typeof error === "object" || typeof error === "function") &&
+    Object.is(error, signal.reason)
+    ? cancellationError(running, operation, signal)
+    : error;
 }
 
 function inputIssuePaths(
@@ -331,8 +385,15 @@ export async function invokeValidatedOperation<O extends Operation>(
   options: OperationInvocationOptions<NoInfer<OperationContext<O>>> = {},
 ): Promise<unknown> {
   const location = { ...operationLocation(operation), instanceId: running.instanceId };
+  const waitForGate = async <T>(callback: () => T | Promise<T>): Promise<T> => {
+    try {
+      return await callback.call(options);
+    } catch (error) {
+      throw observedCancellation(running, operation, options.signal, error);
+    }
+  };
   try {
-    options.signal?.throwIfAborted();
+    checkCancellation(running, operation, options.signal);
     const maxBytes = options.maxOutputBytes ?? 1024 * 1024;
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
       throw new EngineError({
@@ -349,8 +410,8 @@ export async function invokeValidatedOperation<O extends Operation>(
         ...location,
       });
     if (operation.confirmation === "required") {
-      const confirmed = options.confirm && (await options.confirm());
-      options.signal?.throwIfAborted();
+      const confirmed = options.confirm && (await waitForGate(options.confirm));
+      checkCancellation(running, operation, options.signal);
       if (confirmed !== true)
         throw new EngineError({
           code: "confirmation-required",
@@ -360,8 +421,8 @@ export async function invokeValidatedOperation<O extends Operation>(
         });
     }
     if (operation.approval === "required") {
-      const approved = options.approve && (await options.approve());
-      options.signal?.throwIfAborted();
+      const approved = options.approve && (await waitForGate(options.approve));
+      checkCancellation(running, operation, options.signal);
       if (approved !== true)
         throw new EngineError({
           code: "approval-required",
@@ -370,9 +431,20 @@ export async function invokeValidatedOperation<O extends Operation>(
           ...location,
         });
     }
-    options.signal?.throwIfAborted();
-    const result = await executeOperation(running, operation, validatedInput, options.context);
-    options.signal?.throwIfAborted();
+    checkCancellation(running, operation, options.signal);
+    if (options.beforeExecute) await waitForGate(options.beforeExecute);
+    checkCancellation(running, operation, options.signal);
+    const result = await executeWithErrorMapping(
+      running,
+      operation,
+      validatedInput,
+      options.context,
+      (error) => {
+        const observed = observedCancellation(running, operation, options.signal, error);
+        return Object.is(observed, error) ? operationError(operation, error) : observed;
+      },
+    );
+    checkCancellation(running, operation, options.signal);
     // Check the original result before redaction, which otherwise hides cycles and non-JSON values.
     const raw = boundedJson(result, maxBytes);
     const safe = redact(JSON.parse(raw), environmentSecrets());
