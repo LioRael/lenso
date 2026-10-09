@@ -48,6 +48,15 @@ If no publishing remote exists or the repository/destination is ambiguous, ask
 for the intended remote URL and branch before configuring or publishing anything.
 Confirm a differing push URL targets the intended repository.
 
+On a retry, confirm which source revision the user intends to land. Later
+parent-thread edits are not automatically present in an existing Land subthread.
+When the retry includes a parent-thread fix, explicitly bring that in-scope
+revision into the attached checkout or rebuild from the updated requested source,
+then pin the new source commit. A message saying the lockfile is fixed is not a
+source update. Honor an explicitly requested commit pin; if the newer revision
+is unavailable or its inclusion is ambiguous, ask rather than repeatedly
+verifying the old candidate.
+
 ```sh
 git remote get-url <remote>
 git remote get-url --push --all <remote>
@@ -100,14 +109,44 @@ interactive editor. Recheck the whole resolved diff, not just conflicted lines.
 **Done:** one clean candidate contains the requested source and remote base work;
 the remote destination has not been changed.
 
-## 3. Verify the exact candidate
+## 3. Prepare dependencies and verify the exact candidate
 
 Read the candidate's manifests and task definitions before choosing checks. Use
 the declared Bun version, currently `1.4.2`, and the single root lockfile. Confirm
-the version with `bun --version`, then run `bun install --frozen-lockfile`; do not
-repair a failed frozen install by silently rewriting the lockfile.
+the version with `bun --version`.
 Sources: `package.json` (`engines`, `packageManager`, `workspaces`), `mise.toml`,
 `AGENTS.md`.
+
+For a candidate that adds/removes workspaces or changes package manifests,
+including versions, dependency ranges or optional peers, synchronize the lockfile
+before frozen verification. Under `AGENTS.md`, the Land agent is the integration
+owner for this request; implementation-phase lockfile ownership is not a missing
+landing permission. Honor explicit restrictions on lockfile edits during landing.
+If the restriction's scope is ambiguous, ask.
+
+In the candidate root, generate the lockfile from the combined manifests:
+
+```sh
+bun install --lockfile-only --ignore-scripts
+git diff -- bun.lock
+```
+
+Review every change against the requested source and fetched destination.
+Preserve destination workspaces and unrelated dependency resolutions; do not
+use upgrade commands or edit manifests just to make installation pass. Stop on
+unexplained resolution changes or an out-of-scope repair. Commit the reviewed
+lockfile diff on the candidate branch using only the explicit `bun.lock` path,
+and record the new candidate ID. If generation makes no changes, keep the ID.
+
+Run `bun install --frozen-lockfile` on that candidate and confirm the lockfile
+hash is unchanged. A successful install with existing dependencies or `--no-save`
+during development is not this gate. For dependency/workspace changes, also run
+the same frozen command in a clean source copy of the candidate with no existing
+`node_modules` or `dist`; include that result in verification.
+If frozen installation still fails, diagnose the exact candidate and stop if
+the repair exceeds the authorized scope; a non-frozen install is not a passing
+replacement. After any source or destination update changes the candidate's
+dependency graph, repeat lockfile preparation and frozen verification.
 
 Use installed workspace tools after that install. Build affected framework packages
 and their dependencies before consumers, because package exports resolve to `dist`.
@@ -230,6 +269,15 @@ result ID rather than claiming the candidate ID landed unchanged.
 If authentication, permissions, checks, reviews or remote confirmation block
 completion, report landing as incomplete and retain source and integration branches
 as recoverable state.
+
+**Done:** required pre-merge checks passed, the actual merge or push completed,
+and remote/content confirmation succeeded. Main CI remains enabled, but waiting
+for a new post-merge main run is optional unless the user or repository policy
+explicitly requires it. Report pre-merge evidence separately from the observed
+main status (passed, failed, pending, missing, or not checked); pending or missing
+is never passed. Disclose any already observed main failure even when landing is
+confirmed. When a post-merge wait is required, complete that wait before reporting
+Land complete.
 
 ## 5. Clean up confirmed landed branches
 

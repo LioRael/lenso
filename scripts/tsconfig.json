@@ -1,5 +1,5 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": { "noEmit": true },
-  "include": ["release*.ts"]
+  "include": ["release*.ts", "ci-docs*.ts"]
 }

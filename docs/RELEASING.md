@@ -148,7 +148,12 @@ Verification itself does not run the full test suite.
 1. `checks.yml` runs for ordinary PRs, pushes to `main`, and manual dispatch.
    Its only token permission is `contents: read`; checkout does not persist
    credentials. Fork code never receives repository write or OIDC permission.
-   It performs frozen install, lint, formatting check, build, typecheck and tests.
+   The required `checks` job always performs frozen install and docs-routing
+   regression tests. A complete Git diff containing only allowlisted documentation
+   runs formatting, local-link, code-fence and skill-frontmatter checks instead
+   of the Node/PostgreSQL runtime suite. Mixed changes, unsafe file modes and
+   unavailable or ambiguous bases run the existing full lint, formatting, build,
+   typecheck and test path. Manual dispatch always runs the full path.
 2. `version.yml` runs on `main`, using the pinned Changesets action with only a
    `version` command. It updates manifests/changelogs/consumed changesets and the
    one root `bun.lock`, checks frozen installation, formats, and opens/updates a
