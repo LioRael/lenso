@@ -1,0 +1,20 @@
+.changeset/composable-authorization.md
+  h_9d56aba080c170 1-5
+bun.lock
+  h_9d56aba080c170 165-186,706-707
+packages/authorization/VALIDATION.md
+  h_9d56aba080c170 3,69-80,83-84
+scripts/ci-checks.sh
+  h_9d56aba080c170 5,22,37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d66a216d61158ba492d9531e90d37d144b80b2c",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

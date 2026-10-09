@@ -1,0 +1,54 @@
+bun.lock
+  h_9d56aba080c170 20,117,127-139,210,549-550
+examples/greeting/package.json
+  h_9d56aba080c170 16
+examples/greeting/src/cached.test.ts
+  h_9d56aba080c170 1-36
+examples/greeting/src/cached.ts
+  h_9d56aba080c170 1-29
+examples/greeting/src/greeting.ts
+  h_9d56aba080c170 1-2,7-44
+packages/cache/README.md
+  h_9d56aba080c170 1-238
+packages/cache/package.json
+  h_9d56aba080c170 1-49
+packages/cache/src/config.ts
+  h_9d56aba080c170 1-60
+packages/cache/src/contracts.ts
+  h_9d56aba080c170 1-107
+packages/cache/src/index.ts
+  h_9d56aba080c170 1-288
+packages/cache/src/json.ts
+  h_9d56aba080c170 1-80
+packages/cache/src/memory.ts
+  h_9d56aba080c170 1-149
+packages/cache/src/plugin.ts
+  h_9d56aba080c170 1-90
+packages/cache/src/redis.ts
+  h_9d56aba080c170 1-180
+packages/cache/test/entries.test.ts
+  h_9d56aba080c170 1-21
+packages/cache/test/memory.test.ts
+  h_9d56aba080c170 1-88
+packages/cache/test/plugin.test.ts
+  h_9d56aba080c170 1-88
+packages/cache/test/redis.test.ts
+  h_9d56aba080c170 1-226
+packages/cache/test/service.test.ts
+  h_9d56aba080c170 1-502
+packages/cache/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/cache/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45163b3fe012ba1773d2685910dfa6194ae502f7",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

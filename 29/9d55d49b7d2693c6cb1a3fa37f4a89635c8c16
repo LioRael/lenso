@@ -1,0 +1,20 @@
+.gitignore
+  h_9d56aba080c170 1-7,9-45
+README.md
+  h_9d56aba080c170 9
+bun.lock
+  h_9d56aba080c170 12,177-216,247
+package.json
+  h_9d56aba080c170 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "299d55d49b7d2693c6cb1a3fa37f4a89635c8c16",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
