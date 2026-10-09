@@ -27,12 +27,27 @@ Named CLI exports and ordinary single-input `defineOperation` calls remain suppo
 ## Running entries
 
 `createManageAdapter({running, plugins, operations, binding, canList})` borrows an
-explicit `RunningApp`. It verifies selected exact instances and never starts or
-stops a service graph. `binding(operation, validatedInput)` is mandatory and runs
+explicit `OperationRuntime` from `@lenso/engine/operations`, the
+`instanceId`/`get`/`logger` subset of `RunningApp`. An existing `PluginContext`
+also satisfies this contract and retains its exact declared dependency checks,
+without acquiring app lifecycle ownership. The adapter verifies selected exact
+instances and never starts or stops a service graph.
+`plugins` is the management selection, not a dependency-closed app assembly:
+Auth/DB dependencies need not be selected or exposed. Every selected plugin must
+be an exact accessible runtime instance, even when it has no selected operations;
+invalid declaration metadata and duplicate IDs are refused.
+`binding(operation, validatedInput)` is mandatory and runs
 anew for each call; it supplies trusted context and optional confirmation/approval
 callbacks, never business handlers. `canList(operation)` must check the current
 entry identity's operation-level permission. It filters catalog and gates invocation;
 the real service still enforces realm/audience, object, owner and tenant policies.
+
+Bindings may supply an actual `signal`. Engine checks it before gates, after gate
+waits, before dispatch and after service completion, retaining the abort reason
+in the in-process cause chain. An aborted gate wait prevents dispatch; cancellation
+after dispatch does not roll back mutations or stop the service. The signal is not
+injected into business methods: cooperative service cancellation still needs an
+explicit host-bound context. Cancellation metadata remains descriptive.
 
 For methods declared with `context: true`, the binding context type is inferred
 from the actual second argument. `bindManageOperation(operation, {context})` also

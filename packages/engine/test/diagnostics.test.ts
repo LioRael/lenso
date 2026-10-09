@@ -3,7 +3,24 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EngineSession, withEngine } from "../src/engine-host";
-import { EngineError, diagnostic, stableJson } from "../src/diagnostics";
+import {
+  EngineError,
+  diagnostic,
+  environmentSecrets,
+  redact,
+  stableJson,
+} from "../src/diagnostics";
+
+test("process-free runtimes skip environment secrets and retain explicit redaction", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "process")!;
+  try {
+    Object.defineProperty(globalThis, "process", { configurable: true, value: undefined });
+    expect(environmentSecrets()).toEqual([]);
+    expect(redact("explicit-private-value", ["explicit-private-value"])).toBe("[REDACTED]");
+  } finally {
+    Object.defineProperty(globalThis, "process", descriptor);
+  }
+});
 
 test("hook and ordered cleanup errors preserve original causes and cached close rejection", async () => {
   const root = await mkdtemp(join(tmpdir(), "lenso-causes-"));

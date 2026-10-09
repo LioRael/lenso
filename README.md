@@ -271,6 +271,17 @@ source attribution, not values, schema messages or original causes. Sources fail
 closed, without implicit cache or fallback. Cancellation checks are cooperative;
 an AbortSignal cannot kill arbitrary custom code.
 
+`running.configuration(plugin)` returns a copied, frozen `ConfigState` for an
+exact installed instance: `state: "unconfigured" | "resolved"`, `fields` containing
+raw-input `{path, sourceIds, sensitive}` metadata, and `sources` containing only
+`{id, kind}`. It projects the captured startup snapshot without reading sources
+again; values, revisions, file locations, env bindings and callbacks are absent.
+`PluginContext.configuration` provides the same metadata for the current plugin
+or its exact declared `requires`, and rejects undeclared instances. This context
+method is optional in the type for compatibility with consumer-created contexts;
+core always supplies it. The app accessor retains startup metadata after stop,
+while context access, like `get` and `config`, rejects a stopped app.
+
 Static inspect describes contracts and source declarations, never invokes source
 reads or setup. JSON Schema is available only through an explicit
 `jsonSchema: () => ...` converter. Defaults/examples are omitted and sensitive

@@ -1,4 +1,4 @@
-import { validatePlugins, type Plugin, type RunningApp } from "@lenso/core";
+import { validatePluginSelection, type Plugin } from "@lenso/core";
 import {
   describeOperation,
   boundedJson,
@@ -9,17 +9,19 @@ import {
   validateOperations,
   type Operation,
   type OperationBoundOptions,
+  type OperationRuntime,
 } from "@lenso/engine/operations";
 import { diagnostic, EngineError } from "@lenso/engine/diagnostics";
 
 export interface ManageInvocationBinding<C = unknown> {
   readonly context?: C;
+  readonly signal?: AbortSignal;
   readonly confirm?: () => boolean | Promise<boolean>;
   readonly approve?: () => boolean | Promise<boolean>;
 }
 
 export interface ManageAdapterOptions<O extends Operation = Operation> {
-  readonly running: RunningApp;
+  readonly running: OperationRuntime;
   readonly plugins: readonly Plugin<unknown>[];
   readonly operations: readonly O[];
   readonly binding: (
@@ -58,20 +60,19 @@ export function createManageAdapter<O extends Operation>(
   const { running, binding, canList, maxOutputBytes } = options;
   const plugins = Object.freeze([...options.plugins]);
   const operations = Object.freeze([...options.operations]);
-  validatePlugins(plugins);
+  validatePluginSelection(plugins);
   validateOperations(plugins, operations);
-  for (const operation of operations) {
+  for (const plugin of plugins) {
     try {
-      running.get(operation.plugin);
+      running.get(plugin);
     } catch (cause) {
       throw new EngineError(
         {
           code: "invalid-manage",
           phase: "discovery",
-          message: "Selected operation must belong to the exact running plugin instance.",
+          message: "Selected plugin must be the exact running plugin instance.",
           instanceId: running.instanceId,
-          pluginId: operation.plugin.id,
-          operation: `${operation.plugin.id}.${operation.method}`,
+          pluginId: plugin.id,
         },
         { cause },
       );
@@ -97,6 +98,7 @@ export function createManageAdapter<O extends Operation>(
       } catch (error) {
         throw new EngineError(
           diagnostic(error, { instanceId: running.instanceId, phase: "discovery" }),
+          { cause: error },
         );
       }
     },
@@ -130,12 +132,15 @@ export function createManageAdapter<O extends Operation>(
           refuse("invalid-manage-binding", "Invocation binding must return a trusted binding.");
         return await invokeValidatedOperation<Operation>(running, operation, validated, {
           context: invocation.context,
+          ...(invocation.signal === undefined ? {} : { signal: invocation.signal }),
           ...(invocation.confirm === undefined ? {} : { confirm: invocation.confirm }),
           ...(invocation.approve === undefined ? {} : { approve: invocation.approve }),
           ...(maxOutputBytes === undefined ? {} : { maxOutputBytes }),
         });
       } catch (error) {
-        throw new EngineError(diagnostic(error, { ...location, phase: "invoke" }));
+        throw new EngineError(diagnostic(error, { ...location, phase: "invoke" }), {
+          cause: error,
+        });
       }
     },
   });

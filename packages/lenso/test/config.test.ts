@@ -9,7 +9,7 @@ import {
   resolveConfig,
   valuesSource,
 } from "../src/config";
-import type { ConfigBinding, ConfigSource } from "../src/config-types";
+import type { ConfigBinding, ConfigSource, ConfigState } from "../src/config-types";
 import { startApp } from "../src/lifecycle";
 import { definePlugin } from "../src/plugin";
 
@@ -37,6 +37,104 @@ async function failure(action: () => Promise<unknown>): Promise<ConfigError> {
 }
 
 describe("plugin configuration", () => {
+  test("configuration status captures safe preflight metadata and enforces exact dependency access", async () => {
+    let reads = 0;
+    let secret = "startup-secret";
+    const descriptor = {
+      id: "remote",
+      kind: "custom",
+      location: { file: "/private/config.json" },
+      fields: [{ path: ["token"], sensitive: true, env: "PRIVATE_TOKEN" }],
+    };
+    const source: ConfigSource = {
+      descriptor,
+      async read() {
+        reads++;
+        return { values: { token: secret }, revision: { token: "private-revision" } };
+      },
+    };
+    const contract = definePluginConfig({
+      schema: schema<Record<string, unknown>, Record<string, unknown>>((value) => ({
+        value: { ...(value as Record<string, unknown>), derived: true },
+      })),
+    });
+    const first = bindConfig(contract, [source], {
+      id: "first",
+      setup: (context): ConfigState => context.configuration!(first),
+    });
+    const second = bindConfig(contract, {}, { id: "second", setup: () => null });
+    const observer = definePlugin({
+      id: "observer",
+      requires: [first],
+      setup(context): {
+        own: ConfigState;
+        read: () => ConfigState;
+        denied: () => ConfigState;
+        impostor: () => ConfigState;
+      } {
+        return {
+          own: context.configuration!(observer),
+          read: () => context.configuration!(first),
+          denied: () => context.configuration!(second),
+          impostor: () => context.configuration!({ ...first }),
+        };
+      },
+    });
+    const app = await startApp({ plugins: [first, second, observer] });
+    try {
+      const state = app.configuration(first);
+      expect(state).toEqual({
+        state: "resolved",
+        fields: [{ path: ["token"], sourceIds: ["remote"], sensitive: true }],
+        sources: [{ id: "remote", kind: "custom" }],
+      });
+      expect(app.get(first)).toEqual(state);
+      expect(app.get(observer).read()).toEqual(state);
+      expect(app.get(observer).own).toEqual({
+        state: "unconfigured",
+        fields: [],
+        sources: [],
+      });
+      expect(app.configuration(second)).toMatchObject({ state: "resolved", fields: [] });
+      expect(() => app.configuration({ ...first })).toThrow("not part of this app");
+      expect(app.get(observer).denied).toThrow("undeclared configuration");
+      expect(app.get(observer).impostor).toThrow("undeclared configuration");
+      secret = "changed-secret";
+      descriptor.id = "changed";
+      descriptor.kind = "changed";
+      descriptor.fields[0]!.sensitive = false;
+      expect(app.configuration(first)).toEqual(state);
+      expect(app.get(observer).read()).toEqual(state);
+      expect(reads).toBe(1);
+      const json = JSON.stringify(state);
+      for (const forbidden of [
+        secret,
+        "startup-secret",
+        "private-revision",
+        "/private/config.json",
+        "PRIVATE_TOKEN",
+        "revision",
+        "value",
+        "read",
+        "derived",
+      ])
+        expect(json).not.toContain(forbidden);
+      for (const frozen of [
+        state,
+        state.fields,
+        state.fields[0],
+        state.fields[0]!.path,
+        state.fields[0]!.sourceIds,
+        state.sources,
+        state.sources[0],
+      ])
+        expect(Object.isFrozen(frozen)).toBe(true);
+      expect(Object.isFrozen(descriptor)).toBe(false);
+    } finally {
+      await app.stop();
+    }
+  });
+
   test("plain options, two instances and two starts keep frozen copies isolated", async () => {
     const input = { nested: { count: 1 } };
     const contract = definePluginConfig({
