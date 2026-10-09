@@ -1,0 +1,110 @@
+.changeset/application-composition-source.md
+  h_9d56aba080c170 1-8
+README.md
+  h_9d56aba080c170 3-24,319-333
+docs/CLI.md
+  h_9d56aba080c170 5-32,127,132-133,202,204
+packages/cli/package.json
+  h_9d56aba080c170 16,23
+packages/cli/src/application-target.ts
+  h_9d56aba080c170 1-96
+packages/cli/src/bin.ts
+  h_9d56aba080c170 6,39,44,49,54,60,65,72-79,82-84,168,186-200,205,214,217,228,262,266
+packages/cli/src/dev-presentation.ts
+  h_9d56aba080c170 3
+packages/cli/src/dev.ts
+  h_9d56aba080c170 7,29
+packages/cli/src/engine.ts
+  h_9d56aba080c170 2-7,117,122-124,128-130,135-141
+packages/cli/src/index.ts
+  h_9d56aba080c170 3
+packages/cli/test/application-target.test.ts
+  h_9d56aba080c170 1-269
+packages/cli/test/packaging.test.ts
+  h_9d56aba080c170 269-299
+packages/cli/test/source-condition.test.ts
+  h_9d56aba080c170 1-211
+packages/cli/test/templates.test.ts
+  h_9d56aba080c170 1-192
+packages/engine/README.md
+  h_9d56aba080c170 38-64,137-142,209,211-212,221,223,225-226
+packages/engine/package.json
+  h_9d56aba080c170 13,19,24,29,34,39,44,48-51
+packages/engine/src/application.ts
+  h_9d56aba080c170 2,11-45
+packages/engine/src/dev.ts
+  h_9d56aba080c170 4,6-7,15,206,222-223
+packages/engine/src/diagnostics.ts
+  h_9d56aba080c170 104-115
+packages/engine/src/engine-dev-worker.ts
+  h_9d56aba080c170 2,7-9,70-75
+packages/engine/src/engine-dev.ts
+  h_9d56aba080c170 4,8,13-21,23-27,34,36-41,53-78,80,127,130
+packages/engine/src/engine-host.ts
+  h_9d56aba080c170 7,104-128,269-270,273,276-278,542-544,547-549,803-809
+packages/engine/src/engine.ts
+  h_9d56aba080c170 2-7,16-20,37-39,44-46,54-57
+packages/engine/src/index.ts
+  h_9d56aba080c170 5
+packages/engine/test/application-target.test.ts
+  h_9d56aba080c170 1-133
+packages/engine/test/dev-cycle.test.ts
+  h_9d56aba080c170 5,8-21
+packages/lenso/package.json
+  h_9d56aba080c170 11-12,16,18,23,28,33,38,43
+packages/web/package.json
+  h_9d56aba080c170 12,18,23,28,33,38,43
+templates/README.md
+  h_9d56aba080c170 1,3-5,7,9-15,17-54,57-79,81-83,85-91,93-98,100-106
+templates/bun-web/src/greeting.ts
+  h_9d56aba080c170 1-25
+templates/bun-web/src/router.ts
+  h_9d56aba080c170 1-16
+templates/bun-web/src/server.ts
+  h_9d56aba080c170 1-3,6-7,9-10,12-18,20,23,29,33-39
+templates/cli/lenso.config.ts
+  h_9d56aba080c170 1-2,8-15,17-30
+templates/workspace/.gitignore
+  h_9d56aba080c170 1-5
+templates/workspace/apps/server/.env.example
+  h_9d56aba080c170 1-2
+templates/workspace/apps/server/lenso.config.ts
+  h_9d56aba080c170 1-15
+templates/workspace/apps/server/lenso.engine.ts
+  h_9d56aba080c170 1-14
+templates/workspace/apps/server/package.json
+  h_9d56aba080c170 1-18
+templates/workspace/apps/server/runtime/main.ts
+  h_9d56aba080c170 1-33
+templates/workspace/apps/server/src/application.ts
+  h_9d56aba080c170 1-10
+templates/workspace/apps/server/src/client.ts
+  h_9d56aba080c170 1-5
+templates/workspace/apps/server/src/router.ts
+  h_9d56aba080c170 1-12
+templates/workspace/apps/web/package.json
+  h_9d56aba080c170 1-12
+templates/workspace/apps/web/src/client.ts
+  h_9d56aba080c170 1-6
+templates/workspace/package.json
+  h_9d56aba080c170 1-31
+templates/workspace/plugins/greeting/package.json
+  h_9d56aba080c170 1-15
+templates/workspace/plugins/greeting/src/index.ts
+  h_9d56aba080c170 1-25
+templates/workspace/tsconfig.json
+  h_9d56aba080c170 1-13
+turbo.json
+  h_9d56aba080c170 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "615b1a497e83462807149aedc1db5e9edab17d45",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

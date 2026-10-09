@@ -1,0 +1,22 @@
+packages/cli/README.md
+  h_9d56aba080c170 1-27
+packages/cli/package.json
+  h_9d56aba080c170 25-26
+packages/cli/src/dev-presentation.ts
+  h_9d56aba080c170 1-100
+packages/cli/src/dev.ts
+  h_9d56aba080c170 3,9-28,36,75,79-80,88,96-99,106,119-122
+packages/cli/test/dev-presentation.test.ts
+  h_9d56aba080c170 1-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e828ec55150060ea43abfd3efaffa1619a057ee",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
