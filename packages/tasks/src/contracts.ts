@@ -54,6 +54,26 @@ export interface EnqueueOptions {
   readonly deduplicationKey?: string;
 }
 
+/** Operational metadata only; no payload, result or error text. */
+export type JobSummary = Pick<
+  JobStatus,
+  "jobId" | "task" | "state" | "attempt" | "maxAttempts" | "cancelRequested"
+>;
+
+export interface JobQuery {
+  /** Explicit allowlist; an empty list matches nothing. At most 100 names. */
+  readonly tasks: readonly string[];
+  /** At most 100 rows. Defaults to 50. */
+  readonly limit?: number;
+  /** Exclusive immutable job ID cursor. Rows are ordered by ascending job ID. */
+  readonly after?: string;
+}
+
+export interface JobPage {
+  readonly items: readonly JobSummary[];
+  readonly nextCursor: string | null;
+}
+
 export interface TaskQueueIdentity {
   readonly kind: "postgres" | "d1";
   /** Persisted UUID of the named durable queue, not a connection or process identity. */
@@ -110,6 +130,8 @@ export interface TaskProvider {
   lookupDeduplicationKey(key: string): Promise<DeduplicationLookup | null>;
   enqueue(job: ProviderJob): Promise<string>;
   get(jobId: string): Promise<JobStatus | null>;
+  /** Optional for existing/custom providers. Never substitute an unbounded scan. */
+  list?(query: JobQuery): Promise<JobPage>;
   cancel(jobId: string): Promise<"requested" | "cancelled" | "terminal" | "missing">;
   /** Retry only a final failure. Preserves jobId, payload and business idempotency key. */
   retry(jobId: string): Promise<boolean>;

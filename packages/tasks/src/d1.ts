@@ -13,6 +13,7 @@ import { TaskQueueError } from "./errors";
 import { copyJson, INPUT_LIMIT_BYTES, RESULT_LIMIT_BYTES } from "./json";
 import { traceMetadata } from "./telemetry";
 import { createTaskWorker, type WorkerBackend } from "./worker";
+import { jobPage, normalizeJobQuery } from "./query";
 
 export { taskD1Schema } from "./schema-d1";
 
@@ -394,6 +395,37 @@ export async function createD1TaskProvider(options: D1TaskProviderOptions): Prom
           ).all<StatusRow>(),
         );
         return job ? status(job) : null;
+      });
+    },
+    async list(query: import("./contracts").JobQuery) {
+      assertOpen();
+      const { tasks, limit, after } = normalizeJobQuery(query);
+      if (!tasks.length) return { items: [], nextCursor: null };
+      return safely(async () => {
+        const jobs = rows(
+          await statement(
+            `SELECT id, task, state, attempt, max_attempts, cancel_requested
+            FROM lenso_d1_task_job WHERE queue_name = ?
+            AND task IN (${tasks.map(() => "?").join(",")})
+            ${after === undefined ? "" : "AND id > ?"}
+            ORDER BY id ASC LIMIT ?`,
+            queueName,
+            ...tasks,
+            ...(after === undefined ? [] : [after]),
+            limit + 1,
+          ).all<Omit<StatusRow, "result" | "error">>(),
+        );
+        return jobPage(
+          jobs.map((job) => ({
+            jobId: job.id,
+            task: job.task,
+            state: job.state,
+            attempt: job.attempt,
+            maxAttempts: job.max_attempts,
+            cancelRequested: job.cancel_requested === 1,
+          })),
+          limit,
+        );
       });
     },
     async lookupDeduplicationKey(key: string) {

@@ -9,6 +9,7 @@ Lenso runtime dependency. RBAC is one module, not the engine's only model.
 | `@lenso/authorization`                                    | Decisions, conditions, scoped RBAC, bounded lists, role management |
 | `@lenso/authorization/auth`                               | Adapter to one exact existing Auth `Access.enforce` chain          |
 | `@lenso/authorization/plugin`                             | Thin Lenso setup wrapper                                           |
+| `@lenso/authorization/manage`                             | Authorized exact-scope role/binding inspection                     |
 | `@lenso/authorization/drizzle/pg`                         | Borrowed native Drizzle PostgreSQL role store                      |
 | `@lenso/authorization/drizzle/d1`                         | Borrowed native Drizzle D1 role store                              |
 | `@lenso/authorization/drizzle/sqlite`                     | Borrowed Bun SQLite role store                                     |
