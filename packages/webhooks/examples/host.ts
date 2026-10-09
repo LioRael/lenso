@@ -9,15 +9,23 @@ import {
 } from "@lenso/webhooks";
 
 /** Host passes already provisioned resources, verified authority and its secret resolver. */
-export function assembleWebhooks<P>(input: Omit<WebhookOptions<P>, "queue" | "task" | "transport"> & {
-  provider: TaskProvider;
-}) {
+export function assembleWebhooks<P>(
+  input: Omit<WebhookOptions<P>, "queue" | "task" | "transport"> & {
+    provider: TaskProvider;
+  },
+) {
   const config = webhookConfig(input.config);
   let service: Webhooks<P>;
-  const task = defineWebhookTask("partner.webhooks.deliver", (job, signal) => service.execute(job, signal));
+  const task = defineWebhookTask("partner.webhooks.deliver", (job, signal) =>
+    service.execute(job, signal),
+  );
   const queue = createTaskQueue({ provider: input.provider, tasks: [task] });
   service = createWebhooks({
-    ...input, config, queue, task, transport: createPinnedHttpsTransport(config.outbound),
+    ...input,
+    config,
+    queue,
+    task,
+    transport: createPinnedHttpsTransport(config.outbound),
   });
   return { webhooks: service, queue };
 }

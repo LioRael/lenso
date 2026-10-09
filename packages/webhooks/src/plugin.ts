@@ -9,8 +9,13 @@ export function createWebhooksPlugin<D, P>(options: {
   readonly database: Plugin<D>;
   readonly queue: Plugin<TaskQueue>;
   readonly requires?: readonly Plugin<unknown>[];
-  readonly connect: (database: D, context: PluginContext) => WebhookRepository | Promise<WebhookRepository>;
-  readonly dependencies: (context: PluginContext) => Omit<WebhookOptions<P>, "repository" | "queue">;
+  readonly connect: (
+    database: D,
+    context: PluginContext,
+  ) => WebhookRepository | Promise<WebhookRepository>;
+  readonly dependencies: (
+    context: PluginContext,
+  ) => Omit<WebhookOptions<P>, "repository" | "queue">;
 }): Plugin<Webhooks<P>> {
   return definePlugin({
     id: options.id,

@@ -1,103 +1,175 @@
-import { afterAll, beforeAll, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { createServer, request } from 'node:https';
-import { checkServerIdentity } from 'node:tls';
-import { createPinnedHttpsTransport, validateEndpointUrl } from '../src/network';
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { createServer, request } from "node:https";
+import { checkServerIdentity } from "node:tls";
+import { createPinnedHttpsTransport, validateEndpointUrl } from "../src/network";
 
 const policy = {
-  allowedHosts: ['webhook.invalid'], dnsTimeoutMs: 100, connectTimeoutMs: 150,
-  timeoutMs: 300, maxRequestBytes: 32, maxResponseBytes: 32,
+  allowedHosts: ["webhook.invalid"],
+  dnsTimeoutMs: 100,
+  connectTimeoutMs: 150,
+  timeoutMs: 300,
+  maxRequestBytes: 32,
+  maxResponseBytes: 32,
 };
 let directory: string;
 beforeAll(() => {
-  directory = mkdtempSync(new URL('../node_modules/lenso-webhook-tls-', import.meta.url).pathname);
-  const result = Bun.spawnSync(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
-    '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'),
-    '-days', '1', '-subj', '/CN=webhook.invalid', '-addext', 'subjectAltName=DNS:webhook.invalid']);
+  directory = mkdtempSync(new URL("../node_modules/lenso-webhook-tls-", import.meta.url).pathname);
+  const result = Bun.spawnSync([
+    "openssl",
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-keyout",
+    join(directory, "key.pem"),
+    "-out",
+    join(directory, "cert.pem"),
+    "-days",
+    "1",
+    "-subj",
+    "/CN=webhook.invalid",
+    "-addext",
+    "subjectAltName=DNS:webhook.invalid",
+  ]);
   expect(result.exitCode).toBe(0);
 });
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
-test('endpoint canonicalization has an exact nonempty allowlist and rejects unsafe authorities', () => {
-  expect(validateEndpointUrl('https://WEBHOOK.invalid:443/a?x=%20', policy))
-    .toBe('https://webhook.invalid/a?x=%20');
+test("endpoint canonicalization has an exact nonempty allowlist and rejects unsafe authorities", () => {
+  expect(validateEndpointUrl("https://WEBHOOK.invalid:443/a?x=%20", policy)).toBe(
+    "https://webhook.invalid/a?x=%20",
+  );
   for (const url of [
-    'http://webhook.invalid', 'https://webhook.invalid:444', 'https://user:pass@webhook.invalid',
-    'https://webhook.invalid#', 'https://webhook.invalid/#secret', 'https://webhook.invalid.',
-    'https://sub.webhook.invalid', 'https://other.invalid', 'https://127.0.0.1',
-    'https://2130706433', 'https://0x7f000001', 'https://0177.0.0.1',
-    'https://[::1]', 'https://[::ffff:127.0.0.1]', 'https://%77ebhook.invalid',
-    'https://webhook.invalid\\@other.invalid', ' https://webhook.invalid',
-  ]) expect(() => validateEndpointUrl(url, policy)).toThrow('Webhook outbound policy-rejected');
-  expect(() => validateEndpointUrl('https://webhook.invalid', { ...policy, allowedHosts: [] })).toThrow();
+    "http://webhook.invalid",
+    "https://webhook.invalid:444",
+    "https://user:pass@webhook.invalid",
+    "https://webhook.invalid#",
+    "https://webhook.invalid/#secret",
+    "https://webhook.invalid.",
+    "https://sub.webhook.invalid",
+    "https://other.invalid",
+    "https://127.0.0.1",
+    "https://2130706433",
+    "https://0x7f000001",
+    "https://0177.0.0.1",
+    "https://[::1]",
+    "https://[::ffff:127.0.0.1]",
+    "https://%77ebhook.invalid",
+    "https://webhook.invalid\\@other.invalid",
+    " https://webhook.invalid",
+  ])
+    expect(() => validateEndpointUrl(url, policy)).toThrow("Webhook outbound policy-rejected");
+  expect(() =>
+    validateEndpointUrl("https://webhook.invalid", { ...policy, allowedHosts: [] }),
+  ).toThrow();
   expect(() => createPinnedHttpsTransport({ ...policy, timeoutMs: 0 })).toThrow();
 });
 
-test('Bun HTTPS lookup and numeric TLS hostname verification are assessed', async () => {
-  const server = createServer({
-    key: readFileSync(join(directory, 'key.pem')), cert: readFileSync(join(directory, 'cert.pem')),
-  }, (_req, res) => res.end());
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+test("Bun HTTPS lookup and numeric TLS hostname verification are assessed", async () => {
+  const server = createServer(
+    {
+      key: readFileSync(join(directory, "key.pem")),
+      cert: readFileSync(join(directory, "cert.pem")),
+    },
+    (_req, res) => res.end(),
+  );
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   let lookupCalls = 0;
   try {
     const address = server.address() as { port: number };
-    const outcome = await new Promise<string>(resolve => {
-      const req = request({
-        hostname: 'webhook.invalid', port: address.port, rejectUnauthorized: false, agent: false,
-        lookup: (_host, _options, callback) => {
-          lookupCalls++;
-          if (_options.all) {
-            (callback as unknown as (error: null, addresses: { address: string; family: number }[]) => void)(
-              null, [{ address: '127.0.0.1', family: 4 }],
-            );
-          } else callback(null, '127.0.0.1', 4);
+    const outcome = await new Promise<string>((resolve) => {
+      const req = request(
+        {
+          hostname: "webhook.invalid",
+          port: address.port,
+          rejectUnauthorized: false,
+          agent: false,
+          lookup: (_host, _options, callback) => {
+            lookupCalls++;
+            if (_options.all) {
+              (
+                callback as unknown as (
+                  error: null,
+                  addresses: { address: string; family: number }[],
+                ) => void
+              )(null, [{ address: "127.0.0.1", family: 4 }]);
+            } else callback(null, "127.0.0.1", 4);
+          },
         },
-      }, response => { response.resume(); response.on('end', () => resolve('connected')); });
-      req.on('error', () => resolve('failed'));
-      req.setTimeout(1000, () => { req.destroy(); resolve('timeout'); });
+        (response) => {
+          response.resume();
+          response.on("end", () => resolve("connected"));
+        },
+      );
+      req.on("error", () => resolve("failed"));
+      req.setTimeout(1000, () => {
+        req.destroy();
+        resolve("timeout");
+      });
       req.end();
     });
     console.info(`Bun ${Bun.version} HTTPS lookup probe: calls=${lookupCalls}, outcome=${outcome}`);
     const numericProbe = async (host: string) => {
       let checks = 0;
-      const result = await new Promise<string>(resolve => {
-        const req = request({
-          hostname: '127.0.0.1', port: address.port, servername: host, agent: false,
-          ca: readFileSync(join(directory, 'cert.pem')), rejectUnauthorized: true,
-          headers: { host },
-          checkServerIdentity: (_hostname, cert) => {
-            checks++;
-            return checkServerIdentity(host, cert);
+      const result = await new Promise<string>((resolve) => {
+        const req = request(
+          {
+            hostname: "127.0.0.1",
+            port: address.port,
+            servername: host,
+            agent: false,
+            ca: readFileSync(join(directory, "cert.pem")),
+            rejectUnauthorized: true,
+            headers: { host },
+            checkServerIdentity: (_hostname, cert) => {
+              checks++;
+              return checkServerIdentity(host, cert);
+            },
           },
-        }, response => { response.resume(); response.on('end', () => resolve('connected')); });
-        req.on('error', () => resolve('failed'));
-        req.setTimeout(1000, () => { req.destroy(); resolve('timeout'); });
+          (response) => {
+            response.resume();
+            response.on("end", () => resolve("connected"));
+          },
+        );
+        req.on("error", () => resolve("failed"));
+        req.setTimeout(1000, () => {
+          req.destroy();
+          resolve("timeout");
+        });
         req.end();
       });
       return { result, checks };
     };
-    const correct = await numericProbe('webhook.invalid');
-    const wrong = await numericProbe('wrong.invalid');
-    console.info(`Bun numeric TLS probe: correct=${JSON.stringify(correct)}, wrong=${JSON.stringify(wrong)}`);
-    expect(outcome).toBe('connected');
+    const correct = await numericProbe("webhook.invalid");
+    const wrong = await numericProbe("wrong.invalid");
+    console.info(
+      `Bun numeric TLS probe: correct=${JSON.stringify(correct)}, wrong=${JSON.stringify(wrong)}`,
+    );
+    expect(outcome).toBe("connected");
     expect(lookupCalls).toBe(1);
-    expect(correct).toEqual({ result: 'connected', checks: 1 });
-    expect(wrong).toEqual({ result: 'failed', checks: 1 });
-  } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
+    expect(correct).toEqual({ result: "connected", checks: 1 });
+    expect(wrong).toEqual({ result: "failed", checks: 1 });
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
-test.each(['node', 'bun'])('%s actual pinned TLS workflow, deadlines, size limits and sanitized failures', async runtime => {
-  const moduleUrl = new URL('../src/network.ts', import.meta.url).href;
-  const script = `
+test.each(["node", "bun"])(
+  "%s actual pinned TLS workflow, deadlines, size limits and sanitized failures",
+  async (runtime) => {
+    const moduleUrl = new URL("../src/network.ts", import.meta.url).href;
+    const script = `
     import assert from 'node:assert/strict';
     import { createServer } from 'node:https';
     import { createServer as createTcpServer } from 'node:net';
     import { readFileSync } from 'node:fs';
     import { createPinnedHttpsTransportForTest } from ${JSON.stringify(moduleUrl)};
     const policy = ${JSON.stringify(policy)};
-    const ca = readFileSync(${JSON.stringify(join(directory, 'cert.pem'))}, 'utf8');
-    const key = readFileSync(${JSON.stringify(join(directory, 'key.pem'))});
+    const ca = readFileSync(${JSON.stringify(join(directory, "cert.pem"))}, 'utf8');
+    const key = readFileSync(${JSON.stringify(join(directory, "key.pem"))});
     let received = 0;
     const server = createServer({ key, cert: ca }, (req, res) => {
       received++;
@@ -196,12 +268,17 @@ test.each(['node', 'bun'])('%s actual pinned TLS workflow, deadlines, size limit
       console.log(${JSON.stringify(runtime)} + ' numeric-address pinning, original Host/SNI, CA and hostname verification passed');
     } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   `;
-  const command = runtime === 'node' ? ['node', '--input-type=module', '-e', script] : ['bun', '-e', script];
-  const child = Bun.spawn(command, { stdout: 'pipe', stderr: 'pipe' });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
-  ]);
-  console.info(stdout);
-  if (exitCode !== 0) console.error(stderr);
-  expect(exitCode).toBe(0);
-}, 10000);
+    const command =
+      runtime === "node" ? ["node", "--input-type=module", "-e", script] : ["bun", "-e", script];
+    const child = Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    console.info(stdout);
+    if (exitCode !== 0) console.error(stderr);
+    expect(exitCode).toBe(0);
+  },
+  10000,
+);

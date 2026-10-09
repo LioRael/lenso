@@ -17,7 +17,13 @@ export interface WebhookContext<P> {
 export interface WebhookAuthority<P> {
   authorize(principal: P, scope: WebhookScope, action: WebhookAction): Promise<void>;
 }
-export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 export interface EventEnvelope {
   readonly version: 1;
   readonly id: string;
@@ -110,21 +116,57 @@ export interface ClaimedDelivery {
 export interface WebhookRepository {
   putEndpoint(input: Omit<Endpoint, "revision" | "createdAt">, now: number): Promise<Endpoint>;
   getEndpoint(scope: WebhookScope, id: string): Promise<Endpoint | null>;
-  listEndpoints(scope: WebhookScope, page: Required<Pick<PageInput, "limit">> & PageInput): Promise<Endpoint[]>;
+  listEndpoints(
+    scope: WebhookScope,
+    page: Required<Pick<PageInput, "limit">> & PageInput,
+  ): Promise<Endpoint[]>;
   putSubscription(input: Omit<Subscription, "createdAt">, now: number): Promise<Subscription>;
-  listSubscriptions(scope: WebhookScope, page: Required<Pick<PageInput, "limit">> & PageInput): Promise<Subscription[]>;
-  publish(scope: WebhookScope, event: EventEnvelope, body: string, maxAttempts: number, now: number): Promise<Delivery[]>;
+  listSubscriptions(
+    scope: WebhookScope,
+    page: Required<Pick<PageInput, "limit">> & PageInput,
+  ): Promise<Subscription[]>;
+  publish(
+    scope: WebhookScope,
+    event: EventEnvelope,
+    body: string,
+    maxAttempts: number,
+    now: number,
+  ): Promise<Delivery[]>;
   getDelivery(scope: WebhookScope, id: string): Promise<Delivery | null>;
-  listDeliveries(scope: WebhookScope, page: Required<Pick<PageInput, "limit">> & PageInput): Promise<Delivery[]>;
-  listAttempts(scope: WebhookScope, deliveryId: string, page: Required<Pick<PageInput, "limit">> & PageInput): Promise<Attempt[]>;
-  replay(scope: WebhookScope, id: string, newId: string, auditIntentId: string, now: number): Promise<Delivery>;
-  claim(id: string, generation: number, token: string, now: number, leaseMs: number): Promise<ClaimedDelivery | null>;
-  finish(id: string, token: string, result: {
-    readonly code: AttemptCode;
-    readonly status: number | null;
-    readonly keyId: string | null;
-    readonly retryAt: number | null;
-  }, now: number): Promise<Delivery | null>;
+  listDeliveries(
+    scope: WebhookScope,
+    page: Required<Pick<PageInput, "limit">> & PageInput,
+  ): Promise<Delivery[]>;
+  listAttempts(
+    scope: WebhookScope,
+    deliveryId: string,
+    page: Required<Pick<PageInput, "limit">> & PageInput,
+  ): Promise<Attempt[]>;
+  replay(
+    scope: WebhookScope,
+    id: string,
+    newId: string,
+    auditIntentId: string,
+    now: number,
+  ): Promise<Delivery>;
+  claim(
+    id: string,
+    generation: number,
+    token: string,
+    now: number,
+    leaseMs: number,
+  ): Promise<ClaimedDelivery | null>;
+  finish(
+    id: string,
+    token: string,
+    result: {
+      readonly code: AttemptCode;
+      readonly status: number | null;
+      readonly keyId: string | null;
+      readonly retryAt: number | null;
+    },
+    now: number,
+  ): Promise<Delivery | null>;
   /** Bounded repair: abandon expired attempts; queued work keeps its generation. */
   recover(now: number, limit: number): Promise<Delivery[]>;
   /** Compare-and-swap only an unsent scheduling generation after a terminal Tasks job. */
@@ -156,16 +198,27 @@ export interface WebhookOptions<P> {
   /** Host must authorize the reference within this persisted tenant/scope. */
   readonly keys: { active(secretRef: string, scope: WebhookScope): Promise<SigningKey> };
   /** Trusted transport DI. Use the shipped pinned transport, not fetch, in production. */
-  readonly transport: { send(input: {
-    readonly url: string;
-    readonly body: Uint8Array;
-    readonly headers: Readonly<Record<string, string>>;
-    readonly signal: AbortSignal;
-  }): Promise<HttpResult> };
+  readonly transport: {
+    send(input: {
+      readonly url: string;
+      readonly body: Uint8Array;
+      readonly headers: Readonly<Record<string, string>>;
+      readonly signal: AbortSignal;
+    }): Promise<HttpResult>;
+  };
 }
 export class WebhookError extends Error {
   constructor(
-    readonly code: "invalid-input" | "invalid-config" | "unauthorized" | "not-found" | "conflict" | "storage-failed" | "audit-failed" | "replay-outcome-unknown" | "disabled",
+    readonly code:
+      | "invalid-input"
+      | "invalid-config"
+      | "unauthorized"
+      | "not-found"
+      | "conflict"
+      | "storage-failed"
+      | "audit-failed"
+      | "replay-outcome-unknown"
+      | "disabled",
     readonly referenceId?: string,
   ) {
     super(`Webhook ${code}`);

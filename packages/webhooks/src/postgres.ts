@@ -22,33 +22,54 @@ function scopeOf(row: Row): WebhookScope {
 
 function endpoint(row: Row): Endpoint {
   return {
-    id: row.id, scope: scopeOf(row), url: row.url, secretRef: row.secret_ref,
-    enabled: row.enabled, revision: row.revision, createdAt: Number(row.created_at),
+    id: row.id,
+    scope: scopeOf(row),
+    url: row.url,
+    secretRef: row.secret_ref,
+    enabled: row.enabled,
+    revision: row.revision,
+    createdAt: Number(row.created_at),
   };
 }
 
 function subscription(row: Row): Subscription {
   return {
-    id: row.id, scope: scopeOf(row), endpointId: row.endpoint_id,
-    eventType: row.event_type, enabled: row.enabled, createdAt: Number(row.created_at),
+    id: row.id,
+    scope: scopeOf(row),
+    endpointId: row.endpoint_id,
+    eventType: row.event_type,
+    enabled: row.enabled,
+    createdAt: Number(row.created_at),
   };
 }
 
 function delivery(row: Row): Delivery {
   return {
-    id: row.id, scope: scopeOf(row), eventId: row.event_id,
-    endpointId: row.endpoint_id, subscriptionId: row.subscription_id,
-    endpointRevision: row.endpoint_revision, state: row.state,
-    attemptCount: row.attempt_count, maxAttempts: row.max_attempts,
-    dueAt: Number(row.due_at), generation: row.generation, replayOf: row.replay_of,
-    auditIntentId: row.audit_intent_id, createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at), lastCode: row.last_code,
+    id: row.id,
+    scope: scopeOf(row),
+    eventId: row.event_id,
+    endpointId: row.endpoint_id,
+    subscriptionId: row.subscription_id,
+    endpointRevision: row.endpoint_revision,
+    state: row.state,
+    attemptCount: row.attempt_count,
+    maxAttempts: row.max_attempts,
+    dueAt: Number(row.due_at),
+    generation: row.generation,
+    replayOf: row.replay_of,
+    auditIntentId: row.audit_intent_id,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+    lastCode: row.last_code,
   };
 }
 
 function stored(row: Row): StoredDelivery {
   return {
-    ...delivery(row), url: row.url, secretRef: row.secret_ref, body: row.body,
+    ...delivery(row),
+    url: row.url,
+    secretRef: row.secret_ref,
+    body: row.body,
     leaseToken: row.lease_token,
     leaseUntil: row.lease_until === null ? null : Number(row.lease_until),
   };
@@ -56,10 +77,14 @@ function stored(row: Row): StoredDelivery {
 
 function attempt(row: Row): Attempt {
   return {
-    id: row.id, deliveryId: row.delivery_id, number: row.number,
+    id: row.id,
+    deliveryId: row.delivery_id,
+    number: row.number,
     startedAt: Number(row.started_at),
     finishedAt: row.finished_at === null ? null : Number(row.finished_at),
-    code: row.code, status: row.status, keyId: row.key_id,
+    code: row.code,
+    status: row.status,
+    keyId: row.key_id,
   };
 }
 
@@ -70,8 +95,11 @@ function boundedLimit(limit: number, maximum = 500): number {
 
 function pageValues(scope: WebhookScope, page: Paging): unknown[] {
   return [
-    scope.tenantId, scope.scopeId, page.cursor?.createdAt ?? null,
-    page.cursor?.id ?? null, boundedLimit(page.limit),
+    scope.tenantId,
+    scope.scopeId,
+    page.cursor?.createdAt ?? null,
+    page.cursor?.id ?? null,
+    boundedLimit(page.limit),
   ];
 }
 
@@ -80,8 +108,11 @@ async function safe<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof WebhookError &&
-      ["invalid-input", "not-found", "conflict", "disabled"].includes(error.code)) throw error;
+    if (
+      error instanceof WebhookError &&
+      ["invalid-input", "not-found", "conflict", "disabled"].includes(error.code)
+    )
+      throw error;
     throw new WebhookError("storage-failed");
   }
 }
@@ -90,13 +121,19 @@ async function safe<T>(operation: () => Promise<T>): Promise<T> {
 export function createPostgresWebhookRepository({
   pool,
   schema = "public",
-}: { pool: Pool; schema?: string }): WebhookRepository {
+}: {
+  pool: Pool;
+  schema?: string;
+}): WebhookRepository {
   if (schema.length > 63 || !/^[a-z_][a-z0-9_]*$/.test(schema)) {
     throw new WebhookError("invalid-config");
   }
   const qualifier = `"${schema}"`;
   function query(target: Pool | PoolClient, sql: string, values?: unknown[]) {
-    return target.query(sql.replaceAll("public.lenso_webhook_", `${qualifier}.lenso_webhook_`), values);
+    return target.query(
+      sql.replaceAll("public.lenso_webhook_", `${qualifier}.lenso_webhook_`),
+      values,
+    );
   }
   const database: Connection = { query: (sql, values) => query(pool, sql, values) };
   async function transaction<T>(operation: (client: Connection) => Promise<T>): Promise<T> {
@@ -121,7 +158,10 @@ export function createPostgresWebhookRepository({
     });
   }
 
-  async function active(client: Connection, row: Row): Promise<"endpoint-disabled" | "unsubscribed" | null> {
+  async function active(
+    client: Connection,
+    row: Row,
+  ): Promise<"endpoint-disabled" | "unsubscribed" | null> {
     // SHARE, not KEY SHARE: enable-flag updates must serialize with claim/replay.
     const ep = await client.query(
       `SELECT enabled FROM public.lenso_webhook_endpoint
@@ -150,7 +190,15 @@ export function createPostgresWebhookRepository({
            WHERE lenso_webhook_endpoint.tenant_id=EXCLUDED.tenant_id
              AND lenso_webhook_endpoint.scope_id=EXCLUDED.scope_id
            RETURNING *`,
-          [input.id, input.scope.tenantId, input.scope.scopeId, input.url, input.secretRef, input.enabled, now],
+          [
+            input.id,
+            input.scope.tenantId,
+            input.scope.scopeId,
+            input.url,
+            input.secretRef,
+            input.enabled,
+            now,
+          ],
         );
         if (!result.rows[0]) throw new WebhookError("conflict");
         return endpoint(result.rows[0]);
@@ -170,7 +218,8 @@ export function createPostgresWebhookRepository({
         const result = await database.query(
           `SELECT * FROM public.lenso_webhook_endpoint WHERE tenant_id=$1 AND scope_id=$2
            AND ($3::bigint IS NULL OR (created_at,id)>($3,$4::uuid))
-           ORDER BY created_at,id LIMIT $5`, pageValues(scope, page),
+           ORDER BY created_at,id LIMIT $5`,
+          pageValues(scope, page),
         );
         return result.rows.map(endpoint);
       });
@@ -191,7 +240,15 @@ export function createPostgresWebhookRepository({
              AND lenso_webhook_subscription.scope_id=EXCLUDED.scope_id
              AND lenso_webhook_subscription.endpoint_id=EXCLUDED.endpoint_id
              AND lenso_webhook_subscription.event_type=EXCLUDED.event_type RETURNING *`,
-          [input.id, input.scope.tenantId, input.scope.scopeId, input.endpointId, input.eventType, input.enabled, now],
+          [
+            input.id,
+            input.scope.tenantId,
+            input.scope.scopeId,
+            input.endpointId,
+            input.eventType,
+            input.enabled,
+            now,
+          ],
         );
         if (!result.rows[0]) throw new WebhookError("conflict");
         return subscription(result.rows[0]);
@@ -202,7 +259,8 @@ export function createPostgresWebhookRepository({
         const result = await database.query(
           `SELECT * FROM public.lenso_webhook_subscription WHERE tenant_id=$1 AND scope_id=$2
            AND ($3::bigint IS NULL OR (created_at,id)>($3,$4::uuid))
-           ORDER BY created_at,id LIMIT $5`, pageValues(scope, page),
+           ORDER BY created_at,id LIMIT $5`,
+          pageValues(scope, page),
         );
         return result.rows.map(subscription);
       });
@@ -232,8 +290,20 @@ export function createPostgresWebhookRepository({
                (id,tenant_id,scope_id,event_id,endpoint_id,subscription_id,endpoint_revision,
                 url,secret_ref,body,state,attempt_count,max_attempts,due_at,generation,created_at,updated_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',0,$11,$12,1,$12,$12) RETURNING *`,
-            [randomUUID(), scope.tenantId, scope.scopeId, event.id, row.id, row.subscription_id,
-              row.revision, row.url, row.secret_ref, body, maxAttempts, now],
+            [
+              randomUUID(),
+              scope.tenantId,
+              scope.scopeId,
+              event.id,
+              row.id,
+              row.subscription_id,
+              row.revision,
+              row.url,
+              row.secret_ref,
+              body,
+              maxAttempts,
+              now,
+            ],
           );
           deliveries.push(delivery(result.rows[0]));
         }
@@ -254,7 +324,8 @@ export function createPostgresWebhookRepository({
         const result = await database.query(
           `SELECT * FROM public.lenso_webhook_delivery WHERE tenant_id=$1 AND scope_id=$2
            AND ($3::bigint IS NULL OR (created_at,id)>($3,$4::uuid))
-           ORDER BY created_at,id LIMIT $5`, pageValues(scope, page),
+           ORDER BY created_at,id LIMIT $5`,
+          pageValues(scope, page),
         );
         return result.rows.map(delivery);
       });
@@ -289,8 +360,22 @@ export function createPostgresWebhookRepository({
               replay_of,audit_intent_id,created_at,updated_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',0,$11,$12,1,$13,$14,$12,$12)
            ON CONFLICT (id) DO NOTHING RETURNING *`,
-          [newId, scope.tenantId, scope.scopeId, row.event_id, row.endpoint_id, row.subscription_id,
-            row.endpoint_revision, row.url, row.secret_ref, row.body, row.max_attempts, now, id, auditIntentId],
+          [
+            newId,
+            scope.tenantId,
+            scope.scopeId,
+            row.event_id,
+            row.endpoint_id,
+            row.subscription_id,
+            row.endpoint_revision,
+            row.url,
+            row.secret_ref,
+            row.body,
+            row.max_attempts,
+            now,
+            id,
+            auditIntentId,
+          ],
         );
         if (!result.rows[0]) throw new WebhookError("conflict");
         return delivery(result.rows[0]);
@@ -298,8 +383,13 @@ export function createPostgresWebhookRepository({
     },
     claim(id, generation, token, now, leaseMs) {
       return transaction(async (client) => {
-        if (!token || !Number.isSafeInteger(leaseMs) || leaseMs <= 0 ||
-          !Number.isSafeInteger(now + leaseMs)) throw new WebhookError("invalid-input");
+        if (
+          !token ||
+          !Number.isSafeInteger(leaseMs) ||
+          leaseMs <= 0 ||
+          !Number.isSafeInteger(now + leaseMs)
+        )
+          throw new WebhookError("invalid-input");
         const selected = await client.query(
           `SELECT * FROM public.lenso_webhook_delivery WHERE id=$1 AND generation=$2
            AND state IN ('pending','retry') AND due_at<=$3 FOR UPDATE`,
@@ -338,7 +428,10 @@ export function createPostgresWebhookRepository({
         );
         const row = selected.rows[0];
         if (!row) return null;
-        const retry = result.code !== "success" && result.retryAt !== null && row.attempt_count < row.max_attempts;
+        const retry =
+          result.code !== "success" &&
+          result.retryAt !== null &&
+          row.attempt_count < row.max_attempts;
         const finished = await client.query(
           `UPDATE public.lenso_webhook_attempt SET finished_at=$3,code=$4,status=$5,key_id=$6
            WHERE delivery_id=$1 AND number=$2 AND finished_at IS NULL`,
@@ -349,8 +442,14 @@ export function createPostgresWebhookRepository({
           `UPDATE public.lenso_webhook_delivery SET state=$2,last_code=$3,
            due_at=$4,generation=generation+$5,lease_token=NULL,lease_until=NULL,updated_at=$6
            WHERE id=$1 RETURNING *`,
-          [id, result.code === "success" ? "succeeded" : retry ? "retry" : "failed",
-            result.code, retry ? result.retryAt : row.due_at, retry ? 1 : 0, now],
+          [
+            id,
+            result.code === "success" ? "succeeded" : retry ? "retry" : "failed",
+            result.code,
+            retry ? result.retryAt : row.due_at,
+            retry ? 1 : 0,
+            now,
+          ],
         );
         return delivery(updated.rows[0]);
       });
@@ -368,7 +467,10 @@ export function createPostgresWebhookRepository({
         const deliveries: Delivery[] = [];
         for (const row of selected.rows) {
           // Rotate the bounded scan even when its oldest records have healthy queued jobs.
-          await client.query("UPDATE public.lenso_webhook_delivery SET recovery_checked_at=$2 WHERE id=$1", [row.id, now]);
+          await client.query(
+            "UPDATE public.lenso_webhook_delivery SET recovery_checked_at=$2 WHERE id=$1",
+            [row.id, now],
+          );
           if (row.state === "running") {
             const abandoned = await client.query(
               `UPDATE public.lenso_webhook_attempt SET finished_at=$3,code='lease-expired'

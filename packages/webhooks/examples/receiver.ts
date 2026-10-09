@@ -22,24 +22,43 @@ export async function receiveWebhook(input: {
       }
       chunks.push(part.value);
     }
-  } finally { reader.releaseLock(); }
+  } finally {
+    reader.releaseLock();
+  }
   const body = new Uint8Array(size);
   let offset = 0;
-  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length; }
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.length;
+  }
   const eventId = input.request.headers.get("x-lenso-event-id") ?? "";
-  if (!verifyWebhook({
-    body, eventId,
-    timestamp: input.request.headers.get("x-lenso-timestamp") ?? "",
-    signature: input.request.headers.get("x-lenso-signature") ?? "",
-    keys: input.keys, now: Math.floor(Date.now() / 1000), toleranceSeconds: 300,
-  })) return new Response(null, { status: 401 });
+  if (
+    !verifyWebhook({
+      body,
+      eventId,
+      timestamp: input.request.headers.get("x-lenso-timestamp") ?? "",
+      signature: input.request.headers.get("x-lenso-signature") ?? "",
+      keys: input.keys,
+      now: Math.floor(Date.now() / 1000),
+      toleranceSeconds: 300,
+    })
+  )
+    return new Response(null, { status: 401 });
   let event: EventEnvelope;
   try {
     event = JSON.parse(new TextDecoder().decode(body)) as EventEnvelope;
-    if (event.version !== 1 || event.id !== eventId || typeof event.type !== "string" ||
-      typeof event.occurredAt !== "string" || typeof event.source !== "string" || !("data" in event))
+    if (
+      event.version !== 1 ||
+      event.id !== eventId ||
+      typeof event.type !== "string" ||
+      typeof event.occurredAt !== "string" ||
+      typeof event.source !== "string" ||
+      !("data" in event)
+    )
       return new Response(null, { status: 400 });
-  } catch { return new Response(null, { status: 400 }); }
+  } catch {
+    return new Response(null, { status: 400 });
+  }
   // commitOnce atomically couples the event-ID unique record and receiver business effect.
   // Never dedupe by delivery ID, attempt ID, timestamp or signature.
   await input.commitOnce(eventId, event);

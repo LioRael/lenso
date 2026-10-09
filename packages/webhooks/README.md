@@ -31,12 +31,17 @@ Outbound requires exact `allowedHosts`, `dnsTimeoutMs`, `connectTimeoutMs`,
 
 ```ts
 const config = webhookConfig({
-  instanceId: "orders-partners", source: "orders-service",
-  eventTypes: ["order.completed"], enabled: false,
+  instanceId: "orders-partners",
+  source: "orders-service",
+  eventTypes: ["order.completed"],
+  enabled: false,
   outbound: {
-    allowedHosts: ["partner.example"], dnsTimeoutMs: 2000,
-    connectTimeoutMs: 3000, timeoutMs: 10000,
-    maxRequestBytes: 262144, maxResponseBytes: 16384,
+    allowedHosts: ["partner.example"],
+    dnsTimeoutMs: 2000,
+    connectTimeoutMs: 3000,
+    timeoutMs: 10000,
+    maxRequestBytes: 262144,
+    maxResponseBytes: 16384,
   },
 });
 ```
