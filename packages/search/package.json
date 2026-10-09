@@ -47,7 +47,7 @@
     "zod": "4.6.5"
   },
   "peerDependencies": {
-    "@lenso/core": "^0.3.0"
+    "@lenso/core": "^0.3.1"
   },
   "peerDependenciesMeta": {
     "@lenso/core": {

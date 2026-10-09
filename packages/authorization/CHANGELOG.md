@@ -1,5 +1,18 @@
 # @lenso/authorization
 
+## 0.3.0
+
+### Minor Changes
+
+- df127d0: Add an opt-in authorized, exact-scope role inspection service and read-only Manage companion. Keep the role repository private and leave mutations outside this contract.
+
+### Patch Changes
+
+- Updated dependencies [615b1a4]
+  - @lenso/engine@0.5.0
+  - @lenso/core@0.3.1
+  - @lenso/manage@0.4.1
+
 ## 0.2.1
 
 ### Patch Changes

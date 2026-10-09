@@ -1,5 +1,15 @@
 # @lenso/mcp
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [615b1a4]
+  - @lenso/engine@0.5.0
+  - @lenso/cli@0.20.0
+  - @lenso/core@0.3.1
+  - @lenso/manage@0.4.1
+
 ## 0.3.0
 
 ### Minor Changes
