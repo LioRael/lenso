@@ -1,0 +1,152 @@
+.changeset/safe-errors-openapi-problems.md
+  h_9d56aba080c170 1-19
+bun.lock
+  h_9d56aba080c170 58,366,473,476-481,763-766,807-810,1287-1288
+docs/CLI.md
+  h_9d56aba080c170 59-65,108
+examples/notes/README.md
+  h_9d56aba080c170 1-42
+examples/notes/package.json
+  h_9d56aba080c170 38
+examples/notes/src/contracts.ts
+  h_9d56aba080c170 10-16
+examples/notes/src/openapi.ts
+  h_9d56aba080c170 1-19
+examples/notes/src/operations.ts
+  h_9d56aba080c170 1,5,58-63,66-73,76-84,87,91-96,99-104,106-122,152,166,180,194,208,240,244-248,251-259,272,287
+examples/notes/src/router.ts
+  h_9d56aba080c170 6,16,27,32
+examples/notes/test/openapi.test.ts
+  h_9d56aba080c170 1-101
+examples/notes/test/operations.test.ts
+  h_9d56aba080c170 6,128-130,135-140
+examples/tasks/src/authorized-service.test.ts
+  h_9d56aba080c170 2,166,173,180,187
+examples/tasks/src/plugin.ts
+  h_9d56aba080c170 1,6,55-59,74,80,94,108,122,135
+packages/auth/README.md
+  h_9d56aba080c170 93-98
+packages/auth/src/core.ts
+  h_9d56aba080c170 200-205
+packages/auth/src/errors.ts
+  h_9d56aba080c170 17,20,26-32
+packages/auth/src/index.ts
+  h_9d56aba080c170 18-23
+packages/auth/src/orpc.ts
+  h_9d56aba080c170 2,15-16,18,20-23
+packages/auth/test/auth.test.ts
+  h_9d56aba080c170 14,214,220,228,438-439,444,448,463-474
+packages/cli/src/engine.ts
+  h_9d56aba080c170 8,29,38,49,55-60,90-106
+packages/cli/test/bin.test.ts
+  h_9d56aba080c170 56-57,61
+packages/cli/test/engine.test.ts
+  h_9d56aba080c170 44-55
+packages/cli/test/packaging.test.ts
+  h_9d56aba080c170 144-155,199-210,291-321
+packages/engine/src/diagnostics.ts
+  h_9d56aba080c170 36-144,149-150,154-169,171,182-186,188-192,201-211,220-236,242-244,248
+packages/engine/src/operations.ts
+  h_9d56aba080c170 9,20,47-70,76,78-118,185-245,317,374,376-381,407
+packages/engine/test/diagnostics.test.ts
+  h_9d56aba080c170 105-166
+packages/engine/test/operations.test.ts
+  h_9d56aba080c170 3-5,13,78,150,309-442
+packages/lenso/src/config.ts
+  h_9d56aba080c170 60-61,87,236-277,337-339,353-355,378
+packages/lenso/src/diagnostics.ts
+  h_9d56aba080c170 9-10,31-50
+packages/lenso/src/lifecycle.ts
+  h_9d56aba080c170 40-62,70-87
+packages/lenso/test/config.test.ts
+  h_9d56aba080c170 277,322,483,502,521-545
+packages/lenso/test/diagnostics.test.ts
+  h_9d56aba080c170 4-35
+packages/lenso/test/observability.test.ts
+  h_9d56aba080c170 1-2,12-77
+packages/log/README.md
+  h_9d56aba080c170 25-47
+packages/log/src/index.ts
+  h_9d56aba080c170 18-19,74-83,95,109-116,162-164
+packages/log/test/index.test.ts
+  h_9d56aba080c170 153-213
+packages/manage/README.md
+  h_9d56aba080c170 62-77
+packages/manage/src/adapter.ts
+  h_9d56aba080c170 6,99,102,130-135,145-148
+packages/manage/src/orpc.ts
+  h_9d56aba080c170 4-5,72-162,168-180,197-201
+packages/manage/test/manage.test.ts
+  h_9d56aba080c170 4-5,7,9,296-299,358,374,534-535,602,605,607,615-744
+packages/mcp/src/index.ts
+  h_9d56aba080c170 312-318
+packages/mcp/test/startup.test.ts
+  h_9d56aba080c170 1-35
+packages/mcp/test/stdio.test.ts
+  h_9d56aba080c170 224
+packages/otel/README.md
+  h_9d56aba080c170 54,58-101
+packages/otel/package.json
+  h_9d56aba080c170 56-57
+packages/otel/src/bun.ts
+  h_9d56aba080c170 22-24,28-29,193-200
+packages/otel/src/errors.ts
+  h_9d56aba080c170 1-63
+packages/otel/test/errors.test.ts
+  h_9d56aba080c170 1-183
+packages/storage/README.md
+  h_9d56aba080c170 18-25
+packages/storage/src/fetch.ts
+  h_9d56aba080c170 1,19-20,31,33
+packages/storage/src/index.ts
+  h_9d56aba080c170 14-25,27-29,31-32,37-46
+packages/storage/test/fetch.test.ts
+  h_9d56aba080c170 3,122-159
+packages/tasks/README.md
+  h_9d56aba080c170 10-17
+packages/tasks/src/errors.ts
+  h_9d56aba080c170 23-29,33-38
+packages/tasks/src/index.ts
+  h_9d56aba080c170 13-14,17,107,112,142-144,146-153,161,164,233,258,268,271-278
+packages/tasks/src/postgres.ts
+  h_9d56aba080c170 73-74,82-91,133-134,139-140,154,185-190,192-195,197,272-275,279,281
+packages/tasks/src/telemetry.ts
+  h_9d56aba080c170 6-8,15-39,68-71
+packages/tasks/test/core.test.ts
+  h_9d56aba080c170 10,64-92
+packages/tasks/test/error-boundaries.test.ts
+  h_9d56aba080c170 1-109
+packages/web/README.md
+  h_9d56aba080c170 26-166
+packages/web/package.json
+  h_9d56aba080c170 11-12,27-38,42,56,58-65
+packages/web/src/index.ts
+  h_9d56aba080c170 7,39,61-64
+packages/web/src/openapi-client.ts
+  h_9d56aba080c170 1-146
+packages/web/src/openapi.ts
+  h_9d56aba080c170 1-278
+packages/web/src/problem-details.ts
+  h_9d56aba080c170 1-132
+packages/web/src/telemetry.ts
+  h_9d56aba080c170 19-26,53-58,60-64,66,71-74,78-83,85-93,96-126
+packages/web/test/openapi-client.test.ts
+  h_9d56aba080c170 1-96
+packages/web/test/openapi-stream.test.ts
+  h_9d56aba080c170 1-230
+packages/web/test/openapi.test.ts
+  h_9d56aba080c170 1-299
+packages/web/test/telemetry.test.ts
+  h_9d56aba080c170 1-2,8-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3eb3af8ea35f4005c3627bbf3c635ac81138a34d",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+.changeset/rate-quota-concurrency-limits.md
+  h_9d56aba080c170 1-5
+packages/limits/LICENSE
+  h_9d56aba080c170 1-21
+packages/limits/README.md
+  h_9d56aba080c170 1-353
+packages/limits/migrations/0001_d1.sql
+  h_9d56aba080c170 1-34
+packages/limits/migrations/0001_postgres.sql
+  h_9d56aba080c170 1-23
+packages/limits/migrations/0001_sqlite.sql
+  h_9d56aba080c170 1-23
+packages/limits/package.json
+  h_9d56aba080c170 1-60
+packages/limits/src/config.ts
+  h_9d56aba080c170 1-42
+packages/limits/src/contracts.ts
+  h_9d56aba080c170 1-112
+packages/limits/src/d1.ts
+  h_9d56aba080c170 1-229
+packages/limits/src/index.ts
+  h_9d56aba080c170 1-31
+packages/limits/src/memory.ts
+  h_9d56aba080c170 1-64
+packages/limits/src/postgres.ts
+  h_9d56aba080c170 1-170
+packages/limits/src/service.ts
+  h_9d56aba080c170 1-255
+packages/limits/src/sqlite.ts
+  h_9d56aba080c170 1-148
+packages/limits/src/state.ts
+  h_9d56aba080c170 1-135
+packages/limits/test/d1-worker.ts
+  h_9d56aba080c170 1-31
+packages/limits/test/d1.test.ts
+  h_9d56aba080c170 1-231
+packages/limits/test/integration.test.ts
+  h_9d56aba080c170 1-141
+packages/limits/test/lifecycle.test.ts
+  h_9d56aba080c170 1-369
+packages/limits/test/memory.test.ts
+  h_9d56aba080c170 1-168
+packages/limits/test/package.test.ts
+  h_9d56aba080c170 1-39
+packages/limits/test/postgres.test.ts
+  h_9d56aba080c170 1-352
+packages/limits/test/sqlite-worker.ts
+  h_9d56aba080c170 1-39
+packages/limits/test/sqlite.test.ts
+  h_9d56aba080c170 1-214
+packages/limits/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/limits/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bc0a2b0be6d69accaba13f1613f75443feb37ce2",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
