@@ -276,12 +276,11 @@ bun packages/realtime/examples/run-notes.ts
 
 ## Integration owner handoff
 
-1. Add this manifest to the shared Bun lockfile/workspace installation and normal release
-   allowlist/versioning. This task does not own shared lock/configuration. Existing
-   dependencies were installed with the old frozen lock before this manifest existed;
-   ignored local package dependency symlinks enabled validation. Frozen installation
-   after adding an unlocked manifest currently fails; do not represent release integration
-   as complete.
+1. Landing integrates this manifest into the shared Bun lockfile and records a package
+   changeset. Both candidate and clean-source frozen installs are verified without changing
+   the lock hash or existing dependency resolutions. CI and release verification install
+   Redis binaries so the real provider tests run. These preparation steps do not publish
+   the package, prepare release versions or authorize deployment.
 2. Select the provider factory/runtime bindings and existing Core config sources in the
    application, with exact `requires` references for Web/business dependencies. No new
    Core/Engine interface is needed.
@@ -299,7 +298,7 @@ bun packages/realtime/examples/run-notes.ts
 
 ## Verification evidence
 
-All measurements and checks below are local, not deployment/release approval. Environment:
+The implementation measurements and checks below are local, not deployment/release approval. Environment:
 Bun 1.4.2, macOS 27.0.1 / Darwin 27.0.0 arm64, Apple M2 Pro, Redis 8.10.2.
 Tests start owned loopback Redis processes with persistence disabled and isolated temporary
 directories, then stop/remove only those owned resources. If `redis-server` is absent,
@@ -391,9 +390,32 @@ client concurrency and batches admission rather than hiding these failures or re
 missed updates. The final numbers above come from one complete successful final run.
 They are a bounded local measurement, not production capacity/latency guarantees.
 
-Not run: root-wide build/typecheck/test/release verification, registry installation,
+At implementation handoff, not run: root-wide build/typecheck/test/release verification, registry installation,
 production deployment, Redis TLS/ACL/Cluster/Sentinel/proxy failure tests, sustained
 distributed throughput/memory load, Node/Deno execution, or deployed Workers/DO runtime.
 There is no persistent replay recovery test because no replay is promised or implemented.
-Shared lock/release integration and application Auth/ingress wiring remain integration-owner
-work; the package and examples themselves are runnable and locally packed.
+Application Auth/ingress wiring remains integration-owner work; the package and examples
+themselves are runnable and locally packed.
+
+### Landing integration verification
+
+The landing candidate adds the root workspace lock entry and manifest-matching peer
+metadata, preserving every existing external dependency resolution. It also records a
+Realtime changeset and installs Redis alongside PostgreSQL in Checks/release verification.
+`bun install --frozen-lockfile` passes both in the candidate and in an archived clean
+source copy without `node_modules` or `dist`; both preserve the lock hash.
+
+`bash scripts/ci-checks.sh` passes locally, including root lint, format, build, typecheck,
+test, release-script tests and the script's independently owned disposable PostgreSQL
+fixtures. Realtime has 50 passing tests with all 12 real Redis integration cases executed.
+No shared database or connection-string credential is used for those fixtures.
+
+Local Core and Realtime archives are installed together in a standalone temporary consumer,
+without workspace symlinks. TypeScript checks and runtime checks pass for all public imports,
+Core plugin setup, subscribe/snapshot/publish/unsubscribe/cleanup, and the packaged Notes
+example. This is not a registry installation or package publication.
+
+The same bounded measurement command passes again during landing: 100/500 loopback SSE
+connections have p95 1.272/4.018 ms respectively; the 500 unread connections again produce
+500 overflow gaps and release all subscriptions. This second local sample does not replace
+the implementation sample or extend its production/host guarantees.
