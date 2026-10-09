@@ -25,11 +25,10 @@
   },
   "dependencies": {
     "@lenso/cli": "workspace:^",
+    "@lenso/core": "workspace:^",
     "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
     "@modelcontextprotocol/sdk": "1.32.1",
     "zod": "4.6.5"
-  },
-  "devDependencies": {
-    "@lenso/core": "workspace:^"
   }
 }
