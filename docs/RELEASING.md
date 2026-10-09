@@ -207,7 +207,8 @@ Root `bun run test` runs ordinary tests, plus Auth's independently owned tempora
 clusters with `LENSO_REQUIRE_POSTGRES=1`. `turbo.json` explicitly forwards that
 switch in strict environment mode. The URL-dependent PG tests are then run
 serially with `LENSO_TEST_DATABASE_URL` for Notes and `TASK_TEST_DATABASE_URL` for
-Tasks. Each of Notes, Tasks package, and Tasks example has a different fresh
+Tasks, and `WEBHOOK_TEST_DATABASE_URL` for Webhooks. Each of Notes, Tasks package,
+Tasks example, and Webhooks has a different fresh
 database. The Tasks example's `authorization-test` queue is explicitly migrated
 before its PG/entry tests; it is not shared with package tests or another CI job.
 Their UUID data can remain until the owned temporary cluster is destroyed.
