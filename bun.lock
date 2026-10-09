@@ -34,6 +34,18 @@
         "@orpc/opentelemetry": "2.0.0-beta.42",
       },
     },
+    "examples/mcp-host": {
+      "name": "@lenso/example-mcp-host",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lenso/core": "workspace:^",
+        "@lenso/engine": "workspace:^",
+        "@lenso/manage": "workspace:^",
+        "@lenso/mcp": "workspace:^",
+        "@modelcontextprotocol/sdk": "1.32.1",
+        "zod": "4.6.5",
+      },
+    },
     "examples/notes": {
       "name": "@lenso/example-notes",
       "version": "0.1.0",
@@ -119,10 +131,10 @@
       },
       "peerDependencies": {
         "@cloudflare/workers-types": "^5.20261008.1",
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
-        "@lenso/engine": "^0.2.0",
-        "@lenso/manage": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/manage": "^0.3.0",
         "drizzle-orm": "^0.45.3",
         "zod": "^4.6.5",
       },
@@ -153,11 +165,11 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
-        "@lenso/engine": "^0.2.0",
-        "@lenso/manage": "^0.2.0",
-        "@lenso/tasks": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/manage": "^0.3.0",
+        "@lenso/tasks": "^0.3.0",
         "@opentelemetry/api": "1.9.1",
         "drizzle-orm": "0.45.3",
         "zod": "4.6.5",
@@ -185,7 +197,7 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/core": "^0.2.0",
+        "@lenso/core": "^0.2.1",
         "@orpc/server": "2.0.0-beta.42",
         "drizzle-orm": "^0.45.3",
       },
@@ -207,8 +219,8 @@
         "miniflare": "5.20261006.0-alpha",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
         "drizzle-orm": "^0.45.3",
       },
       "optionalPeers": [
@@ -322,7 +334,7 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
         "@orpc/server": "2.0.0-beta.42",
       },
       "optionalPeers": [
@@ -335,12 +347,11 @@
       "version": "0.2.1",
       "dependencies": {
         "@lenso/cli": "workspace:^",
+        "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
+        "@lenso/manage": "workspace:^",
         "@modelcontextprotocol/sdk": "1.32.1",
         "zod": "4.6.5",
-      },
-      "devDependencies": {
-        "@lenso/core": "workspace:^",
       },
     },
     "packages/notifications": {
@@ -360,11 +371,11 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
-        "@lenso/engine": "^0.2.0",
-        "@lenso/manage": "^0.2.0",
-        "@lenso/tasks": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/manage": "^0.3.0",
+        "@lenso/tasks": "^0.3.0",
         "drizzle-orm": "^0.45.3",
         "zod": "^4.6.5",
       },
@@ -389,8 +400,8 @@
         "miniflare": "5.20261006.0-alpha",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
         "drizzle-orm": "^0.45.3",
       },
       "optionalPeers": [
@@ -446,12 +457,12 @@
       },
       "peerDependencies": {
         "@cloudflare/workers-types": "5.20261008.1",
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
-        "@lenso/engine": "^0.2.0",
-        "@lenso/manage": "^0.2.0",
-        "@lenso/scheduler": "^0.1.0",
-        "@lenso/tasks": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/manage": "^0.3.0",
+        "@lenso/scheduler": "^0.2.0",
+        "@lenso/tasks": "^0.3.0",
         "drizzle-orm": "0.45.3",
         "stripe": "23.0.0",
         "zod": "4.6.5",
@@ -822,6 +833,8 @@
     "@lenso/engine": ["@lenso/engine@workspace:packages/engine"],
 
     "@lenso/example-greeting": ["@lenso/example-greeting@workspace:examples/greeting"],
+
+    "@lenso/example-mcp-host": ["@lenso/example-mcp-host@workspace:examples/mcp-host"],
 
     "@lenso/example-notes": ["@lenso/example-notes@workspace:examples/notes"],
 
