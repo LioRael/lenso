@@ -1,0 +1,53 @@
+{
+  "name": "@lenso/webhooks",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/webhooks"
+  },
+  "type": "module",
+  "files": ["dist", "migrations", "README.md", "examples"],
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./postgres": { "types": "./dist/postgres.d.ts", "import": "./dist/postgres.js" },
+    "./plugin": { "types": "./dist/plugin.d.ts", "import": "./dist/plugin.js" },
+    "./manage": { "types": "./dist/manage.d.ts", "import": "./dist/manage.js" },
+    "./migrations/*": "./migrations/*"
+  },
+  "scripts": {
+    "lint": "oxlint src test examples --deny-warnings",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test",
+    "build": "rm -rf dist && bun build src/index.ts src/postgres.ts src/plugin.ts src/manage.ts --root src --outdir dist --target node --packages external --splitting && tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@lenso/tasks": "workspace:^",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@lenso/audit": "^0.2.0",
+    "@lenso/limits": "^0.2.0",
+    "@lenso/core": "^0.2.1",
+    "@lenso/manage": "^0.3.0",
+    "@lenso/engine": "^0.3.0",
+    "pg": "8.23.1"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/core": { "optional": true },
+    "@lenso/manage": { "optional": true },
+    "@lenso/engine": { "optional": true },
+    "pg": { "optional": true }
+  },
+  "devDependencies": {
+    "@lenso/audit": "workspace:^",
+    "@lenso/limits": "workspace:^",
+    "@lenso/core": "workspace:^",
+    "@lenso/manage": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1",
+    "drizzle-orm": "0.45.3"
+  }
+}
