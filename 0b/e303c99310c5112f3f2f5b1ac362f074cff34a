@@ -1,0 +1,31 @@
+.github/workflows/release.yml
+  s_e3dbe949a951a5::t_dde879fda9c0ee 3-4,23,31-49,51-54,59,86-88,98
+docs/RELEASING.md
+  s_e3dbe949a951a5::t_577bf72ac42150 161-166,180,262-263,268
+package.json
+  s_e3dbe949a951a5::t_84893979aabbd5 26
+scripts/release-ci.test.ts
+  s_e3dbe949a951a5::t_e567c696e29087 120-123
+scripts/release-ci.ts
+  s_e3dbe949a951a5::t_92806a7aa27a12 51
+scripts/release-select.test.ts
+  s_e3dbe949a951a5::t_2e586cf70a4860 1-45
+scripts/release-select.ts
+  s_e3dbe949a951a5::t_0432fae76f1264 1-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0be303c99310c5112f3f2f5b1ac362f074cff34a",
+  "prompts": {},
+  "sessions": {
+    "s_e3dbe949a951a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11a4a-829c-7a91-8ac5-ef4c67bb9d37",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
