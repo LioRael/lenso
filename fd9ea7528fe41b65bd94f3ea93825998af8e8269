@@ -1,0 +1,96 @@
+packages/otel/test/integration.test.ts
+  h_9d56aba080c170 165-170
+packages/scheduler/LICENSE
+  h_9d56aba080c170 1-21
+packages/scheduler/README.md
+  h_9d56aba080c170 1-285
+packages/scheduler/migrations/0001_scheduler.sql
+  h_9d56aba080c170 1-56
+packages/scheduler/migrations/0002_queue_binding.sql
+  h_9d56aba080c170 1-7
+packages/scheduler/migrations/d1/0001_scheduler.sql
+  h_9d56aba080c170 1-62
+packages/scheduler/package.json
+  h_9d56aba080c170 1-79
+packages/scheduler/src/contracts.ts
+  h_9d56aba080c170 1-102
+packages/scheduler/src/d1.ts
+  h_9d56aba080c170 1-458
+packages/scheduler/src/driver.ts
+  h_9d56aba080c170 1-34
+packages/scheduler/src/errors.ts
+  h_9d56aba080c170 1-16
+packages/scheduler/src/index.ts
+  h_9d56aba080c170 1-433
+packages/scheduler/src/plugin.ts
+  h_9d56aba080c170 1-30
+packages/scheduler/src/postgres.ts
+  h_9d56aba080c170 1-318
+packages/scheduler/src/rules.ts
+  h_9d56aba080c170 1-50
+packages/scheduler/src/schema-d1.ts
+  h_9d56aba080c170 1-126
+packages/scheduler/src/schema.ts
+  h_9d56aba080c170 1-125
+packages/scheduler/test/adapter.test.ts
+  h_9d56aba080c170 1-17
+packages/scheduler/test/d1.workerd.mjs
+  h_9d56aba080c170 1-670
+packages/scheduler/test/driver.test.ts
+  h_9d56aba080c170 1-48
+packages/scheduler/test/fixtures/crash-tick.ts
+  h_9d56aba080c170 1-38
+packages/scheduler/test/fixtures/d1-task.ts
+  h_9d56aba080c170 1-29
+packages/scheduler/test/fixtures/d1-worker.ts
+  h_9d56aba080c170 1-52
+packages/scheduler/test/fixtures/task.ts
+  h_9d56aba080c170 1-14
+packages/scheduler/test/postgres.test.ts
+  h_9d56aba080c170 1-545
+packages/scheduler/test/rules.test.ts
+  h_9d56aba080c170 1-64
+packages/scheduler/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/scheduler/tsconfig.json
+  h_9d56aba080c170 1-4
+packages/tasks/README.md
+  h_9d56aba080c170 3-4,7-8,117-131,218,280,283-341
+packages/tasks/migrations/0003_queue_identity.sql
+  h_9d56aba080c170 1-4
+packages/tasks/migrations/d1/0001_tasks.sql
+  h_9d56aba080c170 1-31
+packages/tasks/package.json
+  h_9d56aba080c170 24-27,31,40,44-45,47-58
+packages/tasks/src/contracts.ts
+  h_9d56aba080c170 57-68,74-77,109-110
+packages/tasks/src/d1.ts
+  h_9d56aba080c170 1-479
+packages/tasks/src/index.ts
+  h_9d56aba080c170 56-76,211-213,216-217,277-283,297,300-313
+packages/tasks/src/postgres.ts
+  h_9d56aba080c170 17,165-173,232-233,246-252,355-369,495-498,518
+packages/tasks/src/schema-d1.ts
+  h_9d56aba080c170 1-68
+packages/tasks/src/schema.ts
+  h_9d56aba080c170 5-11
+packages/tasks/src/worker.ts
+  h_9d56aba080c170 49-57,59-60,130-133,137-143
+packages/tasks/test/core.test.ts
+  h_9d56aba080c170 11-17,25-30,64-142
+packages/tasks/test/postgres.test.ts
+  h_9d56aba080c170 41-138
+packages/tasks/test/worker.test.ts
+  h_9d56aba080c170 4-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd9ea7528fe41b65bd94f3ea93825998af8e8269",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
