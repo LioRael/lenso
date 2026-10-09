@@ -1,4 +1,4 @@
-import { startApp } from "@lenso/core";
+import { startApp, type RunningApp } from "@lenso/core";
 import { definePlugin, type Plugin } from "@lenso/core/plugin";
 
 /** The subset used by this adapter; Cloudflare's generated ExecutionContext is compatible. */
@@ -14,6 +14,8 @@ export interface WorkerRequestContext {
 export interface WorkerApp {
   readonly plugins: readonly Plugin<unknown>[];
   readonly web: Plugin<{ fetch(request: Request): Promise<Response> }>;
+  /** Runs synchronously for each started app, before request dispatch. */
+  bind?(running: RunningApp): undefined;
 }
 
 /** Bindings belong to the platform: injecting them does not acquire or close them. */
@@ -97,6 +99,19 @@ export function createWorkerHandler<Bindings>(
         if (request.signal.aborted) {
           await stop();
           request.signal.throwIfAborted();
+        }
+        if (definition.bind) {
+          const result: unknown = definition.bind(app);
+          if (result !== undefined) {
+            if ((typeof result === "object" && result !== null) || typeof result === "function") {
+              void Promise.resolve(result).catch(() => {});
+            }
+            throw new TypeError("WorkerApp.bind must return undefined synchronously");
+          }
+          if (request.signal.aborted) {
+            await stop();
+            request.signal.throwIfAborted();
+          }
         }
         const response = await app.get(definition.web).fetch(request);
         if (!response.body) {
