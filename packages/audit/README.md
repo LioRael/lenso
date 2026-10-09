@@ -15,8 +15,15 @@ guarantee of lossless delivery.
 | `/sqlite`      | Drizzle Bun SQLite or D1 repository and schema                 | Drizzle                   |
 | `/postgres`    | Drizzle Bun SQL PostgreSQL repository and schema               | Drizzle                   |
 | `/diagnostics` | Bounded OTel failure counter and supplied logger               | OTel API                  |
-| `/manage`      | Explicit query-only companion, no automatic entry              | Core, Engine, Manage, Zod |
+| `/manage`      | Explicit query; optional trusted-scope query/get companion     | Core, Engine, Manage, Zod |
 | `/tasks`       | Existing Tasks reconciliation registration                     | Tasks, Zod                |
+
+`createScopedAuditManage({ id, audit })` binds query/get to a trusted invocation
+context `{ principal, scope }`. Its strict browser inputs contain only filters,
+pagination or an event ID, not scope or identity. It calls the existing Audit
+service and reuses its authority checks on every read. The original
+`createAuditManage` explicit-scope query remains available. Neither companion
+adds storage, migrations, append access, approval persistence or write guarantees.
 
 Root imports do not load optional integrations. Install only the peers for entries
 you use. Repositories borrow databases and never close them. Use the existing DB

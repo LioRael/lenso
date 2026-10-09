@@ -15,6 +15,21 @@ migration, rollback or cleanup failures remain available in-process, not in the
 public projection. Classification adds no retry guarantee: writes with a lost
 response can already have completed.
 
+## Bounded management reads
+
+`queue.list({ tasks, limit, after })` reads one queue-scoped page, ordered by
+ascending immutable job ID. The task allowlist is required; an empty list returns
+no rows, and the maximum page size is 100. The result is `{ items, nextCursor }`.
+Items contain job ID, task, state, attempts and cancellation-request state only,
+never input, result or raw failure text. A custom provider without `list` fails
+with `unsupported`; the queue does not substitute an unbounded scan.
+
+This is a queue query, not tenant authorization. An application management service
+must check actual job ownership and current authority before projecting rows or
+calling retry/cancel. Task names do not identify tenants. Retry also requires the
+business owner's explicit replay-safety policy. A cancellation request is not
+proof that execution stopped or that external effects were undone.
+
 ## Define, enqueue, consume
 
 ```ts

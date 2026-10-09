@@ -4,6 +4,7 @@ import type {
   ClaimedJob,
   EnqueueOptions,
   ExecutionResult,
+  JobQuery,
   Task,
   TaskProvider,
   WorkerOptions,
@@ -12,6 +13,7 @@ import { TaskQueueError } from "./errors";
 import { copyJson, INPUT_LIMIT_BYTES, RESULT_LIMIT_BYTES } from "./json";
 import { metrics, ROOT_CONTEXT, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { observe, producerLinks, producerMetadata, taskSpan } from "./telemetry";
+import { jobSummary, normalizeJobQuery } from "./query";
 
 export type * from "./contracts";
 export { TaskQueueError, taskErrorDiagnostic } from "./errors";
@@ -290,6 +292,28 @@ export function createTaskQueue(options: {
     get(jobId: string) {
       checkJobId(jobId);
       return operation(() => options.provider.get(jobId));
+    },
+    list(query: JobQuery) {
+      const normalized = normalizeJobQuery(query);
+      for (const name of normalized.tasks) {
+        if (!tasks.has(name)) throw new TaskQueueError("invalid-task");
+      }
+      return operation(async () => {
+        if (!options.provider.list) throw new TaskQueueError("unsupported");
+        const page = await options.provider.list(normalized);
+        if (
+          page.items.length > normalized.limit ||
+          page.items.some(
+            (job, index) =>
+              !normalized.tasks.includes(job.task) ||
+              (normalized.after !== undefined && job.jobId <= normalized.after) ||
+              (index > 0 && job.jobId <= page.items[index - 1]!.jobId),
+          ) ||
+          (page.nextCursor !== null && page.nextCursor !== page.items[page.items.length - 1]?.jobId)
+        )
+          throw new TaskQueueError("provider-unavailable");
+        return { items: page.items.map(jobSummary), nextCursor: page.nextCursor };
+      });
     },
     cancel(jobId: string) {
       checkJobId(jobId);

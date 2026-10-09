@@ -12,6 +12,26 @@ transaction. Root runtime imports do not load Auth, Tasks, Drizzle, PostgreSQL
 drivers, Manage or an OTel SDK. Integrations have separate entrypoints; their
 peer dependencies must be installed when used.
 
+## Optional Manage companion
+
+`createSchedulerManage({ id, scheduler, tasks })` from `@lenso/scheduler/manage`
+borrows the exact scheduler plugin and a host-selected registered-task catalog.
+Install its returned plugin and explicitly select its Manage declarations.
+The trusted binding supplies `{ actor, signal }`; input JSON cannot supply an
+actor. Scheduler remains responsible for current business authorization.
+
+The companion exposes create/list/get, revision-checked pause/resume/cancel,
+idempotency-keyed trigger, and bounded occurrence reads. Reads omit task inputs
+and job results. Creating a schedule validates the registered task schema.
+Its read-only `catalog({})` returns input schemas only for the supplied task
+whitelist. Supply `authorizeCatalog(actor, signal)` to authorize each disclosure;
+without it the operation returns an empty task list. Schemas are converted from
+each task's Standard Schema JSON Schema capability, sanitized to omit defaults
+and examples, and bounded to 64 KiB. Tasks without a usable converter are
+reported as `runtime-validation-only` with a null schema.
+It starts neither a worker nor a tick driver, and cancelling a future schedule
+does not retract jobs already handed to Tasks.
+
 ## Connect existing resources
 
 For PostgreSQL, apply `migrations/0001_scheduler.sql` then
