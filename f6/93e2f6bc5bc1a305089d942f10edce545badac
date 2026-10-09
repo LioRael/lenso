@@ -1,0 +1,93 @@
+.changeset/typed-plugin-management.md
+  s_e3dbe949a951a5::t_96369075cc862e 1-8
+README.md
+  s_e3dbe949a951a5::t_fe5627c0934208 39
+bun.lock
+  s_e3dbe949a951a5::t_ddce294cbd9cff 45,65,67,139-140,142,181-203,551-552
+docs/CLI.md
+  s_e3dbe949a951a5::t_dd004f95d7425f 36-45,62-80
+examples/notes/lenso.config.ts
+  s_e3dbe949a951a5::t_db31b85be97f0b 2-3,40-44,46-54
+examples/notes/package.json
+  s_e3dbe949a951a5::t_8bf74b700cca4c 26
+examples/notes/src/mcp.ts
+  s_e3dbe949a951a5::t_ac8b232febcd9d 11
+examples/notes/src/operations.ts
+  s_e3dbe949a951a5::t_15f341f89d131d 3-5,19-23,42,44,46,48-53,56,58-62,65,67-72,75-78,81-83,89,92-94,105,123,136,149,162,175,186-192,198,203-206,208-211,214-216,221,224-226,239,253,264-265
+examples/notes/test/manage.test.ts
+  s_e3dbe949a951a5::t_91d60adb2a7d79 1-138
+examples/notes/test/mcp.test.ts
+  s_e3dbe949a951a5::t_0a74c88c4213ac 11,22,26-32,43-44,68,72,75-76,85-88,91
+examples/notes/test/operations.test.ts
+  s_e3dbe949a951a5::t_87b0afa22f0a49 71
+examples/tasks/lenso.config.ts
+  s_e3dbe949a951a5::t_be2dd48077aac4 2-3,6,8-9,11-16
+examples/tasks/package.json
+  s_e3dbe949a951a5::t_a354af8966cb68 17,19
+examples/tasks/src/manage.test.ts
+  s_e3dbe949a951a5::t_4b40b8106be1cd 1-66
+examples/tasks/src/plugin.ts
+  s_e3dbe949a951a5::t_ec4af5074d36c6 5-6,10,91-163,174
+packages/cli/package.json
+  s_e3dbe949a951a5::t_cd304345855381 38-39,41
+packages/cli/src/engine.ts
+  s_e3dbe949a951a5::t_b6777f0907633e 6-12,14,18-19,23,31-32,34-35,38-39,43-47,58-59,66-72
+packages/cli/src/index.ts
+  s_e3dbe949a951a5::t_5a82b6bbf30149 4-9
+packages/cli/test/engine.test.ts
+  s_e3dbe949a951a5::t_dcffb50f8108f7 9,11,14-43,121-407
+packages/cli/test/packaging.test.ts
+  s_e3dbe949a951a5::t_600790c1346fff 11-13,78-83,93-97,99-100,119-121,161-185,284-383
+packages/engine/src/application.ts
+  s_e3dbe949a951a5::t_50730d38e1af09 5,8-10,14-16,56-60,64-65,71-93
+packages/engine/src/diagnostics.ts
+  s_e3dbe949a951a5::t_49240e683101d7 13,129,166-174
+packages/engine/src/index.ts
+  s_e3dbe949a951a5::t_11a2d5daa739e6 12-19
+packages/engine/src/operations.ts
+  s_e3dbe949a951a5::t_52eaf056b1e520 4-11,13-15,20-23,37,63,65-68,98-108,110-118,120,122-183,185-203,207-308,328-330,378-380
+packages/engine/test/operations.test.ts
+  s_e3dbe949a951a5::t_6efb1bae6ae0d4 2-12,72-74,79-304
+packages/manage/README.md
+  s_e3dbe949a951a5::t_b77ddb07e4f545 1-88
+packages/manage/package.json
+  s_e3dbe949a951a5::t_63786ff33d0053 1-57
+packages/manage/src/adapter.ts
+  s_e3dbe949a951a5::t_007e1f9140071a 1-142
+packages/manage/src/agent.ts
+  s_e3dbe949a951a5::t_9d3954d47ab74d 1-31
+packages/manage/src/index.ts
+  s_e3dbe949a951a5::t_0fcf94f93a7ad2 1-169
+packages/manage/src/orpc.ts
+  s_e3dbe949a951a5::t_473466483d31f2 1-124
+packages/manage/test/manage.test.ts
+  s_e3dbe949a951a5::t_b0f497be440539 1-610
+packages/manage/test/types.ts
+  s_e3dbe949a951a5::t_d8e775e076f92c 1-57
+packages/manage/tsconfig.build.json
+  s_e3dbe949a951a5::t_ef8c5d7c88c884 1-11
+packages/manage/tsconfig.json
+  s_e3dbe949a951a5::t_4265414a1c2069 1-5
+packages/mcp/src/index.ts
+  s_e3dbe949a951a5::t_64da5a4b80efc5 2,15-21,31,186-187,196-197,199-201,272-281
+packages/mcp/test/stdio.test.ts
+  s_e3dbe949a951a5::t_252b9a50d9af80 1-4,11-131,134,314-487
+turbo.json
+  s_e3dbe949a951a5::t_5f1912395f5f29 13-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f693e2f6bc5bc1a305089d942f10edce545badac",
+  "prompts": {},
+  "sessions": {
+    "s_e3dbe949a951a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11a4a-829c-7a91-8ac5-ef4c67bb9d37",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
