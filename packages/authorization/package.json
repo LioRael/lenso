@@ -28,6 +28,10 @@
       "types": "./dist/plugin.d.ts",
       "default": "./dist/plugin.js"
     },
+    "./manage": {
+      "types": "./dist/manage.d.ts",
+      "default": "./dist/manage.js"
+    },
     "./drizzle/pg": {
       "types": "./dist/drizzle/pg.d.ts",
       "default": "./dist/drizzle/pg.js"
@@ -51,7 +55,7 @@
     "./migrations/*": "./migrations/*"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && bun build src/index.ts src/auth.ts src/plugin.ts src/drizzle/pg.ts src/drizzle/d1.ts src/drizzle/sqlite.ts src/drizzle/schema-pg.ts src/drizzle/schema-sqlite.ts --root src --outdir dist --target browser --packages external --splitting",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && bun build src/index.ts src/auth.ts src/plugin.ts src/manage.ts src/drizzle/pg.ts src/drizzle/d1.ts src/drizzle/sqlite.ts src/drizzle/schema-pg.ts src/drizzle/schema-sqlite.ts --root src --outdir dist --target browser --packages external --splitting",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test test"
   },
@@ -59,16 +63,31 @@
     "@cloudflare/workers-types": "5.20261008.1",
     "@lenso/auth": "workspace:^",
     "@lenso/core": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
     "@standard-schema/spec": "1.1.0",
     "drizzle-orm": "0.45.3",
-    "miniflare": "5.20261006.0-alpha"
+    "miniflare": "5.20261006.0-alpha",
+    "zod": "4.6.5"
   },
   "peerDependencies": {
     "@lenso/auth": "^0.3.1",
     "@lenso/core": "^0.3.0",
-    "drizzle-orm": "^0.45.3"
+    "@lenso/engine": "^0.3.0",
+    "@lenso/manage": "^0.3.0",
+    "drizzle-orm": "^0.45.3",
+    "zod": "4.6.5"
   },
   "peerDependenciesMeta": {
+    "@lenso/engine": {
+      "optional": true
+    },
+    "@lenso/manage": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    },
     "@lenso/auth": {
       "optional": true
     },

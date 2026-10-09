@@ -17,6 +17,7 @@ import { copyJson, RESULT_LIMIT_BYTES } from "./json";
 import { taskQueueIdentitySchema, taskQueueSchema } from "./schema";
 import { traceMetadata } from "./telemetry";
 import { createTaskWorker, type WorkerBackend } from "./worker";
+import { jobPage, normalizeJobQuery } from "./query";
 
 export type PostgresTaskProviderOptions = {
   readonly queueName: string;
@@ -476,6 +477,47 @@ export async function createPostgresTaskProvider(
                 ? "aborted"
                 : null,
         };
+      });
+    },
+    async list(query) {
+      assertOpen();
+      const { tasks, limit, after } = normalizeJobQuery(query);
+      if (!tasks.length) return { items: [], nextCursor: null };
+      return transaction(pool, async (client) => {
+        const response = await client.query<{
+          id: string;
+          task: string;
+          state: string;
+          retry_count: number;
+          retry_limit: number;
+          started_on: Date | null;
+          cancel_requested: boolean;
+        }>(
+          `SELECT j.id, r.task, j.state, j.retry_count, j.retry_limit,
+            j.started_on, r.cancel_requested
+          FROM ${jobTable} j
+          JOIN "${config.schema}".lenso_task_relation r
+            ON r.queue_name = j.name AND r.job_id = j.id
+          WHERE j.name = $1 AND r.task = ANY($2::text[])
+            AND ($3::uuid IS NULL OR j.id > $3::uuid)
+          ORDER BY j.id ASC LIMIT $4`,
+          [options.queueName, tasks, after ?? null, limit + 1],
+        );
+        return jobPage(
+          response.rows.map((job) => {
+            const state = states[job.state];
+            if (!state) throw new TaskQueueError("provider-unavailable");
+            return {
+              jobId: job.id,
+              task: job.task,
+              state,
+              attempt: job.started_on ? job.retry_count + 1 : 0,
+              maxAttempts: job.retry_limit + 1,
+              cancelRequested: job.cancel_requested,
+            };
+          }),
+          limit,
+        );
       });
     },
     async cancel(jobId) {

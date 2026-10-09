@@ -6,6 +6,7 @@ export type TaskQueueErrorCode =
   | "deduplication-conflict"
   | "job-expired"
   | "provider-unavailable"
+  | "unsupported"
   | "closed";
 
 const messages: Record<TaskQueueErrorCode, string> = {
@@ -16,6 +17,7 @@ const messages: Record<TaskQueueErrorCode, string> = {
   "deduplication-conflict": "Deduplication key refers to a different task or input",
   "job-expired": "Deduplication key refers to a job outside its retention window",
   "provider-unavailable": "Task queue operation failed",
+  unsupported: "Task provider does not support this operation",
   closed: "Task queue is closed",
 };
 

@@ -33,10 +33,14 @@
     "./driver": {
       "types": "./dist/driver.d.ts",
       "import": "./dist/driver.js"
+    },
+    "./manage": {
+      "types": "./dist/manage.d.ts",
+      "import": "./dist/manage.js"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/index.ts src/postgres.ts src/d1.ts src/plugin.ts src/driver.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && bun build src/index.ts src/postgres.ts src/d1.ts src/plugin.ts src/driver.ts src/manage.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test test && bun run test:d1",
     "test:d1": "bun build test/fixtures/d1-worker.ts --target browser --external 'node:*' --outdir .lenso/workerd && node --experimental-strip-types --test test/d1.workerd.mjs"
@@ -49,6 +53,8 @@
     "@cloudflare/workers-types": "5.20261008.1",
     "@lenso/auth": "workspace:^",
     "@lenso/core": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
     "@lenso/tasks": "workspace:^",
     "@types/pg": "8.23.1",
     "drizzle-orm": "0.45.3",
@@ -59,10 +65,22 @@
   "peerDependencies": {
     "@lenso/auth": "workspace:^",
     "@lenso/core": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
     "@lenso/tasks": "workspace:^",
-    "drizzle-orm": "0.45.3"
+    "drizzle-orm": "0.45.3",
+    "zod": "4.6.5"
   },
   "peerDependenciesMeta": {
+    "@lenso/engine": {
+      "optional": true
+    },
+    "@lenso/manage": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    },
     "@lenso/core": {
       "optional": true
     },

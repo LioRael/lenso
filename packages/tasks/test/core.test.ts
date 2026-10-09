@@ -91,6 +91,48 @@ test("TaskQueue runtime codes normalize safely and keep internal provider cause"
 });
 
 describe("task contract boundary (not persistence tests)", () => {
+  test("list requires a bounded registered allowlist and fails honestly for legacy providers", async () => {
+    const record = recordingProvider();
+    const task = defineTask({ name: "listed", input: z.object({}), async handler() {} });
+    const queue = createTaskQueue({ tasks: [task], provider: record.provider });
+    await expect(queue.list({ tasks: [task.name] })).rejects.toMatchObject({ code: "unsupported" });
+    expect(() => queue.list({ tasks: ["unregistered"] })).toThrow(TaskQueueError);
+    for (const limit of [0, 101, 1.5, NaN]) {
+      expect(() => queue.list({ tasks: [task.name], limit })).toThrow(TaskQueueError);
+    }
+    expect(() => queue.list({ tasks: [task.name], after: "arbitrary" })).toThrow(TaskQueueError);
+    const item = {
+      jobId: record.jobId,
+      task: task.name,
+      state: "pending" as const,
+      attempt: 0,
+      maxAttempts: 3,
+      cancelRequested: false,
+      result: { secret: "private" },
+      error: "private",
+    };
+    record.provider.list = async () => ({ items: [item], nextCursor: null });
+    expect(await queue.list({ tasks: [task.name] })).toEqual({
+      items: [
+        {
+          jobId: record.jobId,
+          task: task.name,
+          state: "pending",
+          attempt: 0,
+          maxAttempts: 3,
+          cancelRequested: false,
+        },
+      ],
+      nextCursor: null,
+    });
+    record.provider.list = async () => ({ items: [item, item], nextCursor: null });
+    await expect(queue.list({ tasks: [task.name] })).rejects.toMatchObject({
+      code: "provider-unavailable",
+    });
+    await queue.close();
+    await expect(queue.list({ tasks: [task.name] })).rejects.toMatchObject({ code: "closed" });
+  });
+
   test("identity and lookup use the open/error boundary and retain tombstones", async () => {
     const record = recordingProvider();
     const task = defineTask({ name: "accepted", input: z.object({}), async handler() {} });

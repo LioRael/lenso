@@ -38,6 +38,45 @@ async function setup() {
 }
 
 integration("real PostgreSQL durable tasks", () => {
+  test("list uses retained queue ownership and explicit task keyset pages without payloads", async () => {
+    const { options, queueName } = await setup();
+    const provider = await createPostgresTaskProvider(options);
+    const otherOptions = { ...options, queueName: `${queueName}_other` };
+    await migratePostgresTaskQueue(otherOptions);
+    const other = await createPostgresTaskProvider(otherOptions);
+    const task = defineTask({
+      name: "listed",
+      input: z.object({ secret: z.string() }),
+      async handler(input) {
+        return input;
+      },
+      result: (input) => input,
+    });
+    const hidden = defineTask({ ...task, name: "hidden" });
+    const queue = createTaskQueue({ provider, tasks: [task, hidden] });
+    try {
+      const ids = [];
+      for (let index = 0; index < 3; index++) {
+        ids.push(await queue.enqueue(task, { secret: "INPUT-AND-RESULT-SECRET" }));
+      }
+      await queue.enqueue(hidden, { secret: "HIDDEN-SECRET" });
+      await other.enqueue({ task: task.name, input: "OTHER-SECRET", maxAttempts: 1 });
+      await queue.runBatch();
+      ids.sort();
+      const first = await queue.list({ tasks: [task.name], limit: 2 });
+      expect(first.items.map((item) => item.jobId)).toEqual(ids.slice(0, 2));
+      expect(first.nextCursor).toBe(ids[1]!);
+      const last = await queue.list({ tasks: [task.name], limit: 2, after: first.nextCursor! });
+      expect(last.items.map((item) => item.jobId)).toEqual(ids.slice(2));
+      expect(last.nextCursor).toBeNull();
+      expect(JSON.stringify(first)).not.toContain("SECRET");
+      expect(first.items.every((item) => item.state === "succeeded")).toBe(true);
+    } finally {
+      await queue.close();
+      await other.close();
+    }
+  }, 20_000);
+
   test("identity persists across provisioning and lookup preserves queue-scoped tombstones", async () => {
     const { options, queueName } = await setup();
     const otherQueue = `test_${crypto.randomUUID().replaceAll("-", "")}`;
