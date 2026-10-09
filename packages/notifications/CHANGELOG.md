@@ -1,5 +1,13 @@
 # @lenso/notifications
 
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies [c310eac]
+  - @lenso/engine@0.6.0
+  - @lenso/manage@0.5.0
+
 ## 0.2.2
 
 ### Patch Changes

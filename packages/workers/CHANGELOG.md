@@ -1,5 +1,11 @@
 # @lenso/workers
 
+## 0.2.2
+
+### Patch Changes
+
+- 7224af6: Add a synchronous per-request `WorkerApp.bind(running)` startup seam.
+
 ## 0.2.1
 
 ### Patch Changes
