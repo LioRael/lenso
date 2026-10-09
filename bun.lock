@@ -119,10 +119,10 @@
       },
       "peerDependencies": {
         "@cloudflare/workers-types": "^5.20261008.1",
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
-        "@lenso/engine": "^0.2.0",
-        "@lenso/manage": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/manage": "^0.3.0",
         "drizzle-orm": "^0.45.3",
         "zod": "^4.6.5",
       },
@@ -153,11 +153,11 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
-        "@lenso/engine": "^0.2.0",
-        "@lenso/manage": "^0.2.0",
-        "@lenso/tasks": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/manage": "^0.3.0",
+        "@lenso/tasks": "^0.3.0",
         "@opentelemetry/api": "1.9.1",
         "drizzle-orm": "0.45.3",
         "zod": "4.6.5",
@@ -185,7 +185,7 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/core": "^0.2.0",
+        "@lenso/core": "^0.2.1",
         "@orpc/server": "2.0.0-beta.42",
         "drizzle-orm": "^0.45.3",
       },
@@ -207,8 +207,8 @@
         "miniflare": "5.20261006.0-alpha",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
         "drizzle-orm": "^0.45.3",
       },
       "optionalPeers": [
@@ -322,7 +322,7 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
         "@orpc/server": "2.0.0-beta.42",
       },
       "optionalPeers": [
@@ -360,11 +360,11 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
-        "@lenso/engine": "^0.2.0",
-        "@lenso/manage": "^0.2.0",
-        "@lenso/tasks": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/manage": "^0.3.0",
+        "@lenso/tasks": "^0.3.0",
         "drizzle-orm": "^0.45.3",
         "zod": "^4.6.5",
       },
@@ -389,8 +389,8 @@
         "miniflare": "5.20261006.0-alpha",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
         "drizzle-orm": "^0.45.3",
       },
       "optionalPeers": [
@@ -446,12 +446,12 @@
       },
       "peerDependencies": {
         "@cloudflare/workers-types": "5.20261008.1",
-        "@lenso/auth": "^0.2.0",
-        "@lenso/core": "^0.2.0",
-        "@lenso/engine": "^0.2.0",
-        "@lenso/manage": "^0.2.0",
-        "@lenso/scheduler": "^0.1.0",
-        "@lenso/tasks": "^0.2.0",
+        "@lenso/auth": "^0.3.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/manage": "^0.3.0",
+        "@lenso/scheduler": "^0.2.0",
+        "@lenso/tasks": "^0.3.0",
         "drizzle-orm": "0.45.3",
         "stripe": "23.0.0",
         "zod": "4.6.5",
@@ -573,6 +573,38 @@
       },
       "optionalPeers": [
         "@orpc/openapi",
+      ],
+    },
+    "packages/webhooks": {
+      "name": "@lenso/webhooks",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lenso/tasks": "workspace:^",
+        "zod": "4.6.5",
+      },
+      "devDependencies": {
+        "@lenso/audit": "workspace:^",
+        "@lenso/core": "workspace:^",
+        "@lenso/engine": "workspace:^",
+        "@lenso/limits": "workspace:^",
+        "@lenso/manage": "workspace:^",
+        "@types/pg": "8.23.1",
+        "drizzle-orm": "0.45.3",
+        "pg": "8.23.1",
+      },
+      "peerDependencies": {
+        "@lenso/audit": "^0.2.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/limits": "^0.2.0",
+        "@lenso/manage": "^0.3.0",
+        "pg": "8.23.1",
+      },
+      "optionalPeers": [
+        "@lenso/core",
+        "@lenso/engine",
+        "@lenso/manage",
+        "pg",
       ],
     },
     "packages/workers": {
@@ -850,6 +882,8 @@
     "@lenso/tasks": ["@lenso/tasks@workspace:packages/tasks"],
 
     "@lenso/web": ["@lenso/web@workspace:packages/web"],
+
+    "@lenso/webhooks": ["@lenso/webhooks@workspace:packages/webhooks"],
 
     "@lenso/workers": ["@lenso/workers@workspace:packages/workers"],
 
