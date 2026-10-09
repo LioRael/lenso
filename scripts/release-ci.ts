@@ -48,7 +48,7 @@ export function policyFrom(env: Record<string, string | undefined>): Policy {
 export function assertPublishContext(env: Record<string, string | undefined>) {
   if (
     env.GITHUB_ACTIONS !== "true" ||
-    env.GITHUB_EVENT_NAME !== "workflow_dispatch" ||
+    !["workflow_dispatch", "push"].includes(env.GITHUB_EVENT_NAME ?? "") ||
     env.GITHUB_REF !== "refs/heads/main" ||
     env.RELEASE_PROTECTED_JOB !== "npm-release" ||
     !env.ACTIONS_ID_TOKEN_REQUEST_URL ||

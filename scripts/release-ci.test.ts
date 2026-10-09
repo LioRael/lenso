@@ -117,6 +117,10 @@ test("local/default publish is refused before reading archives or invoking npm",
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "fixture",
   };
   assertPublishContext(ci);
+  assertPublishContext({ ...ci, GITHUB_EVENT_NAME: "push" });
+  expect(() =>
+    assertPublishContext({ ...ci, GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/feature" }),
+  ).toThrow("protected");
   expect(() => assertPublishContext({ ...ci, NODE_AUTH_TOKEN: "fixture" })).toThrow("fallback");
   expect(() => assertPublishContext({ ...ci, GITHUB_EVENT_NAME: "pull_request" })).toThrow(
     "protected",

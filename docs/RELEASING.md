@@ -158,7 +158,12 @@ Verification itself does not run the full test suite.
    `version` command. It updates manifests/changelogs/consumed changesets and the
    one root `bun.lock`, checks frozen installation, formats, and opens/updates a
    version PR. There is no publish input, npm credential or OIDC permission.
-3. `release.yml` is `workflow_dispatch` only, restricted to `main`. Its prepare
+3. `release.yml` supports manual dispatch and pushes to `main`. Automatic selection
+   requires the exact merged commit of a same-repository PR from
+   `changeset-release/main` into `main`; ordinary PR merges skip publication.
+   It selects public packages whose stable versions increased in that merge.
+   New package names still require owner bootstrap and Trusted Publisher setup.
+   Manual dispatch continues to require explicit package names. Its prepare
    job repeats checks and runs the existing archive verifier, then writes a
    `release.json` receipt for the explicitly requested comma-separated package
    names. The immutable artifact contains the same verified tarballs and receipts.
@@ -172,7 +177,7 @@ binds source SHA, repository, workflow run ID, preparation attempt, policy, orde
 names/versions, archive basenames, hashes and file lists. It is not a Changesets
 pack manifest. Preparation checks that the actual checkout matches the source
 SHA and remains unchanged before and after building. The receipt's selected set
-must match the dispatch inputs. Archive hashes and identities are checked for the whole batch
+must match the selected package set and explicit policy. Archive hashes and identities are checked for the whole batch
 before writes and hashes are checked again immediately before each publish.
 Runtime/optional/peer dependencies in the selected set must precede their
 consumers and satisfy packed ranges; omitted dependencies must have compatible
@@ -254,12 +259,13 @@ approval or package ownership:
 5. Enable Actions PR creation for the version job and allow its scoped
    contents/PR-write permissions. Configure required checks, including the bot
    PR procedure above. Check organization/fork approval restrictions too.
-6. Dispatch release on `main` with explicit package names. Before approving the
+6. Merge the version PR to start preparation automatically, or dispatch release
+   on `main` with explicit package names. Before approving the
    publish job, download/review `release.json`, source SHA, policy, complete
    archive file lists/hashes and all preparation checks. Artifacts expire in
    14 days. Do not approve stale or unexplained batches.
 
-The local script guard refuses publication without dispatch/main/protected-job
+The local script guard refuses publication without supported-event/main/protected-job
 markers and OIDC environment, and refuses common token fallback variables.
 These markers are not cryptographic proof of an Environment approval: the real
 enforcement is GitHub protection plus npm's exact trusted publisher identity.
