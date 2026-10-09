@@ -1,6 +1,6 @@
 {
   "name": "@lenso/api-keys",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -69,10 +69,10 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": "^5.20261008.1",
-    "@lenso/auth": "^0.2.0",
-    "@lenso/core": "^0.2.0",
-    "@lenso/engine": "^0.2.0",
-    "@lenso/manage": "^0.2.0",
+    "@lenso/auth": "^0.3.0",
+    "@lenso/core": "^0.2.1",
+    "@lenso/engine": "^0.3.0",
+    "@lenso/manage": "^0.3.0",
     "drizzle-orm": "^0.45.3",
     "zod": "^4.6.5"
   },
