@@ -1,5 +1,14 @@
 # @lenso/payments
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [c310eac]
+  - @lenso/engine@0.6.0
+  - @lenso/manage@0.5.0
+  - @lenso/scheduler@0.3.1
+
 ## 0.1.3
 
 ### Patch Changes
