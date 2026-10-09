@@ -1,6 +1,6 @@
 {
   "name": "@lenso/payments",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -84,12 +84,12 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": "5.20261008.1",
-    "@lenso/auth": "^0.3.0",
-    "@lenso/core": "^0.2.1",
-    "@lenso/engine": "^0.3.0",
-    "@lenso/manage": "^0.3.0",
-    "@lenso/scheduler": "^0.2.0",
-    "@lenso/tasks": "^0.3.0",
+    "@lenso/auth": "^0.3.1",
+    "@lenso/core": "^0.3.0",
+    "@lenso/engine": "^0.4.0",
+    "@lenso/manage": "^0.4.0",
+    "@lenso/scheduler": "^0.2.1",
+    "@lenso/tasks": "^0.3.1",
     "drizzle-orm": "0.45.3",
     "stripe": "23.0.0",
     "zod": "4.6.5"

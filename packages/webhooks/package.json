@@ -1,6 +1,6 @@
 {
   "name": "@lenso/webhooks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -54,11 +54,11 @@
     "pg": "8.23.1"
   },
   "peerDependencies": {
-    "@lenso/audit": "^0.2.0",
-    "@lenso/core": "^0.2.1",
-    "@lenso/engine": "^0.3.0",
-    "@lenso/limits": "^0.2.0",
-    "@lenso/manage": "^0.3.0",
+    "@lenso/audit": "^0.2.1",
+    "@lenso/core": "^0.3.0",
+    "@lenso/engine": "^0.4.0",
+    "@lenso/limits": "^0.2.1",
+    "@lenso/manage": "^0.4.0",
     "pg": "8.23.1"
   },
   "peerDependenciesMeta": {

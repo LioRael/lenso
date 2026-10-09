@@ -1,5 +1,12 @@
 # @lenso/web
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @lenso/core@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

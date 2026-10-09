@@ -1,5 +1,21 @@
 # @lenso/mcp
 
+## 0.3.0
+
+### Minor Changes
+
+- 780b02e: Add borrowed-runtime MCP tools, dedicated borrowed stdio, and opt-in authenticated
+  Fetch Streamable HTTP ingress with bounded admission and request cancellation.
+  Keep the existing trusted local stdio entry compatible.
+
+### Patch Changes
+
+- Updated dependencies
+  - @lenso/core@0.3.0
+  - @lenso/engine@0.4.0
+  - @lenso/manage@0.4.0
+  - @lenso/cli@0.19.2
+
 ## 0.2.1
 
 ### Patch Changes
