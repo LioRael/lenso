@@ -1,0 +1,18 @@
+bun.lock
+  h_9d56aba080c170 107-138,784-785
+packages/api-keys/README.md
+  h_9d56aba080c170 226-227
+packages/api-keys/VALIDATION.md
+  h_9d56aba080c170 3,41,54-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "48c964a0839b855b4cc861f32ae8aee6a51364ce",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
