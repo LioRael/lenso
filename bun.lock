@@ -491,6 +491,22 @@
         "zod",
       ],
     },
+    "packages/realtime": {
+      "name": "@lenso/realtime",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@lenso/core": "workspace:^",
+        "@lenso/web": "workspace:^",
+        "@lenso/workers": "workspace:^",
+        "@orpc/server": "2.0.0-beta.42",
+      },
+      "peerDependencies": {
+        "@lenso/core": "^0.2.1",
+      },
+      "optionalPeers": [
+        "@lenso/core",
+      ],
+    },
     "packages/scheduler": {
       "name": "@lenso/scheduler",
       "version": "0.2.0",
@@ -914,6 +930,8 @@
     "@lenso/otel": ["@lenso/otel@workspace:packages/otel"],
 
     "@lenso/payments": ["@lenso/payments@workspace:packages/payments"],
+
+    "@lenso/realtime": ["@lenso/realtime@workspace:packages/realtime"],
 
     "@lenso/scheduler": ["@lenso/scheduler@workspace:packages/scheduler"],
 
