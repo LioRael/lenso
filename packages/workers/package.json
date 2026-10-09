@@ -8,12 +8,14 @@
     "directory": "packages/workers"
   },
   "files": [
+    "src",
     "dist",
     "README.md"
   ],
   "type": "module",
   "exports": {
     ".": {
+      "lenso-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }

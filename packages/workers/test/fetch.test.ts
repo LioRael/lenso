@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { definePlugin } from "@lenso/core/plugin";
 import { createWebPlugin } from "@lenso/web";
-import { createBindingsPlugin, createWorkerHandler } from "../src/index";
+import { createBindingsPlugin, createWorkerHandler, type WorkerApp } from "../src/index";
 
 const executionContext = { waitUntil: (_promise: Promise<unknown>) => {} };
 
@@ -41,6 +41,205 @@ test("bindings are injected per request and cleanup waits for response EOF", asy
   expect(stopped).toBe(1);
   expect(await b.text()).toBe("B");
   expect(stopped).toBe(2);
+});
+
+test("bind receives the started app before dispatch, once per request", async () => {
+  const requests: string[][] = [];
+  const instanceIds = new Set<string>();
+  const handler = createWorkerHandler(() => {
+    const events: string[] = [];
+    requests.push(events);
+    const service = {
+      async fetch() {
+        events.push("fetch");
+        return new Response("ok");
+      },
+    };
+    const web = definePlugin({
+      id: "web",
+      setup() {
+        return service;
+      },
+    });
+    return {
+      plugins: [web],
+      web,
+      bind(running) {
+        expect(running.get(web)).toBe(service);
+        instanceIds.add(running.instanceId);
+        expect(() => running.get(definePlugin({ id: "web", setup: () => service }))).toThrow();
+        events.push("bind");
+      },
+    };
+  });
+  await Promise.all(
+    [0, 1].map(() => handler.fetch(new Request("https://example.com"), {}, executionContext)),
+  ).then((responses) => Promise.all(responses.map((response) => response.text())));
+  expect(requests).toEqual([
+    ["bind", "fetch"],
+    ["bind", "fetch"],
+  ]);
+  expect(instanceIds.size).toBe(2);
+});
+
+test("bind failure rolls back and aggregates cleanup failures", async () => {
+  const bindFailure = new Error("bind failed");
+  const cleanupFailure = new Error("cleanup failed");
+  let dispatched = false;
+  const handler = createWorkerHandler(() => {
+    const web = definePlugin({
+      id: "web",
+      setup(context) {
+        context.onCleanup(() => {
+          throw cleanupFailure;
+        });
+        return {
+          async fetch() {
+            dispatched = true;
+            return new Response("no");
+          },
+        };
+      },
+    });
+    return {
+      plugins: [web],
+      web,
+      bind() {
+        throw bindFailure;
+      },
+    };
+  });
+  const error = await handler
+    .fetch(new Request("https://example.com"), {}, executionContext)
+    .catch((failure: unknown) => failure);
+  expect(error).toBeInstanceOf(AggregateError);
+  expect((error as AggregateError).errors[0]).toBe(bindFailure);
+  expect((error as AggregateError).errors[1]).toBeInstanceOf(AggregateError);
+  expect(((error as AggregateError).errors[1] as AggregateError).errors).toEqual([cleanupFailure]);
+  expect(dispatched).toBe(false);
+});
+
+test.each(["before-bind", "inside-bind"] as const)(
+  "abort %s prevents dispatch and drains cleanup once",
+  async (phase) => {
+    const abort = new AbortController();
+    const reason = new Error("cancelled");
+    const pending: Promise<unknown>[] = [];
+    let bound = 0;
+    let dispatched = 0;
+    let cleaned = 0;
+    const handler = createWorkerHandler(() => {
+      const web = definePlugin({
+        id: "web",
+        setup(owner) {
+          owner.onCleanup(() => {
+            cleaned++;
+          });
+          if (phase === "before-bind") abort.abort(reason);
+          return {
+            async fetch() {
+              dispatched++;
+              return new Response("no");
+            },
+          };
+        },
+      });
+      return {
+        plugins: [web],
+        web,
+        bind() {
+          bound++;
+          abort.abort(reason);
+        },
+      };
+    });
+    await expect(
+      handler.fetch(
+        new Request("https://example.com", { signal: abort.signal }),
+        {},
+        {
+          waitUntil: (work) => {
+            pending.push(work);
+          },
+        },
+      ),
+    ).rejects.toBe(reason);
+    await Promise.all(pending);
+    expect(bound).toBe(phase === "before-bind" ? 0 : 1);
+    expect(dispatched).toBe(0);
+    expect(cleaned).toBe(1);
+    expect(pending.length).toBe(phase === "before-bind" ? 0 : 1);
+  },
+);
+
+test.each(["value", "promise", "rejection"] as const)(
+  "invalid %s binding result fails closed and cleans the app",
+  async (kind) => {
+    let cleaned = 0;
+    let dispatched = false;
+    const handler = createWorkerHandler(() => {
+      const web = definePlugin({
+        id: "web",
+        setup(owner) {
+          owner.onCleanup(() => {
+            cleaned++;
+          });
+          return {
+            async fetch() {
+              dispatched = true;
+              return new Response("no");
+            },
+          };
+        },
+      });
+      const bind = (() =>
+        kind === "value"
+          ? true
+          : kind === "promise"
+            ? Promise.resolve()
+            : Promise.reject(
+                new Error("unsupported async binding"),
+              )) as unknown as WorkerApp["bind"];
+      return { plugins: [web], web, bind };
+    });
+    await expect(
+      handler.fetch(new Request("https://example.com"), {}, executionContext),
+    ).rejects.toThrow("must return undefined synchronously");
+    expect(cleaned).toBe(1);
+    expect(dispatched).toBe(false);
+  },
+);
+
+test("setup failures never invoke bind", async () => {
+  let bound = false;
+  const failure = new Error("setup failed");
+  const plugin = definePlugin({
+    id: "setup",
+    setup() {
+      throw failure;
+    },
+  });
+  const web = definePlugin({
+    id: "web",
+    async setup() {
+      return {
+        async fetch() {
+          return new Response();
+        },
+      };
+    },
+  });
+  const handler = createWorkerHandler(() => ({
+    plugins: [plugin, web],
+    web,
+    bind() {
+      bound = true;
+    },
+  }));
+  await expect(
+    handler.fetch(new Request("https://example.com"), {}, executionContext),
+  ).rejects.toBe(failure);
+  expect(bound).toBe(false);
 });
 
 test("cancelling a response cancels its source and stops the app once", async () => {
