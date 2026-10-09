@@ -43,10 +43,10 @@ jobs:
         with:
           node-version: 24.21.0
       - run: bun install --frozen-lockfile
-      - name: PostgreSQL binaries
+      - name: Integration service binaries
         run: |
           sudo apt-get update
-          sudo apt-get install --yes postgresql-16
+          sudo apt-get install --yes postgresql-16 redis-server
           echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
       - run: bash scripts/ci-checks.sh
       - id: archives
