@@ -1,5 +1,7 @@
 name: Release verified archives
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       packages:
@@ -18,7 +20,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: npm-release
+  group: npm-release-${{ github.sha }}
   cancel-in-progress: false
 env:
   RELEASE_REGISTRY: ${{ inputs.registry || vars.RELEASE_REGISTRY }}
@@ -26,12 +28,35 @@ env:
   RELEASE_TAG: ${{ inputs.tag || vars.RELEASE_TAG }}
   RELEASE_PACKAGES: ${{ inputs.packages }}
 jobs:
+  select:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      packages: ${{ steps.selection.outputs.packages }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - id: selection
+        run: bun scripts/release-select.ts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
   prepare:
-    if: github.ref == 'refs/heads/main'
+    needs: select
+    if: github.ref == 'refs/heads/main' && needs.select.outputs.packages != ''
+    env:
+      RELEASE_PACKAGES: ${{ needs.select.outputs.packages }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
       artifact_name: ${{ steps.archives.outputs.artifact }}
+      packages: ${{ needs.select.outputs.packages }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -58,6 +83,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   publish:
+    concurrency:
+      group: npm-release-publish
+      cancel-in-progress: false
     needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -67,6 +95,7 @@ jobs:
       id-token: write
     env:
       RELEASE_PROTECTED_JOB: npm-release
+      RELEASE_PACKAGES: ${{ needs.prepare.outputs.packages }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:

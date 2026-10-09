@@ -23,7 +23,7 @@
     "release:version": "bun node_modules/@changesets/cli/bin.js version",
     "release:verify": "bun scripts/release-verify.ts",
     "release:typecheck": "tsc --noEmit -p scripts/tsconfig.json",
-    "release:test": "bun test scripts/release.test.ts scripts/release-ci.test.ts",
+    "release:test": "bun test scripts/release.test.ts scripts/release-ci.test.ts scripts/release-select.test.ts",
     "release:prepare": "bun scripts/release-ci.ts prepare"
   },
   "devDependencies": {
