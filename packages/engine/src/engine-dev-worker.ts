@@ -1,9 +1,12 @@
 import { createEngineSession } from "./engine";
+import { resolve } from "node:path";
 import { EngineError, diagnostic, environmentSecrets, redact } from "./diagnostics";
 
 // Trusted build logs belong on stderr; readiness comes only from application IPC.
 for (const key of ["log", "info", "debug"] as const) console[key] = console.error.bind(console);
-const engine = createEngineSession(process.argv[2]!, "dev");
+const root = process.argv[2]!;
+const overrides: { config?: string; entry?: string } = JSON.parse(process.argv[3] ?? "{}");
+const engine = createEngineSession({ root, config: overrides.config }, "dev");
 let closing: Promise<void> | undefined;
 let queue = Promise.resolve();
 let readyFailure: { error: unknown } | undefined;
@@ -64,7 +67,12 @@ queue = queue.then(async () => {
     await engine.prepare();
     await engine.session.generate();
     await engine.session.dev("beforeStart");
-    send({ type: "prepared", watchFiles: engine.session.snapshot().watchFiles });
+    const snapshot = engine.session.snapshot();
+    send({
+      type: "prepared",
+      watchFiles: snapshot.watchFiles,
+      entry: resolve(root, overrides.entry ?? snapshot.convention.entry ?? "src/server.ts"),
+    });
   } catch (cause) {
     await close({ error: cause });
   }

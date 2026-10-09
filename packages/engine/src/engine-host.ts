@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { EngineError, diagnostic, type EngineDiagnostic } from "./diagnostics";
+import { resolveApplicationTarget, type ApplicationTarget } from "./application";
 import type {
   BuildContext,
   DevEvent,
@@ -99,6 +100,31 @@ async function exists(file: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+export async function checkedEntry(
+  root: string,
+  chosen: string,
+  mode: "build" | "dev",
+  plugin = "engine",
+  source: EngineSource = { file: resolve(root, chosen) },
+): Promise<string> {
+  const path = resolve(root, chosen);
+  const local = relative(root, path);
+  if (
+    !local ||
+    local === ".." ||
+    local.startsWith(`..${sep}`) ||
+    isAbsolute(local) ||
+    !(await exists(path))
+  )
+    throw error(
+      mode === "dev" ? "dev-entry-missing" : "invalid-build-entry",
+      `${mode === "dev" ? "Development" : "Build"} entry must exist inside application root.`,
+      plugin,
+      source,
+      mode === "dev" ? "engine-dev" : "build",
+    );
+  return path;
 }
 /** Static imports are invalidation inputs, not discovery of application services. */
 async function importInputs(entry: string, inputs: Set<string>, root: string): Promise<void> {
@@ -240,11 +266,16 @@ export class EngineSession {
   private conventionValue?: EngineConvention;
   private sourceFiles: readonly string[] = [];
   readonly configPath: string;
+  readonly root: string;
+  private readonly configOverride?: string;
   target = "bun";
   constructor(
-    readonly root: string,
+    target: string | ApplicationTarget,
     readonly mode: EngineMode,
   ) {
+    const { root, config } = resolveApplicationTarget(target);
+    this.root = root;
+    this.configOverride = config;
     this.configPath = join(root, "lenso.engine.ts");
   }
   private async run<T>(capability: Capability, phase: string, ...args: unknown[]): Promise<T> {
@@ -508,12 +539,14 @@ export class EngineSession {
   private async performDiscovery(): Promise<EngineSnapshot> {
     const capability = this.capabilities.get("convention:app");
     if (!capability) throw this.stateError("engine-discovery");
-    const convention = await this.run<EngineConvention>(capability, "engine-discovery");
+    const declared = await this.run<EngineConvention>(capability, "engine-discovery");
+    const convention =
+      this.configOverride === undefined ? declared : { ...declared, config: this.configOverride };
     try {
       if (
-        !convention ||
-        typeof convention.config !== "string" ||
-        [convention.entry, convention.router].some(
+        !declared ||
+        typeof declared.config !== "string" ||
+        [declared.entry, declared.router].some(
           (path) => path !== undefined && typeof path !== "string",
         )
       )
@@ -767,16 +800,13 @@ export class EngineSession {
       );
     const hook = this.capabilities.get(key);
     if (!hook) throw unavailable();
-    const chosen = entry ?? this.conventionValue!.entry ?? ".lenso/server.ts";
-    const entryPath = resolve(this.root, chosen);
-    if (relative(this.root, entryPath).startsWith("..") || !(await exists(entryPath)))
-      throw error(
-        "invalid-build-entry",
-        "Build entry must exist inside application root.",
-        hook.plugin,
-        hook.source,
-        "build",
-      );
+    const entryPath = await checkedEntry(
+      this.root,
+      entry ?? this.conventionValue!.entry ?? ".lenso/server.ts",
+      "build",
+      hook.plugin,
+      hook.source,
+    );
     const context = Object.freeze<BuildContext>({
       ...this.snapshot(),
       entry: entryPath,

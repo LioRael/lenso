@@ -266,6 +266,37 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
     await run(consumer, ["run", "tsc", "-p", "tsconfig.json"]);
     await Bun.write(joinPath(consumer, "verify.ts"), `await (${verifyConsumer.toString()})();`);
     expect(await run(consumer, ["verify.ts"])).toContain("packaged consumer verified");
+    await run(consumer, [
+      "-e",
+      `import assert from "node:assert/strict";
+      for (const name of ["@lenso/core","@lenso/engine","@lenso/cli","@lenso/web"])
+        assert.equal(Bun.resolveSync(name, process.cwd()).endsWith("/dist/index.js"), true);`,
+    ]);
+    await run(consumer, [
+      "run",
+      "tsc",
+      "-p",
+      "tsconfig.json",
+      "--customConditions",
+      "lenso-source",
+    ]);
+    await run(consumer, [
+      "--conditions=lenso-source",
+      "-e",
+      `import assert from "node:assert/strict";
+      for (const name of ["@lenso/core","@lenso/engine","@lenso/cli","@lenso/web"]) {
+        const directory = process.cwd() + "/node_modules/" + name;
+        const manifest = await Bun.file(directory + "/package.json").json();
+        for (const [subpath, entry] of Object.entries(manifest.exports)) {
+          if (!entry || typeof entry !== "object" || !("lenso-source" in entry)) continue;
+          const specifier = name + (subpath === "." ? "" : subpath.slice(1));
+          const resolved = Bun.resolveSync(specifier, process.cwd());
+          assert.equal(resolved, directory + "/" + entry["lenso-source"].slice(2));
+          assert.equal(await Bun.file(resolved).exists(), true);
+          if (subpath !== "./dev-worker") await import(specifier);
+        }
+      }`,
+    ]);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }

@@ -2,6 +2,34 @@
 
 Use `lenso help --json` for current commands, flags, side effects and exit codes. Finite commands support one `schemaVersion: 1` envelope on stdout: `{ok:true,data}` or `{ok:false,error}`. Logs use stderr. Exit 0 means success, 2 arguments/input failure, 3 discovery/assembly failure, 1 runtime/build/output failure. `dev --json` is unsupported; its human lifecycle is managed separately. For custom entry readiness, use `reportDevReady` from `@lenso/engine/dev-ready` after successful startup.
 
+## Select an application
+
+`--root <directory>` remains the starting directory (cwd by default).
+`--app <directory>` explicitly selects an application directory inside that root;
+it is a directory, not a business registry key. Config, entry, `.lenso`, `dist`
+and Engine config are then relative to the selected application root.
+
+All application commands accept `--config <file>` to override the application
+config. For example, `lenso inspect --root ./project --app apps/server --config app.ts --json`
+reads `project/apps/server/app.ts` directly, without a canonical re-export.
+`inspect` and `call` never import `lenso.engine.ts`; when no override is supplied,
+they read `lenso.config.ts`. Engine commands use explicit config first, then their
+active convention's config. `--entry` overrides `convention.entry` for both build
+and dev. Without either, dev retains `src/server.ts`; build uses `.lenso/server.ts`.
+Entries must exist inside selected root, using the same lexical containment check
+for build and dev. These checks are host policy, not a sandbox or a prohibition
+on arbitrary filesystem/process access by trusted application code.
+
+When root has no canonical config and no explicit selection, the CLI may inspect
+only directories matched by its explicit `package.json` workspaces declarations
+for `lenso.config.ts`. It returns sorted `details.candidates` with
+`ambiguous-application-target` (multiple candidates) or `missing-application-selection`
+(zero or one). It never picks the first or imports candidate/Engine config.
+Select with `--app`, or pass an explicit `--root`/`--config`. Discovery only helps
+choose a trusted application; it grants no authorization and starts no resources.
+Programmatic callers need no workspace container: Engine and CLI APIs accept the
+existing root string or shared `ApplicationTarget` (`{root, config?}`).
+
 ## Declare existing service operations
 
 The trusted `lenso.config.ts` default export is `defineApp({plugins})`. An optional named export `operations` is the CLI allowlist; the default export must not contain `operations`. Reuse the application's existing schema and service; do not implement another business handler. For example:
@@ -96,10 +124,12 @@ No listener, scope/audience credential issuance or authorization shortcut is sup
 
 ## Short feedback path
 
-1. Build changed framework packages so exports resolve current dist; use package.json for scripts.
+1. Choose one consistent resolution path. Default consumers require rebuilt framework `dist`; use package.json for scripts. Same-repository Bun development can instead run `bun --conditions=lenso-source packages/cli/src/bin.ts ...` to use current core/Engine/CLI/Web source without rebuilding those packages. Add `"customConditions": ["lenso-source"]` to the consumer tsconfig (`moduleResolution: "Bundler"` or `"NodeNext"` with a compatible `module`) for matching types. Other packages still require built `dist`; this does not change default published JS/declaration exports.
 2. Inspect the operation, then change its shared schema or service source.
 3. Run the app's typecheck and a focused test. Invoke with `--input-file <path>` or `--stdin` to avoid secrets in shell history; inline JSON remains available for nonsensitive input.
 4. If an already owned HTTP server is relevant, verify its typed client too. Use only owned ports/processes.
+
+For example, run `bun --conditions=lenso-source packages/cli/src/bin.ts inspect greeting greet --root examples/greeting --json`, then pipe nonsensitive input to `bun --conditions=lenso-source packages/cli/src/bin.ts call greeting greet --root examples/greeting --stdin --json`. The same flag works with `dev` and is forwarded to Engine/application subprocesses. Source exports are shipped, but require a TypeScript-capable runtime or bundler; browser clients must still select browser-safe subexports (`@lenso/core/browser`, `@lenso/web/client`, `@lenso/web/openapi-client`).
 
 SDK lifetime is serial setup and synchronous cleanup registration, global LIFO sequential cleanup, startup rollback and aggregated cleanup failures. `onCleanup` returns an async disposer sharing one completion with shutdown, even after early failure. `stop()` caches one Promise even on failure. Original setup/cleanup errors keep their identity; `lifecycleFailure(error)` adds attribution for object errors without mutating them. Primitive thrown values have only the containing phase. Cancellation, request drain and detached task ownership remain the host/application's responsibility. A finalizer must not await its own disposer or its app's stop Promise.
 
@@ -169,6 +199,6 @@ collect that stream once rather than also exporting it through an OTel log SDK.
 
 ## Generated ownership
 
-`generate` writes `.lenso/manifest.json`, `server.ts` and `client.ts` by default. Build plugins can add owned files; the command reports their paths from `.lenso/.engine-files.json`. Conflicting owners, edited outputs and path/symlink escapes fail before overwriting files. See [Engine authoring](../packages/engine/README.md) for `lenso.engine.ts`, discovery/generation hooks, explicit capability replacement and custom build targets. Manifest schemaVersion is 1, contains plugin/dependency and operation descriptions, and identifies `lenso.config.ts` as source. Keys are sorted; unchanged bytes are not rewritten. Missing router produces an empty client entry, removing stale imports. Metadata must be plain JSON and contain no secrets; sensitive fields are redacted. No timestamps or setup results enter generated output. Determinism depends on deterministic config metadata; import-time randomness, environment-sensitive declarations and module caches remain app-owned constraints. A new CLI process loads current source; repeated in-process discovery follows normal module caching. Edit source/config, then regenerate; do not hand-edit generated files.
+`generate` writes `.lenso/manifest.json`, `server.ts` and `client.ts` by default. Build plugins can add owned files; the command reports their paths from `.lenso/.engine-files.json`. Conflicting owners, edited outputs and path/symlink escapes fail before overwriting files. See [Engine authoring](../packages/engine/README.md) for `lenso.engine.ts`, discovery/generation hooks, explicit capability replacement and custom build targets. Manifest schemaVersion is 1, contains plugin/dependency and operation descriptions, and identifies the selected config as source. Keys are sorted; unchanged bytes are not rewritten. Missing router produces an empty client entry, removing stale imports. Metadata must be plain JSON and contain no secrets; sensitive fields are redacted. No timestamps or setup results enter generated output. Determinism depends on deterministic config metadata; import-time randomness, environment-sensitive declarations and module caches remain app-owned constraints. A new CLI process loads current source; repeated in-process discovery follows normal module caching. Edit source/config, then regenerate; do not hand-edit generated files.
 
-Engine setup is build-time trusted code: check/generate/build execute it, while inspect/call read canonical `lenso.config.ts` and never load Engine config. Dev runs generation and beforeStart in a fresh supervised worker, then executes ready hooks only after the application IPC signal. It stops the runtime before awaiting Engine LIFO cleanup on restart or shutdown. Static imports and explicit existing file/directory watches invalidate the next cycle; generated/cache paths are excluded. Dynamic reads require `context.watch`. Dev entry is `--entry` or `src/server.ts`; build convention entry only affects build. Worker startup is limited to 30 seconds and shutdown to 5 seconds; forced termination reports a diagnostic.
+Engine setup is build-time trusted code: check/generate/build execute it, while inspect/call read only the selected application config and never load Engine config. Dev runs generation and beforeStart in a fresh supervised worker, passing the explicit config and entry overrides through that worker. The worker's active convention supplies the entry when none is explicit. Ready hooks execute only after the application IPC signal. Dev stops the runtime before awaiting Engine LIFO cleanup on restart or shutdown. Static imports and explicit existing file/directory watches invalidate the next cycle; generated/cache paths are excluded. Dynamic reads require `context.watch`. Worker startup is limited to 30 seconds and shutdown to 5 seconds; forced termination reports a diagnostic.

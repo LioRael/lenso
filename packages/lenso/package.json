@@ -8,31 +8,39 @@
     "directory": "packages/lenso"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "type": "module",
   "exports": {
+    "./package.json": "./package.json",
     ".": {
+      "lenso-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./plugin": {
+      "lenso-source": "./src/plugin.ts",
       "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js"
     },
     "./browser": {
+      "lenso-source": "./src/browser.ts",
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js"
     },
     "./config": {
+      "lenso-source": "./src/config.ts",
       "types": "./dist/config.d.ts",
       "import": "./dist/config.js"
     },
     "./config/env": {
+      "lenso-source": "./src/config-env.ts",
       "types": "./dist/config-env.d.ts",
       "import": "./dist/config-env.js"
     },
     "./config/file": {
+      "lenso-source": "./src/config-file.ts",
       "types": "./dist/config-file.d.ts",
       "import": "./dist/config-file.js"
     }

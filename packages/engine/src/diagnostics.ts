@@ -101,7 +101,18 @@ function safeDetail(
       result.details = { paths: safePaths(Reflect.get(details, "paths")) };
     else if (detail.code === "invalid-plugin")
       result.details = { path: safePaths([Reflect.get(details, "path")])[0] ?? [] };
-    else if (detail.phase === "config" && configDetailCodes.has(detail.code))
+    else if (
+      ["ambiguous-application-target", "missing-application-selection"].includes(detail.code)
+    ) {
+      const candidates = Reflect.get(details, "candidates");
+      if (Array.isArray(candidates))
+        result.details = {
+          candidates: candidates
+            .filter((path) => typeof path === "string")
+            .slice(0, diagnosticLimit)
+            .map((path) => path.slice(0, 1024)),
+        };
+    } else if (detail.phase === "config" && configDetailCodes.has(detail.code))
       result.details = {
         ...(safePaths([Reflect.get(details, "path")])[0]
           ? { path: safePaths([Reflect.get(details, "path")])[0] }

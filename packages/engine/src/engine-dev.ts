@@ -1,27 +1,44 @@
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { EngineError, type EngineDiagnostic } from "./diagnostics";
+import { resolveApplicationTarget, type ApplicationTarget } from "./application";
 
 export interface EngineDevCycle {
   readonly watchFiles: readonly string[];
+  readonly entry: string;
   ready(): Promise<void>;
   close(): Promise<void>;
 }
 
+export function devConditionArgs(args: readonly string[] = process.execArgv): string[] {
+  return args.filter(
+    (arg, index) =>
+      arg.startsWith("--conditions=") ||
+      arg === "--conditions" ||
+      args[index - 1] === "--conditions",
+  );
+}
+
 /** Each cycle imports a fresh config/dependency graph and owns its build resources. */
-export async function startEngineDevCycle(root: string): Promise<EngineDevCycle> {
+export async function startEngineDevCycle(
+  target: string | ApplicationTarget,
+  entry?: string,
+): Promise<EngineDevCycle> {
+  const { root, config } = resolveApplicationTarget(target);
   const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
   // Bundled embedders relocate import.meta.url; the owned worker stays in its installed package.
   const workerPath =
     extension === "ts"
       ? fileURLToPath(new URL("./engine-dev-worker.ts", import.meta.url))
       : Bun.resolveSync("@lenso/engine/dev-worker", import.meta.dir);
-  let resolvePrepared!: (paths: readonly string[]) => void;
+  let resolvePrepared!: (value: { watchFiles: readonly string[]; entry: string }) => void;
   let rejectPrepared!: (error: unknown) => void;
-  const prepared = new Promise<readonly string[]>((complete, reject) => {
-    resolvePrepared = complete;
-    rejectPrepared = reject;
-  });
+  const prepared = new Promise<{ watchFiles: readonly string[]; entry: string }>(
+    (complete, reject) => {
+      resolvePrepared = complete;
+      rejectPrepared = reject;
+    },
+  );
   let failure: EngineError | undefined;
   let stopped = false;
   let closing: Promise<void> | undefined;
@@ -33,29 +50,34 @@ export async function startEngineDevCycle(root: string): Promise<EngineDevCycle>
     for (const request of pending.values()) request.reject(error);
     pending.clear();
   };
-  const child = Bun.spawn([process.execPath, workerPath, resolve(root)], {
-    cwd: resolve(root),
-    stdout: "ignore",
-    stderr: "inherit",
-    ipc(message: unknown) {
-      if (!message || typeof message !== "object" || !("type" in message)) return;
-      if (
-        message.type === "prepared" &&
-        "watchFiles" in message &&
-        Array.isArray(message.watchFiles) &&
-        message.watchFiles.every((path) => typeof path === "string")
-      )
-        resolvePrepared(message.watchFiles);
-      if (message.type === "closed") stopped = true;
-      if (message.type === "failed" && "error" in message) {
-        failed(new EngineError(message.error as EngineDiagnostic));
-      }
-      if (message.type === "ack" && "id" in message && typeof message.id === "number") {
-        pending.get(message.id)?.resolve();
-        pending.delete(message.id);
-      }
+  const child = Bun.spawn(
+    [process.execPath, ...devConditionArgs(), workerPath, root, JSON.stringify({ config, entry })],
+    {
+      cwd: resolve(root),
+      stdout: "ignore",
+      stderr: "inherit",
+      ipc(message: unknown) {
+        if (!message || typeof message !== "object" || !("type" in message)) return;
+        if (
+          message.type === "prepared" &&
+          "watchFiles" in message &&
+          Array.isArray(message.watchFiles) &&
+          message.watchFiles.every((path) => typeof path === "string") &&
+          "entry" in message &&
+          typeof message.entry === "string"
+        )
+          resolvePrepared({ watchFiles: message.watchFiles, entry: message.entry });
+        if (message.type === "closed") stopped = true;
+        if (message.type === "failed" && "error" in message) {
+          failed(new EngineError(message.error as EngineDiagnostic));
+        }
+        if (message.type === "ack" && "id" in message && typeof message.id === "number") {
+          pending.get(message.id)?.resolve();
+          pending.delete(message.id);
+        }
+      },
     },
-  });
+  );
   void child.exited.then((code) => {
     if ((!stopped || code !== 0) && !failure)
       failed(
@@ -102,9 +124,10 @@ export async function startEngineDevCycle(root: string): Promise<EngineDevCycle>
     );
   }, 30000);
   try {
-    const watchFiles = await prepared;
+    const { watchFiles, entry: chosenEntry } = await prepared;
     return Object.freeze({
       watchFiles: Object.freeze([...watchFiles]),
+      entry: chosenEntry,
       ready() {
         if (failure) return Promise.reject(failure);
         if (closing || child.exitCode !== null)

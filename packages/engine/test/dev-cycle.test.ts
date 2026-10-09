@@ -2,8 +2,22 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { startEngineDevCycle } from "../src/engine-dev";
+import { devConditionArgs, startEngineDevCycle } from "../src/engine-dev";
 import { diagnostic } from "../src/diagnostics";
+
+test("dev children inherit only custom condition flags, not eval or preload arguments", () => {
+  expect(
+    devConditionArgs([
+      "--preload",
+      "./telemetry.ts",
+      "--conditions=lenso-source",
+      "--conditions",
+      "another-condition",
+      "-e",
+      "throw Error('parent only')",
+    ]),
+  ).toEqual(["--conditions=lenso-source", "--conditions", "another-condition"]);
+});
 
 const directories: string[] = [];
 afterEach(async () => {

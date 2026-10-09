@@ -1,4 +1,5 @@
 import { access } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { validatePlugins, type Contribution, type Logger, type Plugin } from "@lenso/core";
 import { EngineError, diagnostic } from "./diagnostics";
@@ -6,6 +7,41 @@ import { validateOperations, type Operation, type OperationBinding } from "./ope
 import type { describePluginConfig } from "./configuration";
 
 export type { OperationBinding } from "./operations";
+
+/** A trusted application's root, with an optional config path relative to that root. */
+export interface ApplicationTarget {
+  readonly root: string;
+  readonly config?: string;
+}
+
+export function resolveApplicationTarget(target: string | ApplicationTarget): ApplicationTarget {
+  return typeof target === "string"
+    ? { root: resolve(target) }
+    : {
+        root: resolve(target.root),
+        ...(target.config === undefined ? {} : { config: target.config }),
+      };
+}
+
+export function applicationConfigPath(target: string | ApplicationTarget): string {
+  const { root, config } = resolveApplicationTarget(target);
+  const path = resolve(root, config ?? "lenso.config.ts");
+  const local = relative(root, path);
+  if (
+    !local ||
+    local === ".." ||
+    local.startsWith(`..${sep}`) ||
+    isAbsolute(local) ||
+    [".lenso", "dist"].includes(local.split(sep)[0]!)
+  )
+    throw new EngineError({
+      code: "invalid-application-target",
+      phase: "discovery",
+      message: "Application config must be a file inside application root.",
+      source: { file: path },
+    });
+  return path;
+}
 
 export interface AppDefinition<O extends Operation = Operation> {
   readonly instanceId?: string;

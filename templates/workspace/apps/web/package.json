@@ -1,0 +1,12 @@
+{
+  "name": "@app/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/client.ts --target browser --outdir dist"
+  },
+  "dependencies": {
+    "@app/server": "workspace:*",
+    "@lenso/web": "file:../../vendor/lenso-web.tgz"
+  }
+}

@@ -2,6 +2,7 @@ export { createEngineSession, discover, generate, build, type PreparedEngine } f
 export { EngineSession, withEngine } from "./engine-host";
 export {
   readApplication,
+  type ApplicationTarget,
   type AppDefinition,
   type Discovery,
   type PluginManifest,

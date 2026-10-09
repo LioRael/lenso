@@ -9,31 +9,38 @@
   },
   "files": [
     "dist",
+    "src",
     "README.md"
   ],
   "type": "module",
   "exports": {
     ".": {
+      "lenso-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./client": {
+      "lenso-source": "./src/client.ts",
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"
     },
     "./bun": {
+      "lenso-source": "./src/bun.ts",
       "types": "./dist/bun.d.ts",
       "default": "./dist/bun.js"
     },
     "./openapi": {
+      "lenso-source": "./src/openapi.ts",
       "types": "./dist/openapi.d.ts",
       "default": "./dist/openapi.js"
     },
     "./problem-details": {
+      "lenso-source": "./src/problem-details.ts",
       "types": "./dist/problem-details.d.ts",
       "default": "./dist/problem-details.js"
     },
     "./openapi-client": {
+      "lenso-source": "./src/openapi-client.ts",
       "types": "./dist/openapi-client.d.ts",
       "default": "./dist/openapi-client.js"
     }

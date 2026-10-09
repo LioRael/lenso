@@ -1,6 +1,10 @@
-import { join, resolve } from "node:path";
 import { startApp } from "@lenso/core";
-import { readApplication } from "@lenso/engine/application";
+import {
+  readApplication,
+  resolveApplicationTarget,
+  applicationConfigPath,
+  type ApplicationTarget,
+} from "@lenso/engine/application";
 import { EngineError } from "@lenso/engine/diagnostics";
 import { describePluginConfig } from "@lenso/engine";
 import {
@@ -110,31 +114,31 @@ export async function invoke<O extends Operation>(
 }
 
 export async function call(
-  root: string,
+  target: string | ApplicationTarget,
   pluginId: string,
   method: string,
   input: unknown,
 ): Promise<unknown> {
-  const directory = resolve(root);
-  const { app } = await readApplication(directory, join(directory, "lenso.config.ts"));
+  const { root } = resolveApplicationTarget(target);
+  const configPath = applicationConfigPath(target);
+  const { app } = await readApplication(root, configPath);
   try {
     return await invoke(app, pluginId, method, input);
   } catch (cause) {
-    throw new CliError(
-      diagnostic(cause, { source: { file: join(resolve(root), "lenso.config.ts") } }),
-      exitCode(cause),
-      { cause },
-    );
+    throw new CliError(diagnostic(cause, { source: { file: configPath } }), exitCode(cause), {
+      cause,
+    });
   }
 }
 
 /** Imports trusted config but never runs setup or discovers methods by reflection. */
-export async function inspect(root = process.cwd(), pluginId?: string, method?: string) {
-  const directory = resolve(root);
-  const { app, ordered, configPath } = await readApplication(
-    directory,
-    join(directory, "lenso.config.ts"),
-  );
+export async function inspect(
+  target: string | ApplicationTarget = process.cwd(),
+  pluginId?: string,
+  method?: string,
+) {
+  const { root } = resolveApplicationTarget(target);
+  const { app, ordered, configPath } = await readApplication(root, applicationConfigPath(target));
   if (pluginId && !ordered.some((plugin) => plugin.id === pluginId))
     throw new CliError(
       {
