@@ -1,5 +1,14 @@
 # @lenso/scheduler
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @lenso/core@0.3.0
+  - @lenso/auth@0.3.1
+  - @lenso/tasks@0.3.1
+
 ## 0.2.0
 
 ### Minor Changes
