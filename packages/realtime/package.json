@@ -1,0 +1,55 @@
+{
+  "name": "@lenso/realtime",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/realtime"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "examples"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./memory": {
+      "types": "./dist/memory.d.ts",
+      "import": "./dist/memory.js"
+    },
+    "./redis": {
+      "types": "./dist/redis.d.ts",
+      "import": "./dist/redis.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    }
+  },
+  "scripts": {
+    "build": "bun -e \"await import('node:fs/promises').then(({rm}) => rm('dist', {recursive:true, force:true}))\" && bun build src/index.ts src/memory.ts src/plugin.ts --root src --outdir dist --target browser --packages external --splitting && bun build src/redis.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test",
+    "test:redis": "bun test integration/redis.test.ts",
+    "measure": "BUN_CONFIG_MAX_HTTP_REQUESTS=1024 bun scripts/measure.ts"
+  },
+  "devDependencies": {
+    "@lenso/core": "workspace:^",
+    "@lenso/web": "workspace:^",
+    "@lenso/workers": "workspace:^",
+    "@orpc/server": "2.0.0-beta.42"
+  },
+  "peerDependencies": {
+    "@lenso/core": "^0.2.1"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/core": {
+      "optional": true
+    }
+  }
+}
