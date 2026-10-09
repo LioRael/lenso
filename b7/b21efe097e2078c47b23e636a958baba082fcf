@@ -1,0 +1,14 @@
+examples/notes/test/notes.test.ts
+  h_9d56aba080c170 8,90-94,349-353
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b7b21efe097e2078c47b23e636a958baba082fcf",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

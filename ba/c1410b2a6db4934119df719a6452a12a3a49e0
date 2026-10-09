@@ -1,0 +1,66 @@
+bun.lock
+  h_9d56aba080c170 106,128,148,157,166,174,183,206,219,247,274,291,307
+packages/auth/CHANGELOG.md
+  h_9d56aba080c170 1-22
+packages/auth/package.json
+  h_9d56aba080c170 3,76
+packages/cli/CHANGELOG.md
+  h_9d56aba080c170 1-29
+packages/cli/package.json
+  h_9d56aba080c170 3
+packages/db/CHANGELOG.md
+  h_9d56aba080c170 1-9
+packages/db/package.json
+  h_9d56aba080c170 3
+packages/engine/CHANGELOG.md
+  h_9d56aba080c170 1-27
+packages/engine/package.json
+  h_9d56aba080c170 3
+packages/lenso/CHANGELOG.md
+  h_9d56aba080c170 1-20
+packages/lenso/package.json
+  h_9d56aba080c170 3
+packages/log/CHANGELOG.md
+  h_9d56aba080c170 1-16
+packages/log/package.json
+  h_9d56aba080c170 3
+packages/manage/CHANGELOG.md
+  h_9d56aba080c170 1-16
+packages/manage/package.json
+  h_9d56aba080c170 3,46
+packages/mcp/CHANGELOG.md
+  h_9d56aba080c170 1-15
+packages/mcp/package.json
+  h_9d56aba080c170 3
+packages/otel/CHANGELOG.md
+  h_9d56aba080c170 1-16
+packages/otel/package.json
+  h_9d56aba080c170 3
+packages/storage/CHANGELOG.md
+  h_9d56aba080c170 1-9
+packages/storage/package.json
+  h_9d56aba080c170 3
+packages/tasks/CHANGELOG.md
+  h_9d56aba080c170 1-22
+packages/tasks/package.json
+  h_9d56aba080c170 3
+packages/web/CHANGELOG.md
+  h_9d56aba080c170 1-23
+packages/web/package.json
+  h_9d56aba080c170 3
+packages/workers/CHANGELOG.md
+  h_9d56aba080c170 1-26
+packages/workers/package.json
+  h_9d56aba080c170 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bac1410b2a6db4934119df719a6452a12a3a49e0",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
