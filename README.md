@@ -28,7 +28,7 @@ CLI and Web reuse the same input schema and service. Each CLI call starts a fres
 | `@lenso/core` | `definePlugin`, `defineApp`, validation, Promise lifecycle | API example below |
 | `@lenso/engine` | typed discovery, generation, extensible build targets and dev scheduling | [Engine API and plugins](packages/engine/README.md) |
 | `@lenso/cli` | command parsing, explicit service calls, terminal presentation and exit codes | [CLI contracts](docs/CLI.md), [development output](packages/cli/README.md) |
-| `@lenso/mcp` | optional local stdio exposure of declared, allowlisted operations | [MCP contracts and limits](packages/mcp/README.md) |
+| `@lenso/mcp` | optional stdio and authenticated Fetch MCP over explicit operations and a borrowed app | [MCP contracts and limits](packages/mcp/README.md) |
 | `@lenso/web` | Fetch, oRPC and streaming request ownership | [Web API](packages/web/README.md) |
 | `@lenso/auth` | provider adapters, typed middleware and shared service authorization | [Auth API](packages/auth/README.md) |
 | `@lenso/db` | native Drizzle PostgreSQL, Bun SQLite and D1 resources | [Database and Notes](docs/DATABASE.md) |
@@ -97,7 +97,7 @@ prove that newer configuration, listener or observability entries are present.
 | Plugin dependencies and resource ownership | `@lenso/core` | [Core API](#core-api), [greeting plugin](examples/greeting/src/greeting.ts) | Exact instance bindings; ordinary async services |
 | Validated instance configuration | `@lenso/core/config`, `/config/env`, `/config/file` | [Configuration](#instance-configuration), [Notes configuration](examples/notes/CONFIGURATION.md) | File adapter is local-host only; no config center, subscriptions or hot reload |
 | Declare CLI operations or extend build/dev | `@lenso/cli`, `@lenso/engine/authoring` | [CLI](docs/CLI.md), [Engine](packages/engine/README.md), [Notes operations](examples/notes/src/operations.ts) | Bun build host; `inspect` imports trusted code, `call` starts a fresh app |
-| Expose stdio operations to a runtime agent | `@lenso/mcp` `serveStdio` | [MCP](packages/mcp/README.md), [Tasks entry](examples/tasks/src/mcp.ts) | Local Bun stdio, independent declaration selection and launch allowlist, convertible object input; no remote auth |
+| Expose MCP operations to a runtime agent | `@lenso/mcp` `serveStdio`, `serveBorrowedStdio`, `createHttpMcp` | [MCP](packages/mcp/README.md), [borrowed host](examples/mcp-host/README.md) | Local stdio remains available; optional HTTP borrows a running app and requires a host verifier/current business authorization; no automatic listener |
 | Select capabilities or mount agent/HTTP management | `@lenso/manage`, `/agent`, `/orpc` | [Manage](packages/manage/README.md), [Notes declarations](examples/notes/src/operations.ts) | Exact instance; borrowed running app; current-identity admission and trusted per-call binding; no automatic mounts or durable receipts |
 | Web and verified service identity | `@lenso/web`, `@lenso/web/bun`, selected `@lenso/auth` entries | [Web](packages/web/README.md), [Auth](packages/auth/README.md), [shared Notes assembly](examples/notes/src/application.ts), [Notes server](examples/notes/src/server.ts) | Bun listener is separate from Fetch; Auth does not install login routes |
 | Database, files and durable tasks | Selected `@lenso/db`, `@lenso/storage`, `@lenso/tasks` entries | [Database](docs/DATABASE.md), [Files](packages/storage/README.md), [Tasks](examples/tasks/README.md) | Bun SQL/SQLite versus Workers D1/R2; shipped durable task provider is PostgreSQL |

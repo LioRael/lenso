@@ -90,9 +90,9 @@ to a tool. A stdio process uses its launch identity; it does not authenticate a
 different remote user per request. Keep credentials in the trusted environment,
 not arguments, schemas or discovery metadata. The optional
 [`@lenso/mcp`](../packages/mcp/README.md) adapter adds a fixed operation allowlist,
-not elevated authority. Remote ingress requires its own verified authentication
-and the same service policies; no remote MCP listener, scope/audience credential
-issuance or authorization shortcut is supplied.
+not elevated authority. Its opt-in HTTP Fetch entry borrows a running app and
+requires host-injected verified authentication plus the same service policies.
+No listener, scope/audience credential issuance or authorization shortcut is supplied.
 
 ## Short feedback path
 

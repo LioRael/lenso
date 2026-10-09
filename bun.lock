@@ -34,6 +34,18 @@
         "@orpc/opentelemetry": "2.0.0-beta.42",
       },
     },
+    "examples/mcp-host": {
+      "name": "@lenso/example-mcp-host",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lenso/core": "workspace:^",
+        "@lenso/engine": "workspace:^",
+        "@lenso/manage": "workspace:^",
+        "@lenso/mcp": "workspace:^",
+        "@modelcontextprotocol/sdk": "1.32.1",
+        "zod": "4.6.5",
+      },
+    },
     "examples/notes": {
       "name": "@lenso/example-notes",
       "version": "0.1.0",
@@ -335,12 +347,11 @@
       "version": "0.2.1",
       "dependencies": {
         "@lenso/cli": "workspace:^",
+        "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
+        "@lenso/manage": "workspace:^",
         "@modelcontextprotocol/sdk": "1.32.1",
         "zod": "4.6.5",
-      },
-      "devDependencies": {
-        "@lenso/core": "workspace:^",
       },
     },
     "packages/media": {
@@ -908,6 +919,8 @@
     "@lenso/engine": ["@lenso/engine@workspace:packages/engine"],
 
     "@lenso/example-greeting": ["@lenso/example-greeting@workspace:examples/greeting"],
+
+    "@lenso/example-mcp-host": ["@lenso/example-mcp-host@workspace:examples/mcp-host"],
 
     "@lenso/example-notes": ["@lenso/example-notes@workspace:examples/notes"],
 
