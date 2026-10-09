@@ -410,7 +410,7 @@ test("aborted gate waits prevent dispatch, but in-flight cancellation does not r
   async function cancelled(result: Promise<unknown>) {
     const error = await result.catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(EngineError);
-    expect(((error as Error).cause as Error).cause).toBe(reason);
+    expect((error as Error).cause).toBe(reason);
     expect(JSON.stringify(diagnostic(error))).not.toContain(reason.message);
   }
   try {
@@ -504,19 +504,17 @@ test("Manage retains Auth cause identity for trusted entries without exposing pr
         throw denied;
       },
     });
-    for (const [action, depth] of [
-      [() => adapter.invoke("denied", "read", { tenantId: "north" }), 2],
-      [() => policyFailure.catalog(), 1],
-      [() => policyFailure.invoke("denied", "read", { tenantId: "north" }), 1],
-    ] as const) {
+    for (const action of [
+      () => adapter.invoke("denied", "read", { tenantId: "north" }),
+      () => policyFailure.catalog(),
+      () => policyFailure.invoke("denied", "read", { tenantId: "north" }),
+    ]) {
       try {
         await action();
         throw new Error("Expected authentication failure");
       } catch (error) {
         expect(error).toBeInstanceOf(EngineError);
-        let cause: unknown = error;
-        for (let index = 0; index < depth; index++) cause = (cause as Error).cause;
-        expect(cause).toBe(denied);
+        expect((error as Error).cause).toBe(denied);
         expect(String(error)).not.toContain(denied.message);
         expect(JSON.stringify(diagnostic(error))).not.toContain(denied.message);
       }
