@@ -10,35 +10,45 @@
   },
   "files": [
     "dist",
+    "src",
     "README.md"
   ],
   "type": "module",
   "exports": {
     ".": {
+      "lenso-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./authoring": {
+      "lenso-source": "./src/engine-authoring.ts",
       "types": "./dist/engine-authoring.d.ts",
       "import": "./dist/engine-authoring.js"
     },
     "./application": {
+      "lenso-source": "./src/application.ts",
       "types": "./dist/application.d.ts",
       "import": "./dist/application.js"
     },
     "./operations": {
+      "lenso-source": "./src/operations.ts",
       "types": "./dist/operations.d.ts",
       "import": "./dist/operations.js"
     },
     "./diagnostics": {
+      "lenso-source": "./src/diagnostics.ts",
       "types": "./dist/diagnostics.d.ts",
       "import": "./dist/diagnostics.js"
     },
     "./dev-ready": {
+      "lenso-source": "./src/dev-ready.ts",
       "types": "./dist/dev-ready.d.ts",
       "import": "./dist/dev-ready.js"
     },
-    "./dev-worker": "./dist/engine-dev-worker.js"
+    "./dev-worker": {
+      "lenso-source": "./src/engine-dev-worker.ts",
+      "default": "./dist/engine-dev-worker.js"
+    }
   },
   "scripts": {
     "build": "rm -rf dist && bun build src/index.ts src/engine-authoring.ts src/application.ts src/operations.ts src/diagnostics.ts src/dev-ready.ts src/engine-dev-worker.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",

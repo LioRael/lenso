@@ -1,21 +1,9 @@
 import { startApp } from "@lenso/core";
-import { envSource } from "@lenso/core/config/env";
 import { createWebPlugin } from "@lenso/web";
 import { createBunListenerPlugin } from "@lenso/web/bun";
 import { reportDevReady } from "@lenso/engine/dev-ready";
-import { createGreetingPlugin } from "./greeting";
-import { createRouter } from "./router";
-
-export { greetingInput, createGreetingService } from "./greeting";
-export type { AppRouter, AppClient } from "./router";
-
-export const greeting = createGreetingPlugin([
-  envSource({
-    id: "greeting-env",
-    read: (name) => process.env[name],
-    bindings: { prefix: { name: "GREETING_PREFIX" } },
-  }),
-]);
+import { greeting } from "../src/application";
+import { createRouter } from "../src/router";
 
 export async function startServer(port = 3000) {
   const web = createWebPlugin({

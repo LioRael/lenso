@@ -10,6 +10,8 @@
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^build"] },
+    "@lenso/engine#typecheck": { "dependsOn": ["build"] },
+    "@lenso/engine#test": { "dependsOn": ["build"], "cache": false },
     "@lenso/cli#typecheck": { "dependsOn": ["build"] },
     "@lenso/cli#test": {
       "dependsOn": ["build", "@lenso/mcp#build", "@lenso/workers#build"],

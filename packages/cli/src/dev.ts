@@ -4,6 +4,7 @@ import { diagnostic } from "./diagnostics";
 
 interface DevOptions {
   root: string;
+  config?: string;
   entry?: string;
   presentation?: DevPresentation;
 }
@@ -25,6 +26,7 @@ export async function dev(options: DevOptions): Promise<void> {
   try {
     supervisor = await createDevSupervisor({
       root: options.root,
+      config: options.config,
       entry: options.entry,
       onEvent(event) {
         switch (event.type) {

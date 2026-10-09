@@ -1,5 +1,6 @@
 export { call, invoke, inspect, type AppDefinition } from "./engine";
 export { dev } from "./dev";
+export type { ApplicationTarget } from "@lenso/engine/application";
 export { defineOperation, type Operation } from "./operations";
 export type {
   OperationBinding,

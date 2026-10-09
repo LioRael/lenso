@@ -1,0 +1,31 @@
+{
+  "name": "lenso-app-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "plugins/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "lenso dev --app apps/server",
+    "call": "lenso call greeting greet --app apps/server",
+    "generate": "lenso generate --app apps/server",
+    "build": "lenso build --app apps/server && bun run --cwd apps/web build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lenso/cli": "file:./vendor/lenso-cli.tgz",
+    "@lenso/core": "file:./vendor/lenso-core.tgz",
+    "@lenso/engine": "file:./vendor/lenso-engine.tgz",
+    "@lenso/web": "file:./vendor/lenso-web.tgz"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "@lenso/core": "file:./vendor/lenso-core.tgz",
+    "@lenso/engine": "file:./vendor/lenso-engine.tgz"
+  },
+  "packageManager": "bun@1.4.2"
+}

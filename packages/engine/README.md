@@ -35,6 +35,33 @@ both execution and cleanup failures. Error causes are available in process;
 `diagnostic(error)` produces safe structured descriptions, not raw error text.
 No API prints a banner, installs process signal handlers or sets caller exit codes.
 
+The root string API remains supported. Finite calls, `EngineSession`,
+`createEngineSession` and `startEngineDevCycle` also accept a shared
+`ApplicationTarget`: `{root, config?}`. Config paths resolve relative to root.
+An explicit `config` overrides the active convention's config for discovery,
+generation and dev workers, including generated source/import metadata:
+
+```ts
+import { generate, createEngineSession, type ApplicationTarget } from "@lenso/engine";
+import { inspect, call } from "@lenso/cli";
+
+const target: ApplicationTarget = { root: "/path/to/app", config: "config/app.ts" };
+await inspect(target); // Reads app.ts directly; no Engine config or setup.
+await call(target, "greeting", "greet", { name: "Ada" });
+await generate(target); // Engine extensions still load from root/lenso.engine.ts.
+const engine = createEngineSession(target, "check");
+try {
+  await engine.prepare();
+} finally {
+  await engine.session.close();
+}
+```
+
+There is no multi-application registration container. CLI `--app <directory>`
+selects a directory under its `--root`; API callers directly supply the selected
+root/config. The CLI's optional workspace candidate discovery imports nothing,
+never selects the first candidate and grants no application authorization.
+
 Preparation is single-flight. Processing stages are serial; overlapping calls and
 work begun after close reject with structured diagnostics. Close waits for in-flight
 setup/hooks before draining cleanup. A hook/finalizer must not await its own session's
@@ -107,8 +134,12 @@ existing application sources inside root, outside `.lenso`/`dist`. Generators
 return static files relative to `.lenso`. A convention returns
 `{config, entry?, router?}`; Web is optional. A target receives `entry` and
 `bundle`, the same Bun bundler used by the default target. Select one with
-`defineEngineConfig({target: "workers", plugins})`. Convention entry affects
-build only; dev uses its explicit entry or `src/server.ts`.
+`defineEngineConfig({target: "workers", plugins})`. Build and dev both prefer an
+explicit entry override, then `convention.entry`. Without either, build uses
+`.lenso/server.ts` and dev retains the legacy `src/server.ts` fallback. Entries
+must exist inside application root; both use the same lexical containment check.
+Dev resolves the convention in its fresh Engine worker and passes the selected
+entry back to the supervisor before launching the application.
 
 Plugins have unique names. `before`/`after` name ordering constraints; missing
 names and cycles fail. Otherwise configuration order is stable. Stage capability
@@ -175,9 +206,10 @@ ignored, not vetoes. A thrown/rejected hook stops its stage with owner/source
 attribution. Cleanup instead attempts every entry and aggregates failures.
 These are processing/control hooks, not a general business event bus.
 
-`startEngineDevCycle(root)` is the lower-level worker
+`startEngineDevCycle(rootOrTarget, entry?)` is the lower-level worker
 lifetime: generation and `beforeStart` precede return, `ready()` runs ready hooks,
-`close()` waits for cleanup. Embedders must stop their runtime before closing it.
+`entry` reports the selected runtime path, and `close()` waits for cleanup.
+Embedders must stop their runtime before closing it.
 
 Static imports are invalidation inputs; dynamic reads require `watch(path)`.
 Explicit file/directory watches must exist. Generated/cache directories are
@@ -186,11 +218,12 @@ finite in-process discovery follows Bun module caching. Determinism depends on
 deterministic config metadata; import-time randomness remains app-owned.
 
 Engine plugins and config are trusted code, not a sandbox. Host path checks
-restrict returned output paths, not arbitrary plugin filesystem/process access.
+restrict selected sources/entries and returned output paths, not arbitrary plugin filesystem/process access.
 Keep config top-level code free of resource acquisition. `inspect`/`call` use
-canonical `lenso.config.ts`, never import Engine config or run Engine hooks;
+explicit application config when supplied, otherwise `lenso.config.ts`, and never import Engine config or run Engine hooks;
 trusted application config imports can still have top-level side effects.
-Retain that canonical config or a re-export when using a custom convention.
+When using a custom convention config, pass the same explicit config to inspect/call;
+no canonical re-export is required.
 Explicit operations/shared validation remain CLI contracts; see [CLI API](../../docs/CLI.md).
 
 Build tools and plugins use this package's public API.

@@ -13,12 +13,14 @@
   },
   "files": [
     "dist",
+    "src",
     "README.md",
     "examples"
   ],
   "type": "module",
   "exports": {
     ".": {
+      "lenso-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }

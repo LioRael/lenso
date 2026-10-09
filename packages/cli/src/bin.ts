@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { build, discover, generate } from "@lenso/engine";
 import { call, inspect } from "./engine";
 import { dev } from "./dev";
+import { selectApplication } from "./application-target";
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   CliError,
@@ -35,41 +36,52 @@ const help = {
   commands: [
     {
       name: "check",
-      usage: "check [--root directory]",
+      usage: "check [--root directory] [--app directory] [--config file]",
       effect: "runs trusted Engine setup/discovery; validates assembly; no application setup",
     },
     {
       name: "inspect",
-      usage: "inspect [plugin-id [method]] [--root directory]",
+      usage: "inspect [plugin-id [method]] [--root directory] [--app directory] [--config file]",
       effect: "describes explicit operations; no setup",
     },
     {
       name: "generate",
-      usage: "generate [--root directory]",
+      usage: "generate [--root directory] [--app directory] [--config file]",
       effect: "writes framework-owned .lenso entries",
     },
     {
       name: "build",
-      usage: "build [--root directory] [--entry file]",
+      usage: "build [--root directory] [--app directory] [--config file] [--entry file]",
       effect: "generates entries and writes dist",
     },
     {
       name: "call",
       usage:
-        "call <plugin-id> <method> [JSON input | --input-file file | --stdin] [--root directory]",
+        "call <plugin-id> <method> [JSON input | --input-file file | --stdin] [--root directory] [--app directory] [--config file]",
       effect: "validates input; starts app; invokes declared service operation; stops app",
     },
     {
       name: "dev",
-      usage: "dev [--root directory] [--entry file]",
+      usage: "dev [--root directory] [--app directory] [--config file] [--entry file]",
       effect: "watches source; supervises owned processes; human mode only",
     },
     { name: "help", usage: "help", effect: "describes commands; no config import" },
   ],
   json: "Add --json to finite commands. One schemaVersion=1 result on stdout; logs on stderr.",
   exitCodes: { success: 0, runtime: 1, argumentsOrInput: 2, discoveryOrAssembly: 3 },
+  application: {
+    root: "Base directory; defaults to cwd.",
+    app: "Explicit application directory relative to --root; never selects the first workspace.",
+    config: "Explicit trusted application config relative to selected application root.",
+    entry: "Relative to selected application root; overrides convention.entry for build/dev.",
+    discovery:
+      "Only canonical configs in declared package.json workspaces are candidates; discovery imports nothing and grants no authority.",
+  },
   errorCodes: [
     "invalid-arguments",
+    "invalid-application-target",
+    "ambiguous-application-target",
+    "missing-application-selection",
     "input-read-failed",
     "invalid-json",
     "invalid-input",
@@ -153,7 +165,7 @@ await trace.getTracer("@lenso/cli").startActiveSpan("lenso.cli.command", async (
       if (["--json", "--stdin", "--help", "-h"].includes(arg)) {
         if (flags.has(arg)) usage("Repeated flag.");
         flags.add(arg);
-      } else if (["--root", "--entry", "--input-file"].includes(arg)) {
+      } else if (["--root", "--app", "--config", "--entry", "--input-file"].includes(arg)) {
         if (values.has(arg)) usage("Repeated option.");
         const value = args[++index];
         if (!value || value.startsWith("-")) usage("Missing option value.");
@@ -171,12 +183,26 @@ await trace.getTracer("@lenso/cli").startActiveSpan("lenso.cli.command", async (
       usage("Input options are available for call only.");
     if (command !== "call" && command !== "inspect" && positionals.length)
       usage("Unexpected positional arguments.");
-    const root = values.get("--root") ?? process.cwd();
+    if (command === "inspect" && positionals.length > 2)
+      usage("Usage: inspect [plugin-id [method]].");
+    if (command === "call" && (positionals.length < 2 || positionals.length > 3))
+      usage("Usage: call <plugin-id> <method> [JSON input].");
+    if (command === "dev" && jsonMode)
+      usage("dev --json is unsupported; use finite commands for structured results.");
+    const target =
+      command === "help"
+        ? { root: values.get("--root") ?? process.cwd() }
+        : await selectApplication(
+            values.get("--root") ?? process.cwd(),
+            values.get("--app"),
+            values.get("--config"),
+          );
+    const root = target.root;
     const entry = values.get("--entry");
     let data: unknown;
     switch (command) {
       case "check": {
-        const discovery = await discover(root);
+        const discovery = await discover(target);
         data = {
           valid: true,
           configPath: discovery.configPath,
@@ -185,11 +211,10 @@ await trace.getTracer("@lenso/cli").startActiveSpan("lenso.cli.command", async (
         break;
       }
       case "inspect":
-        if (positionals.length > 2) usage("Usage: inspect [plugin-id [method]].");
-        data = await inspect(root, positionals[0], positionals[1]);
+        data = await inspect(target, positionals[0], positionals[1]);
         break;
       case "generate": {
-        const manifest = await generate(root);
+        const manifest = await generate(target);
         data = {
           plugins: manifest.map((plugin) => plugin.id),
           directory: resolve(root, ".lenso"),
@@ -200,11 +225,9 @@ await trace.getTracer("@lenso/cli").startActiveSpan("lenso.cli.command", async (
         break;
       }
       case "build":
-        data = { directory: await build(root, entry) };
+        data = { directory: await build(target, entry) };
         break;
       case "call": {
-        if (positionals.length < 2 || positionals.length > 3)
-          usage("Usage: call <plugin-id> <method> [JSON input].");
         const [plugin, method, inline] = positionals;
         const inputFile = values.get("--input-file");
         const inputCount =
@@ -236,13 +259,11 @@ await trace.getTracer("@lenso/cli").startActiveSpan("lenso.cli.command", async (
             2,
           );
         }
-        data = await call(root, plugin!, method!, input);
+        data = await call(target, plugin!, method!, input);
         break;
       }
       case "dev":
-        if (jsonMode)
-          usage("dev --json is unsupported; use finite commands for structured results.");
-        await dev({ root, entry });
+        await dev({ ...target, entry });
         data = { stopped: true };
         break;
       case "help":

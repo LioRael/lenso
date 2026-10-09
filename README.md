@@ -1,6 +1,27 @@
 # Lenso
 
-A Bun-first plugin framework with ordinary async services. Core owns instance dependencies and resource cleanup. Build-time Engine extensions and optional Web, Auth, Drizzle and Workers adapters remain separate from business code. Console belongs in a future independent repository.
+A Bun-first plugin framework with ordinary async services. Core owns instance dependencies and resource cleanup. Build-time Engine extensions and optional Web, Auth, Drizzle and Workers adapters remain separate from business code. Console is an optional external consumer of explicitly selected and authorized Manage operations.
+
+## Choose a starting point, not a directory contract
+
+Start with the [single-package CLI or Bun Web template](templates/README.md), or
+the [server/Web workspace template](templates/workspace/package.json) when the
+applications have independent build or runtime boundaries. Templates recommend
+organization; they are not a list of supported layouts.
+
+A plugin can be one ordinary TS module, a workspace dependency or an npm package.
+Keep business functions callable and testable without Core or Engine; setup only
+connects capabilities and their owned lifetimes. Move a module by changing its
+import, or move a workspace by changing its workspace declaration and dependency
+locations, not the business implementation. Engine paths belong to the selected
+application root; Core receives instances and explicit configuration, not folders.
+
+Share code across applications with explicit dependencies. Each start still owns
+its own resources and resolved configuration; shared code does not share a
+database client, in-memory state or authority automatically. Web, Tasks, Manage
+and MCP remain opt-in. A Manage declaration is not an HTTP mount or permission
+grant. Keep browser runtime schemas in safe exports, and consume router-derived
+public client types with `import type`, never a server initialization barrel.
 
 ## Run locally
 
@@ -295,7 +316,21 @@ plugin resources.
 
 ## Development boundaries
 
-Use package.json for the pinned tools and scripts. The workspace has one Bun lockfile, TypeScript 7.0.2, thin Turbo orchestration and oxlint/oxfmt. Rebuild changed framework packages before running consumers: exports resolve to dist. `.lenso` and `dist` are reproducible framework-owned output; edit source/config and regenerate. Config top-level code must avoid resource acquisition. Root tests are focused; the PostgreSQL integration test requires `LENSO_TEST_DATABASE_URL` pointing to a disposable test database.
+Use package.json for the pinned tools and scripts. The workspace has one Bun lockfile, TypeScript 7.0.2, thin Turbo orchestration and oxlint/oxfmt. By default, package exports resolve to built JS and declarations in `dist`; rebuild changed framework packages before running default consumers.
+
+For same-repository Bun development, explicitly opt in to the `lenso-source` export condition for `@lenso/core`, `@lenso/engine`, `@lenso/cli` and `@lenso/web`:
+
+```sh
+bun --conditions=lenso-source packages/cli/src/bin.ts inspect greeting greet --root examples/greeting --json
+bun --conditions=lenso-source packages/cli/src/bin.ts call greeting greet --root examples/greeting --stdin --json
+bun --conditions=lenso-source packages/cli/src/bin.ts dev --root examples/greeting
+```
+
+Supply JSON on stdin for `call`. This path runs current framework source without rebuilding those four packages; other packages still use `dist`. For matching types, add `"customConditions": ["lenso-source"]` to the consumer tsconfig with `moduleResolution: "Bundler"` or `"NodeNext"` (and a compatible `module`). Bun dev forwards custom conditions to both the Engine worker and application process. Browser consumers must use browser-safe entries such as `@lenso/core/browser`, `@lenso/web/client` and `@lenso/web/openapi-client`; enabling this condition does not make server entries browser-safe.
+
+Published archives include these packages' `src` so opted-in exports are not broken, but only tools that support TypeScript source may opt in. The default published exports and CLI executable remain JS plus `.d.ts`; neither Bun's built-in condition nor default import/types resolution switches to source. Normal builds, package tests and release checks still verify `dist`; Turbo waits for the Engine's own build before its typecheck/tests to avoid racing `dist` removal.
+
+`.lenso` and `dist` are reproducible framework-owned output; edit source/config and regenerate. Config top-level code must avoid resource acquisition. Root tests are focused; the PostgreSQL integration test requires `LENSO_TEST_DATABASE_URL` pointing to a disposable test database.
 
 Run `bun run lint` and `bun run fmt:check` to check the repository, including templates,
 scripts, root configuration and supported documentation formats. Generated output and

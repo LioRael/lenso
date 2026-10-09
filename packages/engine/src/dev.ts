@@ -1,8 +1,10 @@
 import { watch, realpathSync, readdirSync, statSync, type FSWatcher } from "node:fs";
 import { resolve, relative, extname, sep } from "node:path";
 import { isDevReadyMessage } from "./dev-ready";
-import { startEngineDevCycle, type EngineDevCycle } from "./engine-dev";
+import { devConditionArgs, startEngineDevCycle, type EngineDevCycle } from "./engine-dev";
 import { diagnostic, EngineError, type EngineDiagnostic } from "./diagnostics";
+import type { ApplicationTarget } from "./application";
+import { checkedEntry } from "./engine-host";
 
 export type DevSupervisorEvent =
   | { type: "starting" }
@@ -10,8 +12,7 @@ export type DevSupervisorEvent =
   | { type: "failed"; diagnostic: EngineDiagnostic }
   | { type: "exited"; code: number };
 
-export interface DevSupervisorOptions {
-  root: string;
+export interface DevSupervisorOptions extends ApplicationTarget {
   entry?: string;
   /** Observers cannot interrupt resource ownership; synchronous exceptions are ignored. */
   onEvent?(event: DevSupervisorEvent): void;
@@ -57,14 +58,6 @@ async function stopProcess(previous: ReturnType<typeof Bun.spawn>) {
 
 export async function createDevSupervisor(options: DevSupervisorOptions): Promise<DevSupervisor> {
   const root = realpathSync(resolve(options.root));
-  const entry = resolve(root, options.entry ?? "src/server.ts");
-  if (!(await Bun.file(entry).exists()))
-    throw new EngineError({
-      code: "dev-entry-missing",
-      phase: "engine-dev",
-      message: "Development entry is missing.",
-      source: { file: entry },
-    });
   type Active = {
     child: ReturnType<typeof Bun.spawn>;
     engine: EngineDevCycle;
@@ -210,7 +203,7 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
         resetWatches();
         let engine: EngineDevCycle;
         try {
-          engine = await startEngineDevCycle(root);
+          engine = await startEngineDevCycle({ root, config: options.config }, options.entry);
         } catch (error) {
           if (includesCleanup(diagnostic(error))) cleanupFailures.push(error);
           report(error);
@@ -226,7 +219,8 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
         }
         try {
           resetWatches(engine.watchFiles);
-          const child = Bun.spawn([process.execPath, entry], {
+          const entry = await checkedEntry(root, engine.entry, "dev");
+          const child = Bun.spawn([process.execPath, ...devConditionArgs(), entry], {
             cwd: root,
             stdout: options.stdout ?? "inherit",
             stderr: options.stderr ?? "inherit",

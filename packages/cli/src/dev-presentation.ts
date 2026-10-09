@@ -1,6 +1,6 @@
 import { basename, resolve } from "node:path";
 import pc from "picocolors";
-import sdkPackage from "../../lenso/package.json";
+import sdkPackage from "@lenso/core/package.json";
 
 export interface DevReady {
   /** Actual listener URLs, reported only after application startup succeeds. */
