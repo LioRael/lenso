@@ -1,0 +1,78 @@
+.changeset/durable-notifications.md
+  h_9d56aba080c170 1-5
+bun.lock
+  h_9d56aba080c170 269-303,646-647
+packages/notifications/README.md
+  h_9d56aba080c170 1-222
+packages/notifications/migrations/pg/0001_notifications.sql
+  h_9d56aba080c170 1-44
+packages/notifications/migrations/sqlite/0001_notifications.sql
+  h_9d56aba080c170 1-44
+packages/notifications/package.json
+  h_9d56aba080c170 1-105
+packages/notifications/src/auth.ts
+  h_9d56aba080c170 1-179
+packages/notifications/src/contracts.ts
+  h_9d56aba080c170 1-143
+packages/notifications/src/d1.ts
+  h_9d56aba080c170 1-78
+packages/notifications/src/errors.ts
+  h_9d56aba080c170 1-15
+packages/notifications/src/index.ts
+  h_9d56aba080c170 1-9
+packages/notifications/src/manage.ts
+  h_9d56aba080c170 1-129
+packages/notifications/src/persistence.ts
+  h_9d56aba080c170 1-68
+packages/notifications/src/plugin.ts
+  h_9d56aba080c170 1-40
+packages/notifications/src/postgres.ts
+  h_9d56aba080c170 1-157
+packages/notifications/src/render.ts
+  h_9d56aba080c170 1-140
+packages/notifications/src/resend.ts
+  h_9d56aba080c170 1-152
+packages/notifications/src/schema-pg.ts
+  h_9d56aba080c170 1-85
+packages/notifications/src/schema-sqlite.ts
+  h_9d56aba080c170 1-74
+packages/notifications/src/service.ts
+  h_9d56aba080c170 1-423
+packages/notifications/src/sqlite.ts
+  h_9d56aba080c170 1-175
+packages/notifications/src/tasks.ts
+  h_9d56aba080c170 1-80
+packages/notifications/test/auth.test.ts
+  h_9d56aba080c170 1-315
+packages/notifications/test/helpers.ts
+  h_9d56aba080c170 1-78
+packages/notifications/test/manage.test.ts
+  h_9d56aba080c170 1-104
+packages/notifications/test/persistence.test.ts
+  h_9d56aba080c170 1-280
+packages/notifications/test/plugin.test.ts
+  h_9d56aba080c170 1-72
+packages/notifications/test/postgres.test.ts
+  h_9d56aba080c170 1-109
+packages/notifications/test/resend.test.ts
+  h_9d56aba080c170 1-152
+packages/notifications/test/service.test.ts
+  h_9d56aba080c170 1-322
+packages/notifications/test/tasks.test.ts
+  h_9d56aba080c170 1-231
+packages/notifications/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/notifications/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9602db9a917423c53388e6f0b647c4bb595a407d",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
