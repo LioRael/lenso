@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { devConditionArgs, startEngineDevCycle } from "../src/engine-dev";
 import { diagnostic } from "../src/diagnostics";
@@ -16,7 +16,11 @@ test("dev children inherit only custom condition flags, not eval or preload argu
       "-e",
       "throw Error('parent only')",
     ]),
-  ).toEqual(["--conditions=lenso-source", "--conditions", "another-condition"]);
+  ).toEqual(["--conditions=lenso-source", "--conditions=another-condition"]);
+  expect(devConditionArgs(["-u", "first,second", "--conditions=second"])).toEqual([
+    "--conditions=first,second",
+    "--conditions=second",
+  ]);
 });
 
 const directories: string[] = [];
@@ -84,4 +88,54 @@ test("ready failures defer cleanup until close and preserve combined cleanup dia
   } finally {
     await cycle.close().catch(() => {});
   }
+});
+
+test("custom conditions reach both fresh Engine workers and application runtimes", async () => {
+  const root = await fixture(`
+    import marker from 'marker';
+    export default {plugins:[{name:'conditions',setup(c){
+      c.dev('marker',()=>Bun.write(c.root+'/worker-marker',marker));
+    }}]}`);
+  await Bun.write(
+    join(root, "node_modules/marker/package.json"),
+    JSON.stringify({
+      name: "marker",
+      type: "module",
+      exports: { custom: "./source.ts", default: "./dist.js" },
+    }),
+  );
+  await Bun.write(join(root, "node_modules/marker/source.ts"), "export default 'CURRENT_SOURCE'");
+  await Bun.write(join(root, "node_modules/marker/dist.js"), "export default 'STALE_DIST'");
+  await Bun.write(
+    join(root, "src/server.ts"),
+    `
+    import marker from 'marker';
+    const timer=setInterval(()=>{},1000);
+    process.send?.({type:'lenso:dev-ready',capabilities:[marker]});
+    process.on('SIGTERM',()=>{clearInterval(timer);process.disconnect?.()});`,
+  );
+  const driver = join(root, "driver.ts");
+  await Bun.write(
+    driver,
+    `
+    import {createDevSupervisor} from ${JSON.stringify(resolve(import.meta.dir, "../src/dev.ts"))};
+    let ready;
+    const supervisor=await createDevSupervisor({root:${JSON.stringify(root)},stdout:'ignore',stderr:'ignore',onEvent(event){
+      if(event.type==='ready') ready=event.capabilities[0];
+    }});
+    try {
+      const deadline=Date.now()+4000;
+      while(!ready) {if(Date.now()>deadline) throw Error('no ready');await Bun.sleep(20);}
+      console.log(ready+':'+await Bun.file(${JSON.stringify(join(root, "worker-marker"))}).text());
+    } finally {await supervisor.close();}
+  `,
+  );
+  const child = Bun.spawn([process.execPath, "--conditions=custom", driver], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stderr = await new Response(child.stderr).text();
+  expect(await child.exited).toBe(0);
+  expect(stderr).toBe("");
+  expect(await new Response(child.stdout).text()).toBe("CURRENT_SOURCE:CURRENT_SOURCE\n");
 });

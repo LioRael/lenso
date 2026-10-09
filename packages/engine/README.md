@@ -141,6 +141,32 @@ must exist inside application root; both use the same lexical containment check.
 Dev resolves the convention in its fresh Engine worker and passes the selected
 entry back to the supervisor before launching the application.
 
+### Bundle resolution conditions
+
+A target's `context.conditions` contains the custom conditions supplied to the
+current Bun process, such as `bun --conditions=lenso-source ...`. The shared
+`context.bundle` helper inherits these conditions when `conditions` is omitted.
+An explicit `conditions` array **replaces**, rather than merges with, the inherited
+custom conditions. Use `conditions: []` to bundle published/default exports even
+when the authoring process uses source exports. Bun's platform/default conditions
+still apply to the selected `platform`; no checkout detection forces `lenso-source`.
+
+```ts
+context.target("module", (build) =>
+  build.bundle({
+    entry: build.entry,
+    packages: "bundle",
+    conditions: [], // Publication exports; omit to inherit the launch conditions.
+  }),
+);
+```
+
+Custom targets calling `Bun.build` directly can pass
+`conditions: [...build.conditions]` to follow the same policy. Dev forwards custom
+launch conditions to both its Engine worker and application process. The helper's
+default `packages: "external"` keeps package imports in the artifact; the runtime
+launch conditions, not the bundler, select those external exports.
+
 Plugins have unique names. `before`/`after` name ordering constraints; missing
 names and cycles fail. Otherwise configuration order is stable. Stage capability
 names are unique. Replacement requires the exact current owner:
@@ -211,11 +237,43 @@ lifetime: generation and `beforeStart` precede return, `ready()` runs ready hook
 `entry` reports the selected runtime path, and `close()` waits for cleanup.
 Embedders must stop their runtime before closing it.
 
-Static imports are invalidation inputs; dynamic reads require `watch(path)`.
-Explicit file/directory watches must exist. Generated/cache directories are
-excluded to prevent restart loops. Dev reloads a fresh module graph each cycle;
-finite in-process discovery follows Bun module caching. Determinism depends on
-deterministic config metadata; import-time randomness remains app-owned.
+### Development invalidation inputs
+
+Dev follows Bun's resolved local import graph from the selected Engine/application
+configs, discovered sources and runtime entry. Imported JSON is an input; ordinary
+business/data JSON is not. Workspace and symlink-linked packages follow their real
+local source graphs, including imports outside the application root. Local
+`workspace:`, `link:` and `file:` declarations remain local even inside a dependency
+tree. Canonical paths deduplicate scans; lexical link routes also remain inputs so
+redirecting an imported or explicitly watched symlink invalidates the cycle. Installed
+third-party package entries and resolution manifests are observed, but their source
+subgraphs are not recursively scanned. No `src`/`apps`/`plugins` directory whitelist
+is used. Package manifests, ancestor Bun/TypeScript configuration and JSONC config
+`extends` files are resolution inputs.
+
+Dynamic reads require `watch(path)`. Explicit file/directory watches must exist
+when registered; explicit directory watches include nested data additions and
+removals. Directory listeners are shared between overlapping graph and explicit
+inputs and retained across restarts when their ownership is unchanged. New/deleted
+modules in participating local source directories also invalidate. Missing imports
+retain file/package-entry probes, including declared TypeScript path aliases and
+wildcard export targets, at the nearest existing parent so creating the dependency
+can repair a failed cycle. These are candidate-file metadata only; Bun remains the
+resolver for existing imports. Inputs registered before a failed Engine hook
+remain available for recovery; a successful cycle replaces obsolete/revoked inputs.
+Ready hooks publish their current watch ownership before readiness is acknowledged,
+including additions and revocations. Generated/cache exclusions are relative to
+the application root, not arbitrary ancestor names or a dependency's publication
+`dist` directory.
+
+Resolution still follows the installed Bun version. For example, Bun 1.4.2 does
+not resolve a child `paths` map with `baseUrl` supplied only by an extended config.
+Declare the working alias/base URL in the active config; watch does not emulate a
+different runtime resolver.
+
+Dev reloads a fresh module graph each cycle; finite in-process discovery follows
+Bun module caching. Determinism depends on deterministic config metadata;
+import-time randomness remains app-owned.
 
 Engine plugins and config are trusted code, not a sandbox. Host path checks
 restrict selected sources/entries and returned output paths, not arbitrary plugin filesystem/process access.

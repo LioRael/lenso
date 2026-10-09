@@ -1,10 +1,12 @@
-import { access, lstat, mkdir, readFile, realpath, unlink } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, unlink } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { EngineError, diagnostic, type EngineDiagnostic } from "./diagnostics";
 import { resolveApplicationTarget, type ApplicationTarget } from "./application";
+import { runtimeConditions } from "./resolution";
+import { SourceInputs } from "./source-inputs";
 import type {
   BuildContext,
   DevEvent,
@@ -126,42 +128,6 @@ export async function checkedEntry(
     );
   return path;
 }
-/** Static imports are invalidation inputs, not discovery of application services. */
-async function importInputs(entry: string, inputs: Set<string>, root: string): Promise<void> {
-  try {
-    entry = await realpath(entry);
-  } catch {
-    return;
-  }
-  const local = relative(root, entry).split(sep)[0];
-  if ([".lenso", "dist", ".git"].includes(local)) return;
-  if (inputs.has(entry) || !(await exists(entry))) return;
-  inputs.add(entry);
-  if (!/\.[cm]?[jt]sx?$/.test(entry)) return;
-  const loader = entry.endsWith("tsx")
-    ? "tsx"
-    : entry.endsWith("jsx")
-      ? "jsx"
-      : entry.endsWith("ts")
-        ? "ts"
-        : "js";
-  let imports;
-  try {
-    imports = new Bun.Transpiler({ loader }).scanImports(await readFile(entry, "utf8"));
-  } catch {
-    return;
-  } // Import itself reports parse errors; dynamic reads require explicit watch().
-  for (const item of imports) {
-    if (item.kind === "import-statement" && item.path.startsWith("node:")) continue;
-    let file;
-    try {
-      file = Bun.resolveSync(item.path, dirname(entry));
-    } catch {
-      continue;
-    }
-    if (isAbsolute(file)) await importInputs(file, inputs, root);
-  }
-}
 function orderPlugins(value: unknown, source: EngineSource): EnginePlugin[] {
   if (!Array.isArray(value))
     throw error("invalid-engine-config", "Engine plugins must be an array.", "engine", source);
@@ -253,7 +219,8 @@ export class EngineSession {
     source: EngineSource;
     run: () => void | Promise<void>;
   }[] = [];
-  private readonly watches = new Set<string>();
+  private readonly inputs: SourceInputs;
+  private readonly watches: Set<string>;
   private readonly watchRegistrations = new Map<string, number>();
   private closed?: Promise<void>;
   private closing = false;
@@ -275,6 +242,8 @@ export class EngineSession {
   ) {
     const { root, config } = resolveApplicationTarget(target);
     this.root = root;
+    this.inputs = new SourceInputs(root);
+    this.watches = this.inputs.files;
     this.configOverride = config;
     this.configPath = join(root, "lenso.engine.ts");
   }
@@ -339,6 +308,8 @@ export class EngineSession {
   }
   private async performSetup(defaults: readonly EnginePlugin[]): Promise<void> {
     let config: EngineConfig = {};
+    await this.inputs.configuration(this.root);
+    await this.inputs.add(this.configPath);
     if (await exists(this.configPath)) {
       try {
         config = (await import(pathToFileURL(this.configPath).href)).default;
@@ -366,7 +337,6 @@ export class EngineSession {
           "engine",
           { file: this.configPath },
         );
-      await importInputs(this.configPath, this.watches, await realpath(this.root));
     }
     if (config.plugins !== undefined && !Array.isArray(config.plugins))
       throw error("invalid-engine-config", "Engine plugins must be an array.", "engine", {
@@ -455,8 +425,9 @@ export class EngineSession {
           if (typeof path !== "string" || !path)
             throw error("invalid-engine-watch", "Watch requires a path.", plugin.name, source);
           let absolute;
+          const lexical = resolve(this.root, path);
           try {
-            absolute = realpathSync(resolve(this.root, path));
+            absolute = realpathSync(lexical);
           } catch (cause) {
             throw error(
               "invalid-engine-watch",
@@ -480,14 +451,18 @@ export class EngineSession {
               plugin.name,
               source,
             );
-          this.watchRegistrations.set(absolute, (this.watchRegistrations.get(absolute) ?? 0) + 1);
+          const paths = [...new Set([lexical, absolute])];
+          for (const input of paths)
+            this.watchRegistrations.set(input, (this.watchRegistrations.get(input) ?? 0) + 1);
           let revoked = false;
           const revoke = () => {
             if (revoked) return;
             revoked = true;
-            const remaining = this.watchRegistrations.get(absolute)! - 1;
-            if (remaining) this.watchRegistrations.set(absolute, remaining);
-            else this.watchRegistrations.delete(absolute);
+            for (const input of paths) {
+              const remaining = this.watchRegistrations.get(input)! - 1;
+              if (remaining) this.watchRegistrations.set(input, remaining);
+              else this.watchRegistrations.delete(input);
+            }
           };
           this.cleanups.push({ plugin: plugin.name, source, run: revoke });
           return revoke;
@@ -568,16 +543,13 @@ export class EngineSession {
       ...(convention.entry ? { entry: convention.entry } : {}),
       ...(convention.router ? { router: convention.router } : {}),
     });
-    await importInputs(
-      appPath(this.root, convention.config),
-      this.watches,
-      await realpath(this.root),
-    );
+    await this.inputs.configuration(this.root);
+    await this.inputs.add(appPath(this.root, convention.config));
     const sources = new Set<string>();
     for (const path of [convention.config, convention.entry, convention.router])
       if (path && (await exists(appPath(this.root, path)))) {
         sources.add(appPath(this.root, path));
-        await importInputs(appPath(this.root, path), this.watches, await realpath(this.root));
+        await this.inputs.add(appPath(this.root, path));
       }
     this.sourceFiles = [...sources];
     for (const [key, hook] of this.capabilities)
@@ -607,7 +579,7 @@ export class EngineSession {
             );
           }
           sources.add(absolute);
-          await importInputs(absolute, this.watches, await realpath(this.root));
+          await this.inputs.add(absolute);
         }
         this.sourceFiles = [...sources];
       }
@@ -621,9 +593,7 @@ export class EngineSession {
       mode: this.mode,
       convention: this.conventionValue,
       sources: Object.freeze([...this.sourceFiles]),
-      watchFiles: Object.freeze(
-        [...new Set([...this.watches, ...this.watchRegistrations.keys()])].sort(),
-      ),
+      watchFiles: this.invalidationInputs(),
       importPath(output: string, source: string) {
         if (!safeRelative(output)) throw new Error("Generated path must be relative to .lenso");
         const target = appPath(root, source);
@@ -633,6 +603,17 @@ export class EngineSession {
         return specifier.startsWith(".") ? specifier : `./${specifier}`;
       },
     });
+  }
+  /** Internal worker recovery does not require a completed application convention. */
+  invalidationInputs(): readonly string[] {
+    return Object.freeze([...new Set([...this.watches, ...this.watchRegistrations.keys()])].sort());
+  }
+  localSourceDirectories(): readonly string[] {
+    return [...this.inputs.directories].sort();
+  }
+  /** The supervised worker's explicit/default runtime entry is also a graph root. */
+  async observeDevEntry(entry: string): Promise<void> {
+    await this.inputs.add(entry);
   }
   generate(): Promise<void> {
     return this.stage("engine-generation", true, () => this.performGeneration());
@@ -810,6 +791,7 @@ export class EngineSession {
     const context = Object.freeze<BuildContext>({
       ...this.snapshot(),
       entry: entryPath,
+      conditions: Object.freeze(runtimeConditions()),
       bundle: async (options) => {
         const output = options.directory ? `dist/${options.directory}` : "dist";
         const outdir = await this.checkedOutput(output, hook.plugin, hook.source);
@@ -828,6 +810,7 @@ export class EngineSession {
           outdir,
           target: options.platform ?? "bun",
           packages: options.packages ?? "external",
+          conditions: [...(options.conditions ?? context.conditions)],
           sourcemap: "external",
         });
         if (!result.success)

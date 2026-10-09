@@ -37,6 +37,16 @@ service still enforces its tenant/object/owner rules. Manage/`createAgentTools`
 are the canonical schema/metadata source; all selected schemas must convert to
 SDK-compatible object schemas before readiness, including currently hidden tools.
 
+The borrowed adapter prepares one immutable Manage selection for its lifetime.
+Discovery, invocation policies and bindings receive the same frozen declaration
+snapshots, retaining exact plugin/schema/function identities. Do not key policies
+by the original declaration object's identity; use the exact plugin and declared
+method. Original declaration edits do not change admission or dispatch. Replace
+the adapter when changing its selection. Existing `operation_N` tool names remain
+entry-local, translated internally to Manage's selection-scoped opaque keys.
+Close revokes admission, waits for actual work to drain, then releases the
+selection's runtime references; policy closures retain any resources they capture.
+
 For a **dedicated local process**, replace the adapter creation above with:
 
 ```ts

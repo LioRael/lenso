@@ -71,7 +71,11 @@ export async function invoke<O extends Operation>(
         : cause instanceof EngineError
           ? new CliError(
               diagnostic(cause, { ...context, phase: "invoke" }),
-              exitCode(cause.cause instanceof CliError ? cause.cause : cause),
+              exitCode(
+                cause.diagnostic.code !== "aborted" && cause.cause instanceof CliError
+                  ? cause.cause
+                  : cause,
+              ),
               {
                 cause,
               },

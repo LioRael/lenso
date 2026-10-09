@@ -22,6 +22,8 @@ export interface BundleOptions {
   readonly entry: string;
   readonly platform?: "bun" | "browser" | "node";
   readonly packages?: "bundle" | "external";
+  /** Replaces inherited custom runtime conditions; [] selects default publication resolution. */
+  readonly conditions?: readonly string[];
   /** Relative path inside dist. */
   readonly directory?: string;
 }
@@ -37,6 +39,8 @@ export interface EngineSnapshot {
 }
 export interface BuildContext extends EngineSnapshot {
   readonly entry: string;
+  /** Custom conditions inherited from the Engine process; runtime built-ins are added by Bun. */
+  readonly conditions: readonly string[];
   /** Shared Bun bundling implementation; output is restricted to dist. */
   bundle(options: BundleOptions): Promise<string>;
 }

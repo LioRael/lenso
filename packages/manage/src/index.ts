@@ -158,10 +158,13 @@ export function describeManage(manage: Manage, configPath = "lenso.config.ts") {
   });
 }
 
-export { createManageAdapter, bindManageOperation } from "./adapter";
+export { createManageAdapter, createManageSelection, bindManageOperation } from "./adapter";
 export type {
   ManageAdapter,
   ManageAdapterOptions,
+  ManageRequestOptions,
+  ManageSelection,
+  ManageSelectionOptions,
   ManageInvocationBinding,
   ManageCatalogEntry,
 } from "./adapter";

@@ -102,6 +102,17 @@ input JSON, and credentials are verified by Auth/service rules on every call.
 Single-input methods need no binding. Passing a signal does not establish
 cooperative cancellation; existing cancellation metadata remains descriptive.
 
+Engine's own signal checks report `aborted` with the original reason retained
+only as an in-process cause. A service rejection is cancellation only when it
+is the exact object reason of that invocation's aborted signal; equal primitive
+values and arbitrary exception names/codes do not establish ownership. Engine's
+own checks support primitive reasons too. Engine awaits service settlement rather than
+releasing resources on abort. CLI uses its diagnostic envelope, MCP uses its
+protocol errors, and Manage maps `aborted` to `CLIENT_CLOSED_REQUEST`/499.
+MCP may answer an interrupted request before work settles, but retains the
+execution slot and drains actual work before closing. None of these responses
+proves that external effects were undone.
+
 `confirmation: "required"` and `approval: "required"` refuse invocation unless
 the trusted entry binding supplies a successful `confirm`/`approve` callback.
 Those callbacks must verify the specific invocation through a real confirmation
@@ -130,6 +141,15 @@ No listener, scope/audience credential issuance or authorization shortcut is sup
 4. If an already owned HTTP server is relevant, verify its typed client too. Use only owned ports/processes.
 
 For example, run `bun --conditions=lenso-source packages/cli/src/bin.ts inspect greeting greet --root examples/greeting --json`, then pipe nonsensitive input to `bun --conditions=lenso-source packages/cli/src/bin.ts call greeting greet --root examples/greeting --stdin --json`. The same flag works with `dev` and is forwarded to Engine/application subprocesses. Source exports are shipped, but require a TypeScript-capable runtime or bundler; browser clients must still select browser-safe subexports (`@lenso/core/browser`, `@lenso/web/client`, `@lenso/web/openapi-client`).
+
+Engine's bundle helper also inherits the process's custom conditions, including
+`lenso-source` when explicitly enabled. A target's `bundle({conditions: [...]})`
+replaces that custom list; `conditions: []` requests default publication
+resolution even from a source-development process. Bun still supplies the selected
+platform's built-in conditions. Custom targets calling Bun directly can use
+`BuildContext.conditions`. With `packages: "external"`, package imports remain
+external and the process running the artifact must choose its runtime conditions;
+bundling conditions cannot change that later resolution.
 
 SDK lifetime is serial setup and synchronous cleanup registration, global LIFO sequential cleanup, startup rollback and aggregated cleanup failures. `onCleanup` returns an async disposer sharing one completion with shutdown, even after early failure. `stop()` caches one Promise even on failure. Original setup/cleanup errors keep their identity; `lifecycleFailure(error)` adds attribution for object errors without mutating them. Primitive thrown values have only the containing phase. Cancellation, request drain and detached task ownership remain the host/application's responsibility. A finalizer must not await its own disposer or its app's stop Promise.
 
