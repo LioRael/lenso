@@ -511,6 +511,22 @@
         "drizzle-orm",
       ],
     },
+    "packages/search": {
+      "name": "@lenso/search",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@lenso/auth": "workspace:^",
+        "@lenso/core": "workspace:^",
+        "@lenso/tasks": "workspace:^",
+        "zod": "4.6.5",
+      },
+      "peerDependencies": {
+        "@lenso/core": "^0.2.0",
+      },
+      "optionalPeers": [
+        "@lenso/core",
+      ],
+    },
     "packages/storage": {
       "name": "@lenso/storage",
       "version": "0.2.0",
@@ -857,6 +873,8 @@
     "@lenso/payments": ["@lenso/payments@workspace:packages/payments"],
 
     "@lenso/scheduler": ["@lenso/scheduler@workspace:packages/scheduler"],
+
+    "@lenso/search": ["@lenso/search@workspace:packages/search"],
 
     "@lenso/storage": ["@lenso/storage@workspace:packages/storage"],
 
