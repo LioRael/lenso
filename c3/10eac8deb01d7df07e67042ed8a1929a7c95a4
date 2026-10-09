@@ -1,0 +1,80 @@
+.changeset/engine-resolution-scoped-invocation.md
+  h_9d56aba080c170 1-10
+docs/CLI.md
+  h_9d56aba080c170 105-115,145-153
+packages/cli/src/bin.ts
+  h_9d56aba080c170 110
+packages/cli/src/engine.ts
+  h_9d56aba080c170 74-78
+packages/cli/test/cancellation.test.ts
+  h_9d56aba080c170 1-220
+packages/engine/README.md
+  h_9d56aba080c170 144-169,240-276
+packages/engine/src/dev.ts
+  h_9d56aba080c170 1-2,4,8-9,80-83,124-133,145-154,157-173,177,189-191,247
+packages/engine/src/diagnostics.ts
+  h_9d56aba080c170 195
+packages/engine/src/engine-authoring.ts
+  h_9d56aba080c170 25-26,42-43
+packages/engine/src/engine-dev-worker.ts
+  h_9d56aba080c170 16-23,61,65,78-83,90-91,94
+packages/engine/src/engine-dev.ts
+  h_9d56aba080c170 5,15,22-30,48,67-82,89-95,97,155,157-159
+packages/engine/src/engine-host.ts
+  h_9d56aba080c170 1,8-9,222-223,245-246,311-312,428,430,454-456,461-465,546-547,552,582,596,607-617,794,813
+packages/engine/src/input-watches.ts
+  h_9d56aba080c170 1-185
+packages/engine/src/operations.ts
+  h_9d56aba080c170 41-52,90,179-180,220-259,388-394,396,413-414,424-425,434-447
+packages/engine/src/resolution.ts
+  h_9d56aba080c170 1-19
+packages/engine/src/source-inputs.ts
+  h_9d56aba080c170 1-336
+packages/engine/test/bundle-conditions.test.ts
+  h_9d56aba080c170 1-200
+packages/engine/test/cancellation.test.ts
+  h_9d56aba080c170 1-470
+packages/engine/test/dev-cycle.test.ts
+  h_9d56aba080c170 3,19-23,92-141
+packages/engine/test/dev-supervisor.test.ts
+  h_9d56aba080c170 2,294-616
+packages/engine/test/watch-inputs.test.ts
+  h_9d56aba080c170 1-234
+packages/engine/test/watch-review.test.ts
+  h_9d56aba080c170 1-231
+packages/manage/README.md
+  h_9d56aba080c170 45-102,117
+packages/manage/src/adapter.ts
+  h_9d56aba080c170 23,27-29,38-46,72-82,85-94,98,105,112-155,157-162,164-181,184,193-199,205-208,211-279
+packages/manage/src/index.ts
+  h_9d56aba080c170 161,165-167
+packages/manage/src/orpc.ts
+  h_9d56aba080c170 6,8-13,15-16,18-27,167-179,200
+packages/manage/test/cancellation.test.ts
+  h_9d56aba080c170 1-238
+packages/manage/test/manage.test.ts
+  h_9d56aba080c170 21,634-635,734,737,743-744,749,765
+packages/manage/test/selection.test.ts
+  h_9d56aba080c170 1-480
+packages/manage/test/types.ts
+  h_9d56aba080c170 9,41-56,68-80
+packages/mcp/README.md
+  h_9d56aba080c170 40-49
+packages/mcp/src/adapter.ts
+  h_9d56aba080c170 2,104-117,126,140,162,217-230,244,260,280,286,293-295
+packages/mcp/test/cancellation.test.ts
+  h_9d56aba080c170 1-206
+packages/mcp/test/selection.test.ts
+  h_9d56aba080c170 1-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c310eac8deb01d7df07e67042ed8a1929a7c95a4",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

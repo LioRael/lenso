@@ -1,0 +1,24 @@
+.changeset/bright-cats-bind.md
+  h_9d56aba080c170 1-5
+packages/workers/README.md
+  h_9d56aba080c170 7-8
+packages/workers/package.json
+  h_9d56aba080c170 11,18
+packages/workers/src/index.ts
+  h_9d56aba080c170 1,17-18,103-115
+packages/workers/test/bind-types.ts
+  h_9d56aba080c170 1-11
+packages/workers/test/fetch.test.ts
+  h_9d56aba080c170 4,46-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "316d06e06f0a3c448486a7d9891f83746a08fb5a",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
