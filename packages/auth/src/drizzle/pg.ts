@@ -1,8 +1,14 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
-import type { SessionStore } from "../session-store";
+import type { SessionAdminStore } from "../session-store";
 import { authSessions } from "./schema-pg";
-import { decodeRecord, mutationPredicate, mutationValues } from "./shared";
+import {
+  checkPage,
+  checkRevokeRevision,
+  decodeRecord,
+  mutationPredicate,
+  mutationValues,
+} from "./shared";
 
 const bigintParameter = (value: number) => sql`${value}::bigint`;
 
@@ -10,8 +16,50 @@ export function postgresSessionStore<
   S extends string = string,
   TSchema extends Record<string, unknown> = Record<string, unknown>,
   TResult extends PgQueryResultHKT = PgQueryResultHKT,
->(db: PgDatabase<TResult, TSchema>): SessionStore<S> {
+>(db: PgDatabase<TResult, TSchema>): SessionAdminStore<S> {
   return {
+    async page(realmId, limit, before) {
+      checkPage(limit, before);
+      const rows = await db
+        .select()
+        .from(authSessions)
+        .where(
+          and(
+            eq(authSessions.realmId, realmId),
+            before
+              ? or(
+                  lt(authSessions.issuedAt, before.issuedAt),
+                  and(
+                    eq(authSessions.issuedAt, before.issuedAt),
+                    sql`${authSessions.id} COLLATE "C" < ${before.id}`,
+                  ),
+                )
+              : undefined,
+          ),
+        )
+        .orderBy(desc(authSessions.issuedAt), desc(sql`${authSessions.id} COLLATE "C"`))
+        .limit(limit);
+      return rows.map((row) => decodeRecord<S>(row));
+    },
+    async revokeRevision(realmId, id, expectedRevision, at) {
+      checkRevokeRevision(expectedRevision, at);
+      const rows = await db
+        .update(authSessions)
+        .set({
+          revokedAt: sql`GREATEST(${bigintParameter(at)}, ${authSessions.issuedAt}, floor(extract(epoch from clock_timestamp()) * 1000)::bigint)`,
+          revision: sql`${authSessions.revision} + 1`,
+        })
+        .where(
+          and(
+            eq(authSessions.realmId, realmId),
+            eq(authSessions.id, id),
+            eq(authSessions.revision, expectedRevision),
+            isNull(authSessions.revokedAt),
+          ),
+        )
+        .returning();
+      return rows.length > 0;
+    },
     async create(record) {
       await db.insert(authSessions).values({
         ...record,

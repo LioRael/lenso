@@ -1,7 +1,33 @@
 import { and, sql, type SQL, type SQLWrapper } from "drizzle-orm";
-import type { SessionMutation, SessionRecord } from "../session-store";
+import type { SessionMutation, SessionPosition, SessionRecord } from "../session-store";
 
 type SessionColumns = { [K in keyof SessionRecord]: SQLWrapper };
+
+export function checkPage(limit: number, before?: SessionPosition): void {
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 101 ||
+    (before &&
+      (!Number.isSafeInteger(before.issuedAt) ||
+        before.issuedAt < 0 ||
+        typeof before.id !== "string" ||
+        !before.id.trim() ||
+        before.id.length > 256))
+  )
+    throw new Error("Invalid session page");
+}
+
+export function checkRevokeRevision(expectedRevision: number, at: number): void {
+  if (
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision < 1 ||
+    expectedRevision >= Number.MAX_SAFE_INTEGER ||
+    !Number.isSafeInteger(at) ||
+    at < 0
+  )
+    throw new Error("Invalid session revocation");
+}
 
 /** One predicate shared by all drivers: narrowing must not revive a session. */
 export function mutationPredicate(

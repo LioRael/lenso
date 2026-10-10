@@ -208,6 +208,107 @@ Cancellation does not roll back a committed database change.
 No password implementation, login UI, implicit renewal, session metadata bag,
 role snapshot or automatic account linking is installed.
 
+### Explicit session administration
+
+`createSessionAdministration` from `/sessions` creates an ordinary async service
+over an explicitly supplied `SessionAdminStore`, exact caller `Access`, policy,
+and strict Audit capability. It installs no transport, Operations, Manage surface,
+listener, User table or Console dependency. Select any CLI/MCP/Manage operations
+explicitly in application code, pass the actual Auth actor as trusted invocation
+context, and reuse these methods rather than accepting identity or scope in JSON.
+
+```ts
+import { createSessionAdministration } from "@lenso/auth/sessions";
+
+// Existing application instances: staffAccess, customerStore, audit.
+// The application policy reads current staff grants for the actual target realm
+// and, for get/revoke, the loaded session's subject. There is no global-admin bypass.
+const administration = createSessionAdministration({
+  realmId: "customers",
+  store: customerStore,
+  access: staffAccess,
+  policy: canManageCustomerSessions,
+  audit,
+  auditScope: { tenantId: null, scopeId: "customers-auth:sessions" },
+});
+
+const actor = await staffAccess.required(trustedStaffEvidence);
+const page = await administration.list({ limit: 50 }, actor);
+const session = await administration.get({ id: selectedSessionId }, actor);
+if (session) {
+  await administration.revoke(
+    {
+      id: session.id,
+      expectedRevision: session.revision,
+    },
+    actor,
+  );
+}
+```
+
+The installed target realm is independent of the caller's authentication realm:
+a staff actor remains the same object when managing customer sessions. Never
+copy an actor or manufacture a customer actor to pass authorization. Policies
+receive `{operation:"scope", action:"list"|"get"|"revoke", realmId}` for
+the pre-lookup gate, with `sessionId` for get/revoke, and
+`{operation:"get"|"revoke", realmId, session}` for actual records. All calls
+require their own scope policy before lookup; record policies then enforce the
+actual stored subject and object. List, get and revoke permissions are independent:
+a targeted revoke need not grant enumeration. The pre-lookup `sessionId` is a
+selector, not proof of ownership or tenant membership. Denied or unauthenticated
+callers cannot probe record existence.
+
+`SessionDetail` contains only `id`, `realmId`, `subjectId`, `kind`, `revision`,
+`issuedAt`, `expiresAt`, `lastActiveAt`, and nullable `revokedAt`. The service
+validates persisted output and projects these fields explicitly; digest,
+credentials and extra provider properties never reach policies or public DTOs.
+`expiresAt` is the stored absolute ceiling, **not** an assertion that the session
+is currently usable: idle timeout, subject status and current configuration may
+restrict actual credential use further. A missing authorized detail returns null.
+
+Lists default to 50 rows, accept 1..100, and use descending `(issuedAt,id)` keyset
+pagination, with no count or fake enumeration fallback. A cursor is bounded and
+namespaced to the exact service runtime and realm. It is a position, not a grant;
+authorization runs again on every page. Recreating the service invalidates its
+cursors. Reads recheck target state after awaited policies; a changed target
+returns `SessionAdministrationError("stale-revision")`, not stale details.
+Pages are not transaction snapshots or frozen exports. Drain calls before
+closing their borrowed Access, Audit or database owners.
+
+Revoke requires the reviewed revision and atomically checks exact realm/id,
+revision and unrevoked state, then sets revocation and increments revision once.
+Native PostgreSQL, SQLite and D1 stores implement this optional capability over
+the existing session table. Old `SessionStore` implementations remain usable by
+managed sessions; administration requires real `page` and `revokeRevision`
+methods. The credential-holder `revoke(token)` retains its existing semantics,
+including revoking a concurrently rotated successor without an admin revision.
+
+Supply the existing Audit service's `prepare`/`complete` methods directly; the
+structural `SessionRevokeAudit` port preserves its opaque receipt type without
+creating an Auth/Audit package dependency cycle. The repository owner must attest
+Audit `durableIntents:true` based on the deployment's real acknowledgement
+semantics. Choose a fixed, application-owned Audit scope unique to this session
+owner; actor/input JSON cannot select it. Audit independently reauthorizes its
+exact scope. No free-form reason, token, digest or request content is recorded.
+
+Admin revoke prepares an `auth.session.revoke` intent targeting `auth-session`,
+revalidates current authority, performs CAS, and completes the linked outcome.
+A failed intent acknowledgement prevents the write. An already-recorded intent
+returns `pending-reconciliation` with its intent ID and never permits replay.
+Post-intent denials, cancellation before the effect, stale revisions, success
+and unconfirmed writes have distinct fixed outcomes. Initial authentication or
+policy denials create no intent and no effect; do not fabricate an Audit identity.
+Completion uses the original receipt even after caller cancellation or
+self-revocation, not a copied actor. Cancellation does not roll back the effect.
+
+An unconfirmed store acknowledgement records `unknown` and throws
+`SessionRevokeOutcomeUnknownError` with the intent ID. Audit completion failures
+propagate the existing Audit error, including `AuditOutcomeUnknownError` with its
+intent ID. The caller must inspect authoritative state and reconcile the intent
+through an authorized Audit workflow, **not automatically retry the effect**.
+Session and Audit writes are independent; this API makes no combined transaction,
+exactly-once, crash-recovery or automatic reconciliation claim.
+
 ## Drizzle schemas and migrations
 
 Auth owns `auth_sessions` only, keyed by `(realm_id, id)`, with a unique token
