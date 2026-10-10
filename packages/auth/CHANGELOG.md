@@ -1,5 +1,11 @@
 # @lenso/auth
 
+## 0.4.0
+
+### Minor Changes
+
+- 61edf6f: Add explicitly authorized session administration with bounded realm-scoped pagination, safe detail DTOs, and revision-checked revocation. Native SQLite, PostgreSQL, and D1 session stores expose the optional administration capability while existing credential-holder session APIs remain compatible. Administrative revocation requires an acknowledged audit intent and reports uncertain effects for reconciliation.
+
 ## 0.3.1
 
 ### Patch Changes
