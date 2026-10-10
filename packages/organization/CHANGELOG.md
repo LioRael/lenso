@@ -1,5 +1,12 @@
 # @lenso/organization
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [61edf6f]
+  - @lenso/auth@0.4.0
+
 ## 0.2.1
 
 ### Patch Changes

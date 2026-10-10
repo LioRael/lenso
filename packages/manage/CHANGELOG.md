@@ -1,5 +1,12 @@
 # @lenso/manage
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [61edf6f]
+  - @lenso/auth@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes
