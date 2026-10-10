@@ -1,0 +1,14 @@
+packages/media/README.md
+  h_9d56aba080c170 181,215,221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "115c9f4e76a220cc8e4b68f990d3972da48e4388",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+packages/notifications/test/service.test.ts
+  h_9d56aba080c170 171,173-180,182-188,195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ca821765636d1001a29983b014d38219438d04c4",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
