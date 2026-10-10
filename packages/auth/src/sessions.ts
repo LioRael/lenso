@@ -3,6 +3,20 @@ import type { SessionMutation, SessionRecord, SessionStore } from "./session-sto
 import type { AuthSource, VerificationContext } from "./source";
 import { snapshotVerification } from "./source";
 export type { SessionStore, SessionRecord, SessionMutation } from "./session-store";
+export type { SessionAdminStore, SessionPosition } from "./session-store";
+export {
+  createSessionAdministration,
+  SessionAdministrationError,
+  SessionRevokeOutcomeUnknownError,
+  type SessionAdministration,
+  type SessionAdministrationOptions,
+  type SessionAdministrationResource,
+  type SessionDetail,
+  type SessionPage,
+  type SessionPageInput,
+  type SessionRevokeAudit,
+  type SessionAuditScope,
+} from "./session-administration";
 
 export interface SessionLifetime {
   readonly idle: number;

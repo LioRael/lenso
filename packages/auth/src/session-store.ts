@@ -39,3 +39,25 @@ export interface SessionStore<S extends string = string> {
   mutate(mutation: SessionMutation<S>): Promise<boolean>;
   revoke(realmId: string, id: string, at: number): Promise<boolean>;
 }
+
+export interface SessionPosition {
+  readonly issuedAt: number;
+  readonly id: string;
+}
+
+/** Optional capability; existing credential-only stores need not implement administration. */
+export interface SessionAdminStore<S extends string = string> extends SessionStore<S> {
+  /** Authoritative descending (issuedAt, id) keyset read in one exact realm; limit 1..101. */
+  page(
+    realmId: string,
+    limit: number,
+    before?: SessionPosition,
+  ): Promise<readonly SessionRecord<S>[]>;
+  /** Atomically match revision and unrevoked state, revoke, and increment revision. */
+  revokeRevision(
+    realmId: string,
+    id: string,
+    expectedRevision: number,
+    at: number,
+  ): Promise<boolean>;
+}

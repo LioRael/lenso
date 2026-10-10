@@ -14,7 +14,12 @@ import { postgresSessionStore } from "../src/drizzle/pg";
 import { authSessions } from "../src/drizzle/schema-sqlite";
 import { authSessions as pgSessions } from "../src/drizzle/schema-pg";
 import { mutationPredicate, mutationValues } from "../src/drizzle/shared";
-import type { SessionMutation, SessionRecord, SessionStore } from "../src/session-store";
+import type {
+  SessionAdminStore,
+  SessionMutation,
+  SessionRecord,
+  SessionStore,
+} from "../src/session-store";
 
 const migration = await readFile(
   new URL("../migrations/sqlite/0000_auth_sessions.sql", import.meta.url),
@@ -154,7 +159,7 @@ function mutation(
 }
 
 for (const driver of ["Bun SQLite", "D1 local binding"] as const) {
-  async function fixture(run: (store: SessionStore, executed: string[]) => Promise<void>) {
+  async function fixture(run: (store: SessionAdminStore, executed: string[]) => Promise<void>) {
     const db = new Database(":memory:");
     db.exec(migration);
     const executed: string[] = [];
@@ -318,6 +323,31 @@ for (const driver of ["Bun SQLite", "D1 local binding"] as const) {
       ]);
       expect(results.filter(Boolean)).toHaveLength(1);
       expect((await store.read(first.realmId, first.id))?.revision).toBe(2);
+    }));
+
+  test(`${driver}: administration pages exact realms with tied timestamps and revision-safe revoke`, () =>
+    fixture(async (store) => {
+      const first = record({ id: "a", tokenDigest: "a" });
+      const second = { ...first, id: "b", tokenDigest: "b" };
+      const older = { ...first, id: "z", issuedAt: first.issuedAt - 1, tokenDigest: "z" };
+      const other = { ...second, realmId: "other", tokenDigest: "other" };
+      for (const row of [first, second, older, other]) await store.create(row);
+      const page = await store.page(first.realmId, 2);
+      expect(page.map((row) => row.id)).toEqual(["b", "a"]);
+      expect((await store.page(first.realmId, 2, page[1]!)).map((row) => row.id)).toEqual(["z"]);
+      expect(await store.revokeRevision("other", "a", 1, Date.now())).toBe(false);
+      expect(await store.mutate(mutation(second))).toBe(true);
+      expect(await store.revokeRevision(first.realmId, "b", 1, Date.now())).toBe(false);
+      const results = await Promise.all([
+        store.revokeRevision(first.realmId, "b", 2, Date.now()),
+        store.revokeRevision(first.realmId, "b", 2, Date.now()),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      const revoked = await store.read(first.realmId, "b");
+      expect(revoked?.revision).toBe(3);
+      expect(revoked?.revokedAt).not.toBeNull();
+      expect(await store.read("other", "b")).toEqual(other);
+      expect(await store.mutate(mutation(revoked!))).toBe(false);
     }));
 }
 

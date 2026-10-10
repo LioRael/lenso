@@ -257,6 +257,39 @@ async function lock(owner: SQL, id: string) {
 }
 
 pgTest(
+  "real PostgreSQL: exact realm pagination and admin revoke loses to queued rotation",
+  async () => {
+    await cluster(async ({ owner, first, store, waitFor, readyToRenew }) => {
+      const issued = await first.issue(undefined);
+      const original = (await store.read("postgres-test", issued.sessionId))!;
+      await store.create({ ...original, id: "zz-a", tokenDigest: "pagination-a" });
+      await store.create({ ...original, id: "zz-b", tokenDigest: "pagination-b" });
+      await store.create({ ...original, realmId: "other", tokenDigest: "other-realm" });
+      const page = await store.page("postgres-test", 2);
+      expect(page.map((row) => row.id)).toEqual(["zz-b", "zz-a"]);
+      expect((await store.page("postgres-test", 2, page[1]!)).map((row) => row.id)).toEqual([
+        issued.sessionId,
+      ]);
+      await readyToRenew(issued);
+      await lock(owner, issued.sessionId);
+      const revoke = outcome(
+        store.revokeRevision("postgres-test", issued.sessionId, 1, Date.now()),
+      );
+      await waitFor(["first"]);
+      await owner`UPDATE auth_sessions SET revision = revision + 1, token_digest = 'rotated' WHERE realm_id = 'postgres-test' AND id = ${issued.sessionId}`;
+      await owner`COMMIT`;
+      expect(await revoke).toEqual({ status: "fulfilled", value: false });
+      expect(await store.revokeRevision("postgres-test", issued.sessionId, 2, Date.now())).toBe(
+        true,
+      );
+      expect((await store.read("postgres-test", issued.sessionId))?.revision).toBe(3);
+      expect((await store.read("other", issued.sessionId))?.revokedAt).toBeNull();
+    });
+  },
+  30_000,
+);
+
+pgTest(
   "real PostgreSQL: two queued renewals have exactly one winner",
   async () => {
     await cluster(async ({ owner, first, second, store, waitFor, readyToRenew }) => {
