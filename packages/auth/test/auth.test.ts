@@ -446,6 +446,18 @@ test("oRPC preserves downstream errors and safely maps AuthError in both modes",
     await expect(
       call(denied, undefined, { context: { request, signal: request.signal } }),
     ).rejects.toMatchObject({ code: "FORBIDDEN", message: "Access denied", cause: denial });
+    const earlyRenewal = os
+      .$context<{ request: Request; signal: AbortSignal }>()
+      .use(middleware)
+      .handler(() => {
+        throw new AuthError("RENEWAL_NOT_DUE");
+      });
+    await expect(
+      call(earlyRenewal, undefined, { context: { request, signal: request.signal } }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "Session renewal is not due",
+    });
     const businessFailure = new Error("business-failure");
     const broken = os
       .$context<{ request: Request; signal: AbortSignal }>()

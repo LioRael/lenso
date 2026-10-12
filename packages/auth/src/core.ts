@@ -1,4 +1,5 @@
 import { AuthConfigurationError, AuthError } from "./errors";
+import { accessOwners } from "./access-owner";
 import {
   allRequirements,
   checkCapabilities,
@@ -165,6 +166,7 @@ class Runtime<R extends string, E, S extends string> {
   private readonly tasks = new Set<Promise<unknown>>();
   private readonly proofs = new WeakMap<object, Proof<E>>();
   private readonly verify: AuthSource<E, S>["verify"];
+  readonly source: AuthSource<E, S>;
   readonly capabilities: SourceCapabilities;
   private stopping?: Promise<void>;
   private stopped = false;
@@ -173,7 +175,8 @@ class Runtime<R extends string, E, S extends string> {
     readonly definition: Realm<R, E, S>,
     private readonly clock: () => number,
   ) {
-    this.verify = definition.source.verify.bind(definition.source);
+    this.source = definition.source;
+    this.verify = this.source.verify.bind(this.source);
     this.capabilities = Object.freeze({
       ...definition.source.capabilities,
       ...(definition.source.capabilities?.assurance === undefined
@@ -299,7 +302,7 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       return verified === null ? null : runtime.mint(target, verified, evidence, signal);
     });
 
-  return Object.freeze({
+  const view: Access<R, E, S, A, T, M> = Object.freeze({
     realmId: runtime.definition.id,
     audience: target,
     optional,
@@ -356,6 +359,8 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       });
     },
   });
+  accessOwners.set(view, runtime);
+  return view;
 }
 
 export function createAuth<R extends string, E, S extends string>(

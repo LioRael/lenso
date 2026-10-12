@@ -2,13 +2,15 @@ export type AuthErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "SERVICE_UNAVAILABLE"
-  | "REAUTHENTICATION_REQUIRED";
+  | "REAUTHENTICATION_REQUIRED"
+  | "RENEWAL_NOT_DUE";
 
 const messages: Record<AuthErrorCode, string> = {
   UNAUTHORIZED: "Authentication required",
   FORBIDDEN: "Access denied",
   SERVICE_UNAVAILABLE: "Authentication unavailable",
   REAUTHENTICATION_REQUIRED: "Reauthentication required",
+  RENEWAL_NOT_DUE: "Session renewal is not due",
 };
 
 export class AuthError extends Error {

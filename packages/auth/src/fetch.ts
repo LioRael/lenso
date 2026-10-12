@@ -64,6 +64,13 @@ export function authErrorResponse(error: unknown): Response {
     );
   }
   const safe = new AuthError(error.code);
-  const status = safe.code === "FORBIDDEN" ? 403 : safe.code === "SERVICE_UNAVAILABLE" ? 503 : 401;
+  const status =
+    safe.code === "FORBIDDEN"
+      ? 403
+      : safe.code === "SERVICE_UNAVAILABLE"
+        ? 503
+        : safe.code === "RENEWAL_NOT_DUE"
+          ? 409
+          : 401;
   return Response.json({ code: safe.code, message: safe.message }, { status });
 }

@@ -186,9 +186,14 @@ test("touch explicitly extends activity without widening frozen limits", async (
 });
 
 test("renewal is delayed, rotates credential, and a concurrent stale mutation loses", async () => {
-  const { sessions, setTime } = setup();
+  const { sessions, store, setTime } = setup();
   const issued = await sessions.issue({ proof: "valid" });
-  await expect(sessions.renew(issued.credential)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  const before = store.records.get(issued.sessionId);
+  await expect(sessions.renew(issued.credential)).rejects.toMatchObject({
+    code: "RENEWAL_NOT_DUE",
+  });
+  expect(store.records.get(issued.sessionId)).toBe(before);
+  expect((await sessions.source.verify(issued.credential, context)).status).toBe("verified");
   setTime(1_020);
   const results = await Promise.allSettled([
     sessions.renew(issued.credential),
