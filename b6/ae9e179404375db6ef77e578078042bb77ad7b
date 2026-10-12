@@ -1,0 +1,14 @@
+scripts/ci-checks.sh
+  h_9d56aba080c170 4,21,34-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6ae9e179404375db6ef77e578078042bb77ad7b",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

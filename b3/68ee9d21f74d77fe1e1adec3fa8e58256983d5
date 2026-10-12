@@ -1,0 +1,110 @@
+.changeset/typed-instance-configuration.md
+  h_9d56aba080c170 1-10
+README.md
+  h_9d56aba080c170 122-224
+bun.lock
+  h_9d56aba080c170 163,285
+docs/CLI.md
+  h_9d56aba080c170 88-121
+examples/notes/CONFIGURATION.md
+  h_9d56aba080c170 1-27
+examples/notes/lenso.config.ts
+  h_9d56aba080c170 3,8-16
+examples/notes/src/app-pg.ts
+  h_9d56aba080c170 4,11
+examples/notes/src/application-auth.ts
+  h_9d56aba080c170 1,3,8,11
+examples/notes/src/application.ts
+  h_9d56aba080c170 4,11
+examples/notes/src/auth.ts
+  h_9d56aba080c170 4,9-15,43,51-89,106,109-131,134,136,165
+examples/notes/src/files.ts
+  h_9d56aba080c170 14,36,119
+examples/notes/src/server.ts
+  h_9d56aba080c170 5-8,11-15,19-20,29,32-53,55,68-83
+examples/notes/test/config.test.ts
+  h_9d56aba080c170 1-100
+examples/notes/test/fixtures/server-child.ts
+  h_9d56aba080c170 18,25-27
+examples/notes/test/server.test.ts
+  h_9d56aba080c170 74-75,85,98,114-120
+examples/tasks/README.md
+  h_9d56aba080c170 21-30
+examples/tasks/src/config.test.ts
+  h_9d56aba080c170 1-52
+examples/tasks/src/config.ts
+  h_9d56aba080c170 1-31
+examples/tasks/src/migrate.ts
+  h_9d56aba080c170 8
+examples/tasks/src/plugin.ts
+  h_9d56aba080c170 3,9,23-27,55-84
+examples/tasks/src/resources.ts
+  h_9d56aba080c170 6,13,16
+examples/workers/src/notes.ts
+  h_9d56aba080c170 5,22-33
+packages/cli/src/bin.ts
+  h_9d56aba080c170 78-84
+packages/cli/src/engine.ts
+  h_9d56aba080c170 6,182,189,191
+packages/cli/test/engine.test.ts
+  h_9d56aba080c170 5,174-208
+packages/cli/test/packaging.test.ts
+  h_9d56aba080c170 146,154-171,238-243,272-274,295-331
+packages/engine/src/application.ts
+  h_9d56aba080c170 6,18
+packages/engine/src/configuration.ts
+  h_9d56aba080c170 1-111
+packages/engine/src/diagnostics.ts
+  h_9d56aba080c170 1,87-105,128-132
+packages/engine/src/engine-defaults.ts
+  h_9d56aba080c170 7,66
+packages/engine/src/index.ts
+  h_9d56aba080c170 12
+packages/engine/src/operations.ts
+  h_9d56aba080c170 166-169
+packages/engine/test/configuration.test.ts
+  h_9d56aba080c170 1-137
+packages/lenso/package.json
+  h_9d56aba080c170 26-37,41,46-47
+packages/lenso/src/config-env.ts
+  h_9d56aba080c170 1-74
+packages/lenso/src/config-file.ts
+  h_9d56aba080c170 1-76
+packages/lenso/src/config-types.ts
+  h_9d56aba080c170 1-77
+packages/lenso/src/config.ts
+  h_9d56aba080c170 1-365
+packages/lenso/src/index.ts
+  h_9d56aba080c170 7-16
+packages/lenso/src/lifecycle.ts
+  h_9d56aba080c170 3-5,20,23-25,126-133
+packages/lenso/src/plugin.ts
+  h_9d56aba080c170 1-3,26,37
+packages/lenso/test/config-adapters.test.ts
+  h_9d56aba080c170 1-238
+packages/lenso/test/config.test.ts
+  h_9d56aba080c170 1-507
+packages/lenso/test/config.types.ts
+  h_9d56aba080c170 1-58
+packages/lenso/test/observability.test.ts
+  h_9d56aba080c170 2-9,62-116
+packages/workers/package.json
+  h_9d56aba080c170 31-32
+packages/workers/src/index.ts
+  h_9d56aba080c170 88
+packages/workers/test/config.test.ts
+  h_9d56aba080c170 1-83
+packages/workers/test/fixtures/config-worker.ts
+  h_9d56aba080c170 1-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b368ee9d21f74d77fe1e1adec3fa8e58256983d5",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

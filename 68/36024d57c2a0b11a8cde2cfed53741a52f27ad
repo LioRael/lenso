@@ -1,0 +1,14 @@
+packages/manage/test/manage.test.ts
+  h_9d56aba080c170 413,507-511,517
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6836024d57c2a0b11a8cde2cfed53741a52f27ad",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
