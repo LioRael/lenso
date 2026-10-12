@@ -178,9 +178,9 @@ test("password HTTP uses persistent SQLite sessions, CAS rotation and isolated l
     await expect(consoleAuth.access.required(rotated)).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
-    expect(
-      (await consoleAuth.binding.fetch(request("/auth/renew", rotated, "POST")))!.status,
-    ).toBe(401);
+    expect((await consoleAuth.binding.fetch(request("/auth/renew", rotated, "POST")))!.status).toBe(
+      401,
+    );
     // Reopen the business owner against the same durable store after connection restart.
     const reopenedBusiness = assemble("business");
     expect((await reopenedBusiness.access.required(businessSession.credential)).subjectId).toBe(
@@ -189,7 +189,8 @@ test("password HTTP uses persistent SQLite sessions, CAS rotation and isolated l
     const expiring = await consoleAuth.sessions.issue(input);
     time += 60_000;
     expect(
-      (await consoleAuth.binding.fetch(request("/auth/renew", expiring.credential, "POST")))!.status,
+      (await consoleAuth.binding.fetch(request("/auth/renew", expiring.credential, "POST")))!
+        .status,
     ).toBe(401);
     const otherAuth = createAuth(realm("console", consoleAuth.sessions.source));
     services.push(otherAuth);
@@ -249,12 +250,12 @@ test("HTTP rejects a different managed session source even in the same realm", a
     };
     const loginFor = (owner: typeof a) =>
       passwordLogin({ id: "password", label: "Account", path: "/auth/login", sessions: owner! });
-    expect(() =>
-      createAuthHttpBinding({ ...base, sessions: b!, login: [loginFor(b)] }),
-    ).toThrow("same session source");
-    expect(() =>
-      createAuthHttpBinding({ ...base, sessions: a!, login: [loginFor(b)] }),
-    ).toThrow("same session owner");
+    expect(() => createAuthHttpBinding({ ...base, sessions: b!, login: [loginFor(b)] })).toThrow(
+      "same session source",
+    );
+    expect(() => createAuthHttpBinding({ ...base, sessions: a!, login: [loginFor(b)] })).toThrow(
+      "same session owner",
+    );
     const binding = createAuthHttpBinding({
       ...base,
       sessions: a!,

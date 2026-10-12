@@ -16,7 +16,7 @@ realm, and owns only the session state it actually manages.
 | `@lenso/auth/fetch`                               | Explicit credential extraction, origin gate, safe error responses            |
 | `@lenso/auth/browser`                             | Data-only typed login/discovery descriptors                                  |
 | `@lenso/auth/interactive`                         | Explicit password and host external-entry capabilities                       |
-| `@lenso/auth/http`                                | Instance-bound discovery, login and session HTTP transport                    |
+| `@lenso/auth/http`                                | Instance-bound discovery, login and session HTTP transport                   |
 | `@lenso/auth/orpc`                                | Typed middleware for oRPC 2.0.0-beta.42                                      |
 | `@lenso/auth/drizzle/pg`                          | Native Drizzle PostgreSQL session store                                      |
 | `@lenso/auth/drizzle/sqlite`                      | Native Drizzle Bun SQLite session store                                      |
@@ -48,7 +48,10 @@ import { createManagedSessions } from "@lenso/auth/sessions";
 // passwordSource verifies { identifier, password } with the existing credential
 // owner; store and subjectActive are application-selected durable contracts.
 const sessions = createManagedSessions({
-  realmId: "console", login: passwordSource, store, subjectActive,
+  realmId: "console",
+  login: passwordSource,
+  store,
+  subjectActive,
   lifetime: { idle: 3_600_000, absolute: 28_800_000, renewAfter: 900_000 },
 });
 const auth = createAuth(realm("console", sessions.source));
@@ -61,10 +64,12 @@ const binding = createAuthHttpBinding({
     sessionCookieName: "__Host-console-session",
     csrfCookieName: "__Host-console-csrf",
   },
-  evidence: request => authCookie(request, "__Host-console-session"),
+  evidence: (request) => authCookie(request, "__Host-console-session"),
   methodsPath: "/operator/auth/methods",
   returnRoots: ["/console"],
-  login: [passwordLogin({ id: "password", label: "Account", path: "/operator/auth/login", sessions })],
+  login: [
+    passwordLogin({ id: "password", label: "Account", path: "/operator/auth/login", sessions }),
+  ],
   sessions,
   logoutPath: "/operator/auth/logout",
   renewPath: "/operator/auth/renew", // Optional; managed renewal eligibility still applies.
