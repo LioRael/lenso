@@ -1,5 +1,14 @@
 # @lenso/auth
 
+## 0.5.0
+
+### Minor Changes
+
+- e7422c9: Add explicit interactive password/external-entry capabilities, browser-safe data
+  descriptors and exact-instance HTTP bindings over the existing managed sessions
+  and external session bridge. Keep source verification separate from login and
+  validate concrete route/cookie compositions.
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @lenso/notifications
 
+## 0.2.5
+
+### Patch Changes
+
+- Updated dependencies [e7422c9]
+  - @lenso/auth@0.5.0
+  - @lenso/manage@0.5.2
+
 ## 0.2.4
 
 ### Patch Changes
