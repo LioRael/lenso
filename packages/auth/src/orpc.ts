@@ -14,7 +14,12 @@ type EvidenceExtractor<C, E> = ((context: C) => EvidenceInput<E>) &
 function transportError(error: unknown): never {
   const safe = authErrorDiagnostic(error);
   if (safe) {
-    const code = safe.code === "REAUTHENTICATION_REQUIRED" ? "UNAUTHORIZED" : safe.code;
+    const code =
+      safe.code === "REAUTHENTICATION_REQUIRED"
+        ? "UNAUTHORIZED"
+        : safe.code === "RENEWAL_NOT_DUE"
+          ? "CONFLICT"
+          : safe.code;
     throw new ORPCError(code, { message: safe.message, cause: error });
   }
   throw new ORPCError("SERVICE_UNAVAILABLE", {

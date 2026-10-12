@@ -14,6 +14,9 @@ realm, and owns only the session state it actually manages.
 | `@lenso/auth/sessions`                            | Optional opaque managed sessions and domain Store contract                   |
 | `@lenso/auth/session-source`                      | Existing `getSession` bridge; external session ownership                     |
 | `@lenso/auth/fetch`                               | Explicit credential extraction, origin gate, safe error responses            |
+| `@lenso/auth/browser`                             | Data-only typed login/discovery descriptors                                  |
+| `@lenso/auth/interactive`                         | Explicit password and host external-entry capabilities                       |
+| `@lenso/auth/http`                                | Instance-bound discovery, login and session HTTP transport                   |
 | `@lenso/auth/orpc`                                | Typed middleware for oRPC 2.0.0-beta.42                                      |
 | `@lenso/auth/drizzle/pg`                          | Native Drizzle PostgreSQL session store                                      |
 | `@lenso/auth/drizzle/sqlite`                      | Native Drizzle Bun SQLite session store                                      |
@@ -23,6 +26,89 @@ realm, and owns only the session state it actually manages.
 The root imports none of Lenso, oRPC, Drizzle or Bun. Those dependencies are
 optional peers selected by entry point. Build uses shared chunks so all public
 entry points use the same `AuthError` class.
+
+## Interactive HTTP (unreleased)
+
+These entries are pending the package's next changeset release. Published
+`0.3.1` and `0.4.0` do not export them. Release Auth first, then update consumers
+to the actual published version; a local source link is validation, not a
+publishable dependency.
+
+Source verification is not interactive login. Neither `defineSource` nor
+`sessionSource` advertises a login form, and machine/API-key authentication is
+not a browser login capability. Install capabilities explicitly. Auth does not
+create accounts, impose a User table, or install Console/React/Engine.
+
+```ts
+import { audience, createAuth, realm } from "@lenso/auth";
+import { authCookie, createAuthHttpBinding, assertAuthHttpBindings } from "@lenso/auth/http";
+import { passwordLogin } from "@lenso/auth/interactive";
+import { createManagedSessions } from "@lenso/auth/sessions";
+
+// passwordSource verifies { identifier, password } with the existing credential
+// owner; store and subjectActive are application-selected durable contracts.
+const sessions = createManagedSessions({
+  realmId: "console",
+  login: passwordSource,
+  store,
+  subjectActive,
+  lifetime: { idle: 3_600_000, absolute: 28_800_000, renewAfter: 900_000 },
+});
+const auth = createAuth(realm("console", sessions.source));
+const access = auth.for(audience("console"));
+const binding = createAuthHttpBinding({
+  access,
+  requestPolicy: {
+    origin: "https://operator.example",
+    credentialMode: "cookie",
+    sessionCookieName: "__Host-console-session",
+    csrfCookieName: "__Host-console-csrf",
+  },
+  evidence: (request) => authCookie(request, "__Host-console-session"),
+  methodsPath: "/operator/auth/methods",
+  returnRoots: ["/console"],
+  login: [
+    passwordLogin({ id: "password", label: "Account", path: "/operator/auth/login", sessions }),
+  ],
+  sessions,
+  logoutPath: "/operator/auth/logout",
+  renewPath: "/operator/auth/renew", // Optional; managed renewal eligibility still applies.
+});
+assertAuthHttpBindings([binding], reservedRoutes);
+// The host dispatches binding.fetch(request), or lends binding to its Console adapter.
+// Use createAuthPlugin and register sessions.close() immediately during setup.
+```
+
+Bind the exact installed Auth instance. `binding.assertAccess(view)` checks its
+provenance and audience, including views derived with `memberships`. Password
+issuance and HTTP session operations must use the same managed owner and realm.
+Every operation still needs its service/object policy; login grants no Console
+access. Close owned services before their database; borrowed stores stay with
+their owner.
+
+The binding rejects duplicate paths and cookie namespaces in the concrete
+composition passed to `assertAuthHttpBindings`. It does not inspect or control
+unrelated routing; pass all co-mounted bindings and reserved host routes. Paths
+are configurable exact local paths. Discovery whitelists public fields, supplies
+a separate readable CSRF cookie, and never serializes adapter functions/secrets.
+Password JSON is bounded to 8 KiB. Cookies are `Secure; HttpOnly; Path=/;
+SameSite=Strict` for the managed credential. Mutations require exact Origin and
+double-submit CSRF in cookie mode. Host and credential ambiguity are rejected.
+Expected-subject mismatches return 412; denied credentials 401, Origin/CSRF 403,
+and unavailable owners 503. Responses are `no-store`. Cancellation remains the
+caller's reason; it is not rollback of dispatched effects. Renewal uses the
+existing store CAS, not browser notifications or a second session manager.
+
+`externalEntry` adapts a host-owned `start` and optional exact callback
+`{ path, method, complete }`. `sessionSource` remains the existing-session
+verification bridge. Optional `externalSession` actions on the binding delegate
+logout/renew to that same external owner and preserve its cookies. The adapter
+must verify protocol state/nonce, callback issuer, CSRF and redirect destinations,
+and map the subject through its credential owner. `safeAuthReturnPath` supplies
+an approved local return destination; it does not validate a provider protocol
+or stored transaction. No OIDC/OAuth/SAML implementation is claimed here.
+The default gate supports same-origin callbacks; protocols needing cross-origin
+POST callbacks require a separately reviewed transport, not a CSRF bypass.
 
 ## Verify a source, protect a service
 
@@ -191,6 +277,10 @@ Operations:
 - `touch(token)` explicitly advances activity without rotating the credential.
 - `renew(token)` respects the renewal interval and atomically rotates the
   credential. The old credential stops working; a concurrent stale writer loses.
+  A valid session before its renewal interval throws `RENEWAL_NOT_DUE` without
+  changing activity, expiry or credential. Fetch/HTTP projects it as 409 and
+  oRPC as `CONFLICT`, not 401. This replaces the former `UNAUTHORIZED` result
+  for early renewal; callers must not expire an identity on this rejection.
 - `revoke(token)` requires possession, including when the subject is disabled.
   It revokes the stable session ID, including a concurrently rotated successor.
 - `close()` rejects new work, signals cancellation and drains in-flight work.

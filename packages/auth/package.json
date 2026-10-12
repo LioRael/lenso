@@ -25,6 +25,18 @@
       "types": "./dist/fetch.d.ts",
       "default": "./dist/fetch.js"
     },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
+    "./interactive": {
+      "types": "./dist/interactive.d.ts",
+      "default": "./dist/interactive.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "default": "./dist/http.js"
+    },
     "./orpc": {
       "types": "./dist/orpc.d.ts",
       "default": "./dist/orpc.js"
@@ -60,7 +72,7 @@
     "./migrations/*": "./migrations/*"
   },
   "scripts": {
-    "build": "bun -e \"await import('node:fs/promises').then(({rm}) => rm('dist', {recursive: true, force: true}))\" && tsc -p tsconfig.build.json && bun build src/index.ts src/plugin.ts src/fetch.ts src/orpc.ts src/session-source.ts src/sessions.ts src/drizzle/pg.ts src/drizzle/sqlite.ts src/drizzle/d1.ts src/drizzle/schema-pg.ts src/drizzle/schema-sqlite.ts --root src --outdir dist --target browser --packages external --splitting",
+    "build": "bun -e \"await import('node:fs/promises').then(({rm}) => rm('dist', {recursive: true, force: true}))\" && tsc -p tsconfig.build.json && bun build src/index.ts src/plugin.ts src/fetch.ts src/browser.ts src/interactive.ts src/http.ts src/orpc.ts src/session-source.ts src/sessions.ts src/drizzle/pg.ts src/drizzle/sqlite.ts src/drizzle/d1.ts src/drizzle/schema-pg.ts src/drizzle/schema-sqlite.ts --root src --outdir dist --target browser --packages external --splitting",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },

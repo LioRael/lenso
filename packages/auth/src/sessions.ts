@@ -335,11 +335,12 @@ export function createManagedSessions<E, S extends string>(options: ManagedSessi
     const found = await lookup(credential, signal);
     const { record } = found;
     const time = clock();
+    if (time >= found.expiry) throw unauthorized();
     if (
       kind === "renew" &&
       time < record.renewedAt + Math.max(record.renewAfterMs, lifetime.renewAfter)
     )
-      throw unauthorized();
+      throw new AuthError("RENEWAL_NOT_DUE");
     let nextToken = credential;
     let nextDigest = found.tokenDigest;
     if (kind === "renew") {
