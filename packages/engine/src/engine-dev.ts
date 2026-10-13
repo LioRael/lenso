@@ -28,6 +28,8 @@ export async function startObservedEngineDevCycle(
   target: string | ApplicationTarget,
   entry?: string,
   observe?: (paths: readonly string[], directories: readonly string[], replace: boolean) => void,
+  env?: Record<string, string | undefined>,
+  signal?: AbortSignal,
 ): Promise<EngineDevCycle> {
   const { root, config } = resolveApplicationTarget(target);
   const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
@@ -60,6 +62,7 @@ export async function startObservedEngineDevCycle(
     [process.execPath, ...devConditionArgs(), workerPath, root, JSON.stringify({ config, entry })],
     {
       cwd: resolve(root),
+      env: { ...process.env, ...env },
       stdout: "ignore",
       stderr: "inherit",
       ipc(message: unknown) {
@@ -151,6 +154,12 @@ export async function startObservedEngineDevCycle(
       }),
     );
   }, 30000);
+  const abort = () => {
+    rejectPrepared(signal?.reason);
+    void close().catch(() => {});
+  };
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
   try {
     const { entry: chosenEntry } = await prepared;
     return Object.freeze({
@@ -191,5 +200,6 @@ export async function startObservedEngineDevCycle(
     throw cause;
   } finally {
     clearTimeout(startupTimeout);
+    signal?.removeEventListener("abort", abort);
   }
 }

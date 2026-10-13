@@ -62,7 +62,8 @@ const help = {
     },
     {
       name: "dev",
-      usage: "dev [--root directory] [--app directory] [--config file] [--entry file]",
+      usage:
+        "dev [--root directory] [--app directory] [--config file] [--entry file] | dev --workspace file [--root directory]",
       effect: "watches source; supervises owned processes; human mode only",
     },
     { name: "help", usage: "help", effect: "describes commands; no config import" },
@@ -145,6 +146,12 @@ const help = {
     "dev-runtime-timeout",
     "engine-session-closed",
     "invalid-engine-state",
+    "invalid-workspace",
+    "workspace-startup-timeout",
+    "workspace-build-failed",
+    "workspace-process-exited",
+    "workspace-stop-timeout",
+    "workspace-cutover-unknown",
   ],
   boundaries: [
     "Trusted local config/plugins; not a sandbox.",
@@ -166,7 +173,9 @@ await trace.getTracer("@lenso/cli").startActiveSpan("lenso.cli.command", async (
       if (["--json", "--stdin", "--help", "-h"].includes(arg)) {
         if (flags.has(arg)) usage("Repeated flag.");
         flags.add(arg);
-      } else if (["--root", "--app", "--config", "--entry", "--input-file"].includes(arg)) {
+      } else if (
+        ["--root", "--app", "--config", "--entry", "--workspace", "--input-file"].includes(arg)
+      ) {
         if (values.has(arg)) usage("Repeated option.");
         const value = args[++index];
         if (!value || value.startsWith("-")) usage("Missing option value.");
@@ -190,8 +199,15 @@ await trace.getTracer("@lenso/cli").startActiveSpan("lenso.cli.command", async (
       usage("Usage: call <plugin-id> <method> [JSON input].");
     if (command === "dev" && jsonMode)
       usage("dev --json is unsupported; use finite commands for structured results.");
+    if (values.has("--workspace") && command !== "dev")
+      usage("--workspace is available for dev only.");
+    if (
+      values.has("--workspace") &&
+      ["--app", "--config", "--entry"].some((key) => values.has(key))
+    )
+      usage("--workspace cannot be combined with --app, --config or --entry.");
     const target =
-      command === "help"
+      command === "help" || values.has("--workspace")
         ? { root: values.get("--root") ?? process.cwd() }
         : await selectApplication(
             values.get("--root") ?? process.cwd(),
@@ -264,7 +280,12 @@ await trace.getTracer("@lenso/cli").startActiveSpan("lenso.cli.command", async (
         break;
       }
       case "dev":
-        await dev({ ...target, entry });
+        await dev({
+          ...target,
+          entry,
+          workspace: values.get("--workspace"),
+          workspaceRoot: values.get("--root"),
+        });
         data = { stopped: true };
         break;
       case "help":
