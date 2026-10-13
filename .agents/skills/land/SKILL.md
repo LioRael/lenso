@@ -112,10 +112,18 @@ the remote destination has not been changed.
 ## 3. Prepare dependencies and verify the exact candidate
 
 Read the candidate's manifests and task definitions before choosing checks. Use
-the declared Bun version, currently `1.4.2`, and the single root lockfile. Confirm
+the declared Bun version, currently `1.4.3`, and the single root lockfile. Confirm
 the version with `bun --version`.
 Sources: `package.json` (`engines`, `packageManager`, `workspaces`), `mise.toml`,
 `AGENTS.md`.
+
+When the candidate declares `prepare:runtime`, run `bun run prepare:runtime`
+before lockfile generation or installation. It verifies the immutable SDK
+snapshot in `scripts/runtime-sdk.json` and builds the TS package inside
+`.runtime-deps`; it does not require a sibling checkout or Rust. Use the same
+preparation in the clean source copy before its frozen install. A missing or
+failed preparation is a dependency failure, not permission to substitute local
+links or relax frozen verification.
 
 For a candidate that adds/removes workspaces or changes package manifests,
 including versions, dependency ranges or optional peers, synchronize the lockfile

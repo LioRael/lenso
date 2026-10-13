@@ -1,7 +1,7 @@
 # Application starting points
 
 Copy a template directory outside this repository. These are application contents,
-not a scaffold generator. Use Bun 1.4.2 and packed packages from the same framework
+not a scaffold generator. Use Bun 1.4.3 and packed packages from the same framework
 build; the package names do not imply an npm release exists.
 
 ## Choose a size
