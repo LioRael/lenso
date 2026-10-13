@@ -1,5 +1,11 @@
 # @lenso/auth
 
+## 0.5.1
+
+### Patch Changes
+
+- Add explicit authorization phases that verify current evidence once while retaining policy, subject continuity, expiry and cancellation checks. Existing authorization calls continue to verify independently.
+
 ## 0.5.0
 
 ### Minor Changes

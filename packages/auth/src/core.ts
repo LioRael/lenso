@@ -355,9 +355,14 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
     return runtime.run([proof.signal, options.signal], async (signal) => {
       // Every stage revalidates credentials; no verification survives this call.
       const verified = await runtime.authenticate(proof.evidence, requirements, signal);
-      if (!verified || verified.subjectId !== principal.subjectId ||
-          (verified.kind ?? "user") !== principal.kind) throw new AuthError("UNAUTHORIZED");
-      for (const resource of resources) await authorize(principal, verified, resource, policy, signal);
+      if (
+        !verified ||
+        verified.subjectId !== principal.subjectId ||
+        (verified.kind ?? "user") !== principal.kind
+      )
+        throw new AuthError("UNAUTHORIZED");
+      for (const resource of resources)
+        await authorize(principal, verified, resource, policy, signal);
       return principal;
     });
   }

@@ -50,12 +50,15 @@ export async function checkTypes(accountId: AccountId) {
   // @ts-expect-error Combined authorization still returns the selected audience.
   await write.enforce(authorized, {}, () => true);
   void authorizedSubject;
-  await access.enforceAll(authorized, [{ tenantId: "north" }, { tenantId: "south" }] as const,
+  await access.enforceAll(
+    authorized,
+    [{ tenantId: "north" }, { tenantId: "south" }] as const,
     ({ resource, membership }) => {
       const tenant: string = resource.tenantId;
       const role: "editor" = membership.role;
       return !!tenant && role === "editor";
-    });
+    },
+  );
   // @ts-expect-error A stage cannot authorize actors minted for another audience.
   await write.enforceAll(authorized, [{}] as const, () => true);
   const base = os.$context<{ request: Request }>();
