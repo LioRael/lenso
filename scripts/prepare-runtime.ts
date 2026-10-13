@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   cp,
   lstat,
@@ -99,10 +101,67 @@ async function fileHashes(root: string, prefix = ""): Promise<Record<string, str
   return hashes;
 }
 
-// Dependency injection is for in-process fixtures only; the CLI has no pin/source override.
+async function copyLocalRuntime(directory: string, destination: string) {
+  const root = resolve(directory);
+  if (!(await lstat(root)).isDirectory())
+    throw new Error("Runtime root must be a regular directory");
+  const { stdout } = await promisify(execFile)("git", ["ls-files", "-z"], {
+    cwd: root,
+    timeout: 10_000,
+    maxBuffer: 1024 * 1024,
+  });
+  const files: Record<string, string> = {};
+  let size = 0;
+  const paths = stdout
+    .split("\0")
+    .filter(Boolean)
+    .filter(
+      (path) =>
+        /^(package\.json|bun\.lock|tsconfig\.json|Cargo\.(toml|lock)|tools\/generate\.ts)$/.test(
+          path,
+        ) ||
+        /^(sdk\/typescript\/[^/]+\.(ts|json)|crates\/[^/]+\/(Cargo\.toml|(src|tests)\/[^/]+\.rs)|examples\/batch\/(Cargo\.toml|src\/(bin\/)?[^/]+\.rs)|examples\/contracts\/[^/]+\.json|examples\/generated\/[^/]+\.(rs|ts))$/.test(
+          path,
+        ),
+    )
+    .sort();
+  // Shared candidate schema cases are an explicit source input, even before Git staging.
+  const schemaCases = "crates/sdk/tests/schema-cases.json";
+  if (await exists(join(root, schemaCases))) paths.push(schemaCases);
+  paths.sort();
+  if (paths.length > 4096) throw new Error("Local Runtime source exceeds file limit");
+  for (const path of paths) {
+    const parts = path.split("/");
+    if (parts.some((part) => !part || part === "." || part === "..") || path.includes("\\")) {
+      throw new Error("Unexpected local Runtime path");
+    }
+    for (let i = 1; i <= parts.length; i++) {
+      const entry = await lstat(join(root, ...parts.slice(0, i)));
+      if (entry.isSymbolicLink() || (i === parts.length ? !entry.isFile() : !entry.isDirectory())) {
+        throw new Error("Local Runtime source must contain only regular files and directories");
+      }
+    }
+    const bytes = await Bun.file(join(root, path))
+      .slice(0, maxArchiveBytes + 1)
+      .bytes();
+    size += bytes.length;
+    if (size > maxArchiveBytes) throw new Error("Local Runtime source exceeds byte limit");
+    files[path] = sha256(bytes);
+    await mkdir(dirname(join(destination, path)), { recursive: true });
+    await writeFile(join(destination, path), bytes);
+  }
+  const manifest = JSON.parse(await readFile(join(destination, "package.json"), "utf8"));
+  if (manifest.name !== "lenso-runtime-workspace" || manifest.private !== true) {
+    throw new Error("Local source must be lenso-runtime-workspace");
+  }
+  return { kind: "local", root, files, sha256: sha256(Buffer.from(JSON.stringify(files))) };
+}
+
+// Pin and command injection remain fixture-only; local source requires explicit opt-in.
 export async function prepareRuntime(
   root = resolve(import.meta.dir, ".."),
   dependencies: { fetch?: ArchiveFetcher; run?: Run; pin?: Pin } = {},
+  options: { runtimeRoot?: string } = {},
 ) {
   root = resolve(root);
   const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
@@ -115,7 +174,7 @@ export async function prepareRuntime(
   }
   const pin = dependencies.pin ?? pinnedSnapshot;
   // Authenticate the complete response before extracting files or executing snapshot code.
-  const bytes = await download(pin, dependencies.fetch ?? fetch);
+  const bytes = options.runtimeRoot ? undefined : await download(pin, dependencies.fetch ?? fetch);
   const output = join(root, ".runtime-deps");
   const existing = await exists(output);
   if (existing) {
@@ -150,21 +209,26 @@ export async function prepareRuntime(
     temporary = await mkdtemp(join(output, ".prepare-"));
     const source = join(temporary, "source");
     await mkdir(source);
-    const archive = new Bun.Archive(Bun.gunzipSync(bytes));
-    const prefix = `lenso-runtime-${pin.commit}/`;
-    for (const [name, file] of await archive.files()) {
-      const relative = name.slice(prefix.length);
-      if (
-        !name.startsWith(prefix) ||
-        !relative ||
-        relative.split("/").some((part) => part === ".." || part === "." || part === "") ||
-        relative.includes("\\")
-      ) {
-        throw new Error("Unexpected Runtime SDK archive path");
+    const local = options.runtimeRoot
+      ? await copyLocalRuntime(options.runtimeRoot, source)
+      : undefined;
+    if (bytes) {
+      const archive = new Bun.Archive(Bun.gunzipSync(bytes));
+      const prefix = `lenso-runtime-${pin.commit}/`;
+      for (const [name, file] of await archive.files()) {
+        const relative = name.slice(prefix.length);
+        if (
+          !name.startsWith(prefix) ||
+          !relative ||
+          relative.split("/").some((part) => part === ".." || part === "." || part === "") ||
+          relative.includes("\\")
+        ) {
+          throw new Error("Unexpected Runtime SDK archive path");
+        }
+        const destination = join(source, relative);
+        await mkdir(dirname(destination), { recursive: true });
+        await writeFile(destination, await file.bytes());
       }
-      const destination = join(source, relative);
-      await mkdir(dirname(destination), { recursive: true });
-      await writeFile(destination, await file.bytes());
     }
     const execute = dependencies.run ?? run;
     await execute(["install", "--frozen-lockfile", "--ignore-scripts"], source);
@@ -189,7 +253,7 @@ export async function prepareRuntime(
     }
     await writeFile(
       join(temporary, "provenance.json"),
-      `${JSON.stringify({ ...pin, bun: Bun.version, files: hashes }, null, 2)}\n`,
+      `${JSON.stringify({ ...(local ? { source: local, version: pin.version } : pin), bun: Bun.version, files: hashes }, null, 2)}\n`,
     );
     // Stage both source and package before replacing any previous ready state.
     const moved: string[] = [];
@@ -220,12 +284,31 @@ export async function prepareRuntime(
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  if (args.length !== 0 && (args.length !== 2 || args[0] !== "--root")) {
-    console.error("Usage: bun scripts/prepare-runtime.ts [--root <lenso-workspace>]");
+  const options = new Map<string, string>();
+  let valid = args.length % 2 === 0;
+  for (let i = 0; i < args.length; i += 2) {
+    const key = args[i]!;
+    if (
+      !["--root", "--runtime-root"].includes(key) ||
+      options.has(key) ||
+      !args[i + 1] ||
+      args[i + 1]!.startsWith("--")
+    )
+      valid = false;
+    options.set(key, args[i + 1]!);
+  }
+  if (!valid) {
+    console.error(
+      "Usage: bun scripts/prepare-runtime.ts [--root <lenso-workspace>] [--runtime-root <runtime-checkout>]",
+    );
     process.exitCode = 1;
   } else {
     try {
-      await prepareRuntime(args[1]);
+      await prepareRuntime(
+        options.get("--root"),
+        {},
+        { runtimeRoot: options.get("--runtime-root") },
+      );
       console.log(
         "Runtime SDK 0.1.0 prepared in .runtime-deps/sdk; source in .runtime-deps/source",
       );

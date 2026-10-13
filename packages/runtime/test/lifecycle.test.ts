@@ -86,6 +86,14 @@ test("late exports bind after native setup and activate exact instances only onc
   const events: string[] = [];
   const handler = async () => "native result";
   const clients = {};
+  let releaseDrain!: () => void;
+  let drainStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    drainStarted = resolve;
+  });
+  const drained = new Promise<void>((resolve) => {
+    releaseDrain = resolve;
+  });
   const host = {
     activate: async (handlers: unknown) => {
       expect(handlers).toEqual({ invoke: handler });
@@ -93,6 +101,8 @@ test("late exports bind after native setup and activate exact instances only onc
     },
     drain: async () => {
       events.push("drain");
+      drainStarted();
+      await drained;
     },
     close: async () => {
       events.push("close");
@@ -137,6 +147,13 @@ test("late exports bind after native setup and activate exact instances only onc
     } finally {
       const stopping = running.stop();
       expect(running.stop()).toBe(stopping);
+      try {
+        await started;
+        expect(events).toEqual(["native", "exports", "ready", "drain"]);
+        expect(await running.get(native).invoke()).toBe("native result");
+      } finally {
+        releaseDrain();
+      }
       await stopping;
     }
     expect(events).toEqual(["native", "exports", "ready", "drain", "close", "native cleanup"]);
@@ -223,6 +240,74 @@ test("Core startup leaves outbound-only callers registered without binding expor
     expect(events).toEqual([]);
     await running.stop();
     expect(events).toEqual(["drain", "close"]);
+  } finally {
+    connection.mockRestore();
+  }
+});
+
+// Existing cleanup-order assertions use immediately settled drains. They cannot
+// detect native cleanup overtaking in-flight Runtime work or Runtime-only disposal
+// incorrectly stopping the borrowed Core app's ordinary services.
+test("Runtime disposal waits for drain without stopping native calls", async () => {
+  const events: string[] = [];
+  let releaseDrain!: () => void;
+  let drainStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    drainStarted = resolve;
+  });
+  const drained = new Promise<void>((resolve) => {
+    releaseDrain = resolve;
+  });
+  const host = {
+    drain: async (timeoutMs: number) => {
+      expect(timeoutMs).toBe(25);
+      events.push("drain");
+      drainStarted();
+      await drained;
+    },
+    close: async () => {
+      events.push("close");
+    },
+  } as unknown as RuntimeHost;
+  const connection = spyOn(RuntimeHost, "connect").mockResolvedValue(host);
+  const runtime = createRuntimePlugin({
+    id: "runtime",
+    connection: { namespace: "test", service: "caller", contract: { version: "1", methods: {} } },
+    clients: () => undefined,
+    drainTimeoutMs: 25,
+  });
+  const native = definePlugin({
+    id: "native",
+    setup(context) {
+      let calls = 0;
+      context.onCleanup(() => {
+        events.push("native cleanup");
+      });
+      return {
+        async invoke() {
+          return ++calls;
+        },
+      };
+    },
+  });
+  try {
+    const running = await startApp({ plugins: [runtime, native] });
+    try {
+      const disposing = running.get(runtime).disposer!();
+      await started;
+      expect(events).toEqual(["drain"]);
+      expect(await running.get(native).invoke()).toBe(1);
+      releaseDrain();
+      await disposing;
+      expect(events).toEqual(["drain", "close"]);
+      expect(await running.get(native).invoke()).toBe(2);
+      await running.get(runtime).disposer!();
+      expect(events).toEqual(["drain", "close"]);
+    } finally {
+      releaseDrain();
+      await running.stop();
+    }
+    expect(events).toEqual(["drain", "close", "native cleanup"]);
   } finally {
     connection.mockRestore();
   }

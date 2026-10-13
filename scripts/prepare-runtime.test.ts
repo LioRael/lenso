@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { prepareRuntime, type ArchiveFetcher } from "./prepare-runtime";
 import snapshot from "./runtime-sdk.json";
@@ -126,6 +126,65 @@ test("failed SDK build preserves all previous ready state", async () => {
     "pinned generator",
   );
   expect((await readdir(ready)).sort()).toEqual([".owner", "provenance.json", "sdk", "source"]);
+});
+
+test("explicit local source captures dirty tracked bytes and rejects symlinks without replacing ready state", async () => {
+  const root = await fixture();
+  const runtime = await fixture();
+  await writeFile(
+    join(runtime, "package.json"),
+    JSON.stringify({ name: "lenso-runtime-workspace", private: true }),
+  );
+  await mkdir(join(runtime, "sdk/typescript"), { recursive: true });
+  await writeFile(join(runtime, "sdk/typescript/package.json"), JSON.stringify(sdkManifest));
+  await writeFile(join(runtime, "sdk/typescript/index.ts"), "first");
+  for (const args of [
+    ["init", "-q"],
+    ["add", "package.json", "sdk"],
+  ]) {
+    expect(await Bun.spawn(["git", ...args], { cwd: runtime }).exited).toBe(0);
+  }
+  await writeFile(join(runtime, ".env"), "secret");
+  await writeFile(join(runtime, "sdk/typescript/untracked.ts"), "untracked");
+  await mkdir(join(runtime, "crates/sdk/tests"), { recursive: true });
+  await writeFile(join(runtime, "crates/sdk/tests/schema-cases.json"), "[]");
+  const run = async (args: string[], cwd: string) => {
+    await buildFixture(args, cwd);
+    if (args[0] === "run")
+      await writeFile(
+        join(cwd, "sdk/typescript/dist/index.js"),
+        await readFile(join(cwd, "sdk/typescript/index.ts")),
+      );
+  };
+  const prepare = () =>
+    prepareRuntime(
+      root,
+      {
+        run,
+        fetch: async () => {
+          throw new Error("unexpected download");
+        },
+      },
+      { runtimeRoot: runtime },
+    );
+  await prepare();
+  const output = join(root, ".runtime-deps");
+  const before = JSON.parse(await readFile(join(output, "provenance.json"), "utf8"));
+  expect(before.source.kind).toBe("local");
+  expect(before.commit).toBeUndefined();
+  expect(before.source.files[".env"]).toBeUndefined();
+  expect(before.source.files["sdk/typescript/untracked.ts"]).toBeUndefined();
+  expect(before.source.files["crates/sdk/tests/schema-cases.json"]).toBeDefined();
+  await writeFile(join(runtime, "sdk/typescript/index.ts"), "dirty current");
+  await prepare();
+  const after = JSON.parse(await readFile(join(output, "provenance.json"), "utf8"));
+  expect(after.source.sha256).not.toBe(before.source.sha256);
+  expect(after.files["dist/index.js"]).not.toBe(before.files["dist/index.js"]);
+  expect(await readFile(join(output, "sdk/dist/index.js"), "utf8")).toBe("dirty current");
+  await rm(join(runtime, "sdk/typescript/index.ts"));
+  await symlink(join(runtime, ".env"), join(runtime, "sdk/typescript/index.ts"));
+  await expect(prepare()).rejects.toThrow("regular files");
+  expect(JSON.parse(await readFile(join(output, "provenance.json"), "utf8"))).toEqual(after);
 });
 
 test("unowned output and non-consuming roots are never replaced", async () => {
