@@ -172,6 +172,16 @@ reads current membership if configured, and runs the service policy. There is
 no Request-only cache or durable authorization snapshot. Service callers must
 obtain a new actor after their invocation's signal is aborted.
 
+`authorized(evidence, resource, policy, options)` (unreleased) authenticates once
+and runs membership and policy checks for one boundary, returning a trusted
+actor. It checks cancellation and session expiry after asynchronous policy work.
+Later service boundaries must still call `enforce()`, which revalidates the source.
+
+`enforceAll(actor, resources, policy, options)` (unreleased) checks a nonempty
+resource list at one explicit stage with one fresh source verification. Each
+resource gets its own current membership and policy checks; subsequent stages
+must revalidate again. This creates no reusable authorization receipt or cache.
+
 Only exact `true` grants access. Known Auth errors are normalized to safe
 messages; unknown provider, membership or policy failures become
 `SERVICE_UNAVAILABLE`. Cancellation retains its signal reason.

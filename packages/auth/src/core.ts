@@ -99,6 +99,20 @@ export interface Access<
   required(evidence: E, options?: AuthenticationOptions): Promise<Actor<R, S, A>>;
   requireSession(...requirements: readonly SessionRequirements[]): Access<R, E, S, A, T, M>;
   memberships<U, G>(reader: MembershipReader<R, S, U, G>): Access<R, E, S, A, U, G>;
+  /** Authenticate and authorize one fresh boundary; later boundaries still require enforce. */
+  authorized<U extends T>(
+    evidence: E,
+    resource: U,
+    policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
+    options?: AuthenticationOptions,
+  ): Promise<Actor<R, S, A>>;
+  /** Revalidate once for an explicit stage while checking every resource's current policy. */
+  enforceAll<U extends T>(
+    actor: Actor<R, S, A> | null,
+    resources: readonly U[],
+    policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
+    options?: AuthenticationOptions,
+  ): Promise<Actor<R, S, A>>;
   enforce<U extends T>(
     actor: Actor<R, S, A> | null,
     resource: U,
@@ -302,6 +316,52 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       return verified === null ? null : runtime.mint(target, verified, evidence, signal);
     });
 
+  async function authorize<U extends T>(
+    principal: Actor<R, S, A>,
+    verified: Extract<AuthenticationResult<S>, { status: "verified" }>,
+    resource: U,
+    policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
+    signal: AbortSignal,
+  ) {
+    const membership = reader
+      ? await reader(
+          Object.freeze({ realmId: principal.realmId, subjectId: principal.subjectId }),
+          resource,
+          { signal },
+        )
+      : (undefined as M);
+    signal.throwIfAborted();
+    if (reader && membership == null) throw new AuthError("FORBIDDEN");
+    const allowed = await policy({
+      principal,
+      resource,
+      membership: membership as M,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (allowed !== true) throw new AuthError("FORBIDDEN");
+    runtime.checkEvidence(verified.session, requirements);
+    return principal;
+  }
+
+  function enforceResources<U extends T>(
+    actor: Actor<R, S, A> | null,
+    resources: readonly U[],
+    policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
+    options: AuthenticationOptions,
+  ) {
+    const proof = runtime.proof(actor, target);
+    const principal = actor!;
+    return runtime.run([proof.signal, options.signal], async (signal) => {
+      // Every stage revalidates credentials; no verification survives this call.
+      const verified = await runtime.authenticate(proof.evidence, requirements, signal);
+      if (!verified || verified.subjectId !== principal.subjectId ||
+          (verified.kind ?? "user") !== principal.kind) throw new AuthError("UNAUTHORIZED");
+      for (const resource of resources) await authorize(principal, verified, resource, policy, signal);
+      return principal;
+    });
+  }
+
   const view: Access<R, E, S, A, T, M> = Object.freeze({
     realmId: runtime.definition.id,
     audience: target,
@@ -319,44 +379,38 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       if (reader) throw new AuthConfigurationError("Membership reader is already configured");
       return access(runtime, target, requirements, membershipReader);
     },
+    async authorized<U extends T>(
+      evidence: E,
+      resource: U,
+      policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
+      options: AuthenticationOptions = {},
+    ) {
+      return runtime.run([options.signal], async (signal) => {
+        const verified = await runtime.authenticate(evidence, requirements, signal);
+        if (!verified) throw new AuthError("UNAUTHORIZED");
+        const principal = runtime.mint(target, verified, evidence, signal);
+        return authorize(principal, verified, resource, policy, signal);
+      });
+    },
+    async enforceAll<U extends T>(
+      actor: Actor<R, S, A> | null,
+      resources: readonly U[],
+      policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
+      options: AuthenticationOptions = {},
+    ) {
+      if (!Array.isArray(resources) || !resources.length) {
+        throw new AuthConfigurationError("At least one authorization resource is required");
+      }
+      // Keep the caller's selected stage stable across asynchronous verification.
+      return enforceResources(actor, Object.freeze([...resources]), policy, options);
+    },
     async enforce<U extends T>(
       actor: Actor<R, S, A> | null,
       resource: U,
       policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
       options: AuthenticationOptions = {},
     ) {
-      const proof = runtime.proof(actor, target);
-      const principal = actor!;
-      return runtime.run([proof.signal, options.signal], async (signal) => {
-        // Revalidate credentials at the service boundary, including direct calls.
-        const verified = await runtime.authenticate(proof.evidence, requirements, signal);
-        if (
-          !verified ||
-          verified.subjectId !== principal.subjectId ||
-          (verified.kind ?? "user") !== principal.kind
-        ) {
-          throw new AuthError("UNAUTHORIZED");
-        }
-        const membership = reader
-          ? await reader(
-              Object.freeze({ realmId: principal.realmId, subjectId: principal.subjectId }),
-              resource,
-              { signal },
-            )
-          : (undefined as M);
-        signal.throwIfAborted();
-        if (reader && membership == null) throw new AuthError("FORBIDDEN");
-        const allowed = await policy({
-          principal,
-          resource,
-          membership: membership as M,
-          signal,
-        });
-        signal.throwIfAborted();
-        if (allowed !== true) throw new AuthError("FORBIDDEN");
-        runtime.checkEvidence(verified.session, requirements);
-        return principal;
-      });
+      return enforceResources(actor, [resource], policy, options);
     },
   });
   accessOwners.set(view, runtime);
