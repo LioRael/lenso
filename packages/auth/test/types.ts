@@ -42,6 +42,25 @@ export async function checkTypes(accountId: AccountId) {
     const role: "editor" = membership.role;
     return role === "editor";
   });
+  const authorized = await access.authorized("token", { tenantId: "north" }, ({ membership }) => {
+    const role: "editor" = membership.role;
+    return role === "editor";
+  });
+  const authorizedSubject: AccountId = authorized.subjectId;
+  // @ts-expect-error Combined authorization still returns the selected audience.
+  await write.enforce(authorized, {}, () => true);
+  void authorizedSubject;
+  await access.enforceAll(
+    authorized,
+    [{ tenantId: "north" }, { tenantId: "south" }] as const,
+    ({ resource, membership }) => {
+      const tenant: string = resource.tenantId;
+      const role: "editor" = membership.role;
+      return !!tenant && role === "editor";
+    },
+  );
+  // @ts-expect-error A stage cannot authorize actors minted for another audience.
+  await write.enforceAll(authorized, [{}] as const, () => true);
   const base = os.$context<{ request: Request }>();
   base.use(optionalAuth(access, bearerEvidence)).handler(({ context }) => {
     // @ts-expect-error Optional middleware must retain the nullable actor type.
