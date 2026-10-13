@@ -27,9 +27,15 @@ public client types with `import type`, never a server initialization barrel.
 
 ```sh
 cd lenso
+bun run prepare:runtime
 bun install --frozen-lockfile
 bun dev
 ```
+
+Source-workspace preparation downloads the Runtime SDK from the commit and
+checksum pinned in `scripts/runtime-sdk.json`, builds only its TS package, and
+keeps generated dependencies under ignored `.runtime-deps`. It requires Bun
+1.4.3, not Cargo or a sibling Runtime checkout.
 
 The included greeting starts on loopback and reports its actual URL, enabled plugins and readiness. In another terminal:
 

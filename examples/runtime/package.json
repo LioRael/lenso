@@ -1,0 +1,23 @@
+{
+  "name": "@lenso/example-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "bun ../../.runtime-deps/source/tools/generate.ts ../../.runtime-deps/source/examples/contracts/logs.json src/generated logs && oxfmt src/generated/logs.ts",
+    "dev": "LENSO_RUNTIME_EXTERNAL=1 bun src/dev.ts",
+    "start": "bun src/server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "bun build src/server.ts --outdir dist --target bun --packages external"
+  },
+  "dependencies": {
+    "@lenso/core": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@lenso/runtime": "workspace:^",
+    "@lenso/runtime-sdk": "file:../../.runtime-deps/sdk",
+    "@standard-schema/spec": "1.1.0"
+  },
+  "devDependencies": {
+    "@lenso/cli": "workspace:^"
+  }
+}

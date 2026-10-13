@@ -6,6 +6,9 @@
 /packages/*/dist/
 /examples/*/dist/
 
+# Pinned Runtime SDK source and locally prepared public package
+/.runtime-deps/
+
 # Engine-generated entries and Turbo's local caches
 /.lenso/
 /packages/*/.lenso/
