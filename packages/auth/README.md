@@ -182,6 +182,22 @@ resource list at one explicit stage with one fresh source verification. Each
 resource gets its own current membership and policy checks; subsequent stages
 must revalidate again. This creates no reusable authorization receipt or cache.
 
+`beginRead(freshActor, { signal, maxAgeMs })` and `enforceRead(scope, resource, policy, { signal })`
+(unreleased, optional Access members) are explicit finite, non-streaming read APIs.
+Entry consumes an actor minted by an authoritative verification with the exact
+same explicit caller signal. It makes no extra verification, accepts each actor
+once, and bounds age from the start of its source verification. Identity is reused only inside
+this scope, while every operation still checks its current membership and policy.
+Selectors must be primitives or frozen flat data objects. Default lifetime is 5s,
+with a hard 10s maximum. Every operation requires the same original caller signal. Call `await scope.finish()` before disclosing results:
+it performs a new authoritative verification, checks identity continuity and every
+registered policy again, and returns a fresh actor for final disclosure metadata.
+Successful or failed finish consumes the scope; close it in finally. Concurrent
+finish while a policy check is pending fails closed. Only the same Auth runtime
+and audience may use a scope, including scoped membership views. Cancellation,
+expiry and Auth shutdown invalidate it. Existing enforce APIs retain their fresh
+verification semantics; writes, billing and streams must use those existing paths.
+
 Only exact `true` grants access. Known Auth errors are normalized to safe
 messages; unknown provider, membership or policy failures become
 `SERVICE_UNAVAILABLE`. Cancellation retains its signal reason.

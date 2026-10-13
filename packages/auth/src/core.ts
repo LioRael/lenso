@@ -18,6 +18,24 @@ import { snapshotVerification } from "./source";
 
 declare const actorBrand: unique symbol;
 declare const audienceBrand: unique symbol;
+declare const readScopeBrand: unique symbol;
+
+/** Explicit finite read: finish must succeed before disclosing any result. */
+export interface ReadOnlyScope<R extends string, S extends string, A extends string> {
+  readonly actor: Actor<R, S, A>;
+  readonly [readScopeBrand]: readonly [R, S, A];
+  finish(): Promise<Actor<R, S, A>>;
+  close(): void;
+}
+
+export interface ReadOnlyOperationOptions extends AuthenticationOptions {
+  readonly signal: AbortSignal;
+}
+
+export interface ReadOnlyOptions extends ReadOnlyOperationOptions {
+  /** Default 5000ms; hard maximum 10000ms, measured from before entry verification. */
+  readonly maxAgeMs?: number;
+}
 
 export interface SubjectRef<R extends string = string, S extends string = string> {
   readonly realmId: R;
@@ -95,6 +113,13 @@ export interface Access<
 > {
   readonly realmId: R;
   readonly audience: Audience<A>;
+  beginRead?(actor: Actor<R, S, A>, options: ReadOnlyOptions): Promise<ReadOnlyScope<R, S, A>>;
+  enforceRead?<U extends T>(
+    scope: ReadOnlyScope<string, string, string>,
+    resource: U,
+    policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
+    options: ReadOnlyOperationOptions,
+  ): Promise<Actor<R, S, A>>;
   optional(evidence: E, options?: AuthenticationOptions): Promise<Actor<R, S, A> | null>;
   required(evidence: E, options?: AuthenticationOptions): Promise<Actor<R, S, A>>;
   requireSession(...requirements: readonly SessionRequirements[]): Access<R, E, S, A, T, M>;
@@ -142,9 +167,42 @@ export function allPolicies<C>(...policies: readonly Policy<C>[]): Policy<C> {
   };
 }
 
-interface Proof<E> {
+interface ReadState<R extends string, E, S extends string> {
+  readonly target: string;
   readonly evidence: E;
   readonly signal: AbortSignal;
+  readonly callerSignal: AbortSignal;
+  readonly controller: AbortController;
+  readonly actor: Actor<R, S, string>;
+  readonly verified: Extract<AuthenticationResult<S>, { status: "verified" }>;
+  readonly startedAt: number;
+  readonly deadline: number;
+  readonly entryRequirements: SessionRequirements;
+  readonly checks: Array<(verified: Extract<AuthenticationResult<S>, { status: "verified" }>, signal: AbortSignal) => Promise<void>>;
+  status: "open" | "finishing" | "closed";
+  pending: number;
+}
+
+// Read selectors are immutable values, not arbitrary mutable application objects.
+function readSelector(value: unknown): void {
+  if (value === null || ["string", "number", "boolean", "undefined", "bigint"].includes(typeof value)) return;
+  if (typeof value !== "object" || !Object.isFrozen(value) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(value)))
+    throw new AuthConfigurationError("Read resource must be a primitive or frozen flat selector");
+  for (const descriptor of Reflect.ownKeys(value).map((key) => Object.getOwnPropertyDescriptor(value, key)!)) {
+    if (!("value" in descriptor) || (descriptor.value !== null &&
+        !["string", "number", "boolean", "undefined", "bigint"].includes(typeof descriptor.value)))
+      throw new AuthConfigurationError("Read resource must be a primitive or frozen flat selector");
+  }
+}
+
+interface Proof<E, S extends string> {
+  readonly evidence: E;
+  readonly signal: AbortSignal;
+  readonly callerSignal?: AbortSignal;
+  readonly verified: Extract<AuthenticationResult<S>, { status: "verified" }>;
+  readonly verifiedStartedAt: number;
+  readStarted: boolean;
 }
 
 function validTime(value: unknown, now?: number): value is number {
@@ -178,7 +236,26 @@ function validateSession(session: SessionEvidence | undefined, now: number): voi
 class Runtime<R extends string, E, S extends string> {
   private readonly controller = new AbortController();
   private readonly tasks = new Set<Promise<unknown>>();
-  private readonly proofs = new WeakMap<object, Proof<E>>();
+  private readonly proofs = new WeakMap<object, Proof<E, S>>();
+  private readonly verificationStarts = new WeakMap<object, number>();
+  readonly reads = new WeakMap<object, ReadState<R, E, S>>();
+
+  now(): number {
+    const now = this.clock();
+    if (!validTime(now)) throw new AuthError("SERVICE_UNAVAILABLE");
+    return now;
+  }
+
+  checkRead(state: ReadState<R, E, S>): void {
+    state.signal.throwIfAborted();
+    state.controller.signal.throwIfAborted();
+    const now = this.now();
+    if (state.status === "closed" || now < state.startedAt || now >= state.deadline) {
+      state.status = "closed";
+      throw new AuthError("UNAUTHORIZED");
+    }
+    this.checkEvidence(state.verified.session, state.entryRequirements);
+  }
   private readonly verify: AuthSource<E, S>["verify"];
   readonly source: AuthSource<E, S>;
   readonly capabilities: SourceCapabilities;
@@ -235,6 +312,7 @@ class Runtime<R extends string, E, S extends string> {
     requirements: SessionRequirements,
     signal: AbortSignal,
   ): Promise<Extract<AuthenticationResult<S>, { status: "verified" }> | null> {
+    const verifiedStartedAt = this.now();
     const outcome = await this.verify(evidence, {
       signal,
       authoritative: requirements.authoritative === true,
@@ -255,6 +333,7 @@ class Runtime<R extends string, E, S extends string> {
     if (!validTime(now)) throw new AuthError("SERVICE_UNAVAILABLE");
     validateSession(result.session, now);
     checkSession(requirements, result.session, now);
+    this.verificationStarts.set(result, verifiedStartedAt);
     return result;
   }
 
@@ -263,6 +342,8 @@ class Runtime<R extends string, E, S extends string> {
     verified: Extract<AuthenticationResult<S>, { status: "verified" }>,
     evidence: E,
     signal: AbortSignal,
+    callerSignal?: AbortSignal,
+    verifiedStartedAt = this.verificationStarts.get(verified) ?? this.now(),
   ): Actor<R, S, A> {
     const actor = Object.freeze({
       realmId: this.definition.id,
@@ -270,7 +351,8 @@ class Runtime<R extends string, E, S extends string> {
       audience: target.id,
       kind: verified.kind ?? "user",
     }) as Actor<R, S, A>;
-    this.proofs.set(actor, { evidence, signal });
+    this.proofs.set(actor, { evidence, signal, callerSignal,
+      verified: snapshotVerification(verified), verifiedStartedAt, readStarted: false });
     return actor;
   }
 
@@ -281,7 +363,7 @@ class Runtime<R extends string, E, S extends string> {
     checkSession(requirements, session, now);
   }
 
-  proof<A extends string>(actor: Actor<R, S, A> | null, target: Audience<A>): Proof<E> {
+  proof<A extends string>(actor: Actor<R, S, A> | null, target: Audience<A>): Proof<E, S> {
     if (!actor || typeof actor !== "object") throw new AuthError("UNAUTHORIZED");
     const proof = this.proofs.get(actor);
     if (!proof || actor.realmId !== this.definition.id || actor.audience !== target.id) {
@@ -313,7 +395,7 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
   const optional = (evidence: E, options: AuthenticationOptions = {}) =>
     runtime.run([options.signal], async (signal) => {
       const verified = await runtime.authenticate(evidence, requirements, signal);
-      return verified === null ? null : runtime.mint(target, verified, evidence, signal);
+      return verified === null ? null : runtime.mint(target, verified, evidence, signal, options.signal);
     });
 
   async function authorize<U extends T>(
@@ -371,6 +453,93 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
     realmId: runtime.definition.id,
     audience: target,
     optional,
+    async beginRead(actor: Actor<R, S, A>, options: ReadOnlyOptions) {
+      const maxAgeMs = options.maxAgeMs ?? 5000;
+      if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs <= 0 || maxAgeMs > 10000)
+        throw new AuthConfigurationError("Read scope age must be 1 to 10000 milliseconds");
+      const authoritative = allRequirements(requirements, { authoritative: true });
+      checkCapabilities(authoritative, runtime.capabilities);
+      const proof = runtime.proof(actor, target);
+      const callerSignal = options.signal;
+      if (!callerSignal || callerSignal !== proof.callerSignal || proof.readStarted)
+        throw new AuthError("UNAUTHORIZED");
+      proof.readStarted = true;
+      const { evidence, verified } = proof;
+      const startedAt = proof.verifiedStartedAt;
+      const deadline = startedAt + maxAgeMs;
+      return runtime.run([proof.signal, callerSignal], async (signal) => {
+        runtime.checkEvidence(verified.session, authoritative);
+        const state: ReadState<R, E, S> = {
+          target: target.id, evidence, signal, callerSignal, actor, verified, startedAt, deadline,
+          entryRequirements: authoritative, controller: new AbortController(),
+          checks: [], status: "open", pending: 0,
+        };
+        runtime.checkRead(state);
+        const scope = Object.freeze({
+          actor,
+          close() { state.status = "closed"; state.controller.abort(new AuthError("UNAUTHORIZED")); },
+          async finish() {
+            runtime.checkRead(state);
+            if (state.status !== "open" || state.pending !== 0) {
+              state.status = "closed";
+              throw new AuthError("UNAUTHORIZED");
+            }
+            state.status = "finishing";
+            try {
+              return await runtime.run([state.signal, state.controller.signal], async (finishSignal) => {
+                const fresh = await runtime.authenticate(evidence, authoritative, finishSignal);
+                runtime.checkRead(state);
+                if (!fresh || fresh.subjectId !== actor.subjectId || (fresh.kind ?? "user") !== actor.kind)
+                  throw new AuthError("UNAUTHORIZED");
+                for (const check of state.checks) {
+                  await check(fresh, finishSignal);
+                  runtime.checkRead(state);
+                }
+                runtime.checkEvidence(fresh.session, authoritative);
+                return runtime.mint(target, fresh, evidence, signal, callerSignal);
+              });
+            } finally { state.status = "closed"; }
+          },
+        }) as ReadOnlyScope<R, S, A>;
+        runtime.reads.set(scope, state);
+        return scope;
+      });
+    },
+    async enforceRead<U extends T>(
+      scope: ReadOnlyScope<string, string, string>, resource: U,
+      policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
+      options: ReadOnlyOperationOptions,
+    ) {
+      const state = scope && typeof scope === "object" ? runtime.reads.get(scope) : undefined;
+      if (!state || state.target !== target.id) throw new AuthError("UNAUTHORIZED");
+      runtime.checkRead(state);
+      if (state.status !== "open") throw new AuthError("UNAUTHORIZED");
+      readSelector(resource);
+      const operationSignal = options?.signal;
+      if (!operationSignal || operationSignal !== state.callerSignal)
+        throw new AuthError("UNAUTHORIZED");
+      const principal = runtime.mint(target, state.verified, state.evidence,
+        AbortSignal.any([state.signal, state.controller.signal]), state.callerSignal, state.startedAt);
+      // This actor is derived from an existing scope, never a new entry verification.
+      runtime.proof(principal, target).readStarted = true;
+      const check = async (verified: Extract<AuthenticationResult<S>, { status: "verified" }>, signal: AbortSignal) => {
+        const checkSignal = operationSignal ? AbortSignal.any([signal, operationSignal]) : signal;
+        checkSignal.throwIfAborted();
+        runtime.checkEvidence(verified.session, requirements);
+        await authorize(principal, verified, resource, policy, checkSignal);
+      };
+      state.pending++;
+      try {
+        return await runtime.run([state.signal, state.controller.signal, operationSignal], async (signal) => {
+          await check(state.verified, signal);
+          runtime.checkRead(state);
+          if (state.status !== "open") throw new AuthError("UNAUTHORIZED");
+          state.checks.push(check);
+          return principal;
+        });
+      } catch (error) { state.status = "closed"; throw error; }
+      finally { state.pending--; }
+    },
     async required(evidence: E, options?: AuthenticationOptions) {
       const actor = await optional(evidence, options);
       if (!actor) throw new AuthError("UNAUTHORIZED");
@@ -393,7 +562,7 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       return runtime.run([options.signal], async (signal) => {
         const verified = await runtime.authenticate(evidence, requirements, signal);
         if (!verified) throw new AuthError("UNAUTHORIZED");
-        const principal = runtime.mint(target, verified, evidence, signal);
+        const principal = runtime.mint(target, verified, evidence, signal, options.signal);
         return authorize(principal, verified, resource, policy, signal);
       });
     },
