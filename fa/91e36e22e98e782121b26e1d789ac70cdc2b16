@@ -1,0 +1,16 @@
+examples/workers/wrangler.jsonc
+  h_9d56aba080c170 2
+examples/workers/wrangler.notes.jsonc
+  h_9d56aba080c170 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa91e36e22e98e782121b26e1d789ac70cdc2b16",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

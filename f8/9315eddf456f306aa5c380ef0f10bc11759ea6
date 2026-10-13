@@ -1,0 +1,22 @@
+docs/CLI.md
+  h_9d56aba080c170 26
+packages/cli/src/bin.ts
+  h_9d56aba080c170 195-201
+packages/cli/src/engine.ts
+  h_9d56aba080c170 6-11,102,107,109,114,360-362
+packages/cli/src/operations.ts
+  h_9d56aba080c170 3,93,97-131
+packages/cli/test/bin.test.ts
+  h_9d56aba080c170 111-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f89315eddf456f306aa5c380ef0f10bc11759ea6",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

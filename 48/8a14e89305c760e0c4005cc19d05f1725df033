@@ -1,0 +1,16 @@
+packages/auth/README.md
+  h_9d56aba080c170 19,51-54,67,70-72
+packages/auth/test/http.test.ts
+  h_9d56aba080c170 181-183,192-193,253-258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "488a14e89305c760e0c4005cc19d05f1725df033",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

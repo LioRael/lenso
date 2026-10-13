@@ -1,0 +1,36 @@
+.changeset/scoped-session-administration.md
+  h_9d56aba080c170 1-5
+packages/auth/README.md
+  h_9d56aba080c170 211-311
+packages/auth/src/drizzle/d1.ts
+  h_9d56aba080c170 2,8
+packages/auth/src/drizzle/pg.ts
+  h_9d56aba080c170 1,3,5-11,19,21-62
+packages/auth/src/drizzle/shared.ts
+  h_9d56aba080c170 2,6-31
+packages/auth/src/drizzle/sqlite.ts
+  h_9d56aba080c170 1,4,6-12,20,22-62,109
+packages/auth/src/session-administration.ts
+  h_9d56aba080c170 1-471
+packages/auth/src/session-store.ts
+  h_9d56aba080c170 42-63
+packages/auth/src/sessions.ts
+  h_9d56aba080c170 6-19
+packages/auth/test/drizzle.test.ts
+  h_9d56aba080c170 17-22,162,327-351
+packages/auth/test/postgres.test.ts
+  h_9d56aba080c170 259-291
+packages/auth/test/session-administration.test.ts
+  h_9d56aba080c170 1-379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "61edf6f5a7960aae62c6f50585d104f1373b542c",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
