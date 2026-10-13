@@ -37,6 +37,29 @@ checksum pinned in `scripts/runtime-sdk.json`, builds only its TS package, and
 keeps generated dependencies under ignored `.runtime-deps`. It requires Bun
 1.4.3, not Cargo or a sibling Runtime checkout.
 
+For explicitly authorized cross-repository development, use the same current
+Runtime checkout for Lenso and Console:
+
+```sh
+bun run prepare:runtime --runtime-root ../lenso-runtime
+bun install --frozen-lockfile
+```
+
+This executes trusted local build code from a staged copy of tracked SDK,
+generator, contract and Rust source files, including dirty bytes. Arbitrary
+untracked files, secrets such as `.env`, dependency caches and build targets are
+not copied, except the explicitly admitted shared schema fixture
+`crates/sdk/tests/schema-cases.json`; symlinks in admitted paths are rejected.
+Git discovery is bounded
+to 1 MiB, source input to 4096 files and 20 MiB. Stage required new source files
+with Git before preparation. Keep the checkout stable while copying.
+`.runtime-deps/provenance.json` records `source.kind: "local"`, the resolved
+checkout origin, per-file SHA-256 hashes and an aggregate source hash, not an
+immutable remote commit claim. Build output hashes are recorded separately.
+Local preparation retains frozen installs, ownership checks and rollback.
+Omit `--runtime-root` to return to the checksum-pinned default. No global link,
+pin change or root lockfile change is needed.
+
 The included greeting starts on loopback and reports its actual URL, enabled plugins and readiness. In another terminal:
 
 ```sh
