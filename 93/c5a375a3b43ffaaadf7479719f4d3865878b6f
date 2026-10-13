@@ -1,0 +1,18 @@
+.changeset/bounded-realtime.md
+  h_9d56aba080c170 1-5
+.github/workflows/checks.yml
+  h_9d56aba080c170 27,30
+.github/workflows/release.yml
+  h_9d56aba080c170 46,49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93c5a375a3b43ffaaadf7479719f4d3865878b6f",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

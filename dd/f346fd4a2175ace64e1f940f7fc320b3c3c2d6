@@ -1,0 +1,64 @@
+packages/api-keys/LICENSE
+  h_9d56aba080c170 1-21
+packages/api-keys/README.md
+  h_9d56aba080c170 1-227
+packages/api-keys/VALIDATION.md
+  h_9d56aba080c170 1-63
+packages/api-keys/migrations/pg/0000_api_keys.sql
+  h_9d56aba080c170 1-19
+packages/api-keys/migrations/sqlite/0000_api_keys.sql
+  h_9d56aba080c170 1-19
+packages/api-keys/package.json
+  h_9d56aba080c170 1-102
+packages/api-keys/src/auth.ts
+  h_9d56aba080c170 1-46
+packages/api-keys/src/drizzle/d1.ts
+  h_9d56aba080c170 1-22
+packages/api-keys/src/drizzle/pg.ts
+  h_9d56aba080c170 1-96
+packages/api-keys/src/drizzle/schema-pg.ts
+  h_9d56aba080c170 1-26
+packages/api-keys/src/drizzle/schema-sqlite.ts
+  h_9d56aba080c170 1-26
+packages/api-keys/src/drizzle/shared.ts
+  h_9d56aba080c170 1-129
+packages/api-keys/src/drizzle/sqlite.ts
+  h_9d56aba080c170 1-95
+packages/api-keys/src/index.ts
+  h_9d56aba080c170 1-417
+packages/api-keys/src/manage.ts
+  h_9d56aba080c170 1-79
+packages/api-keys/src/plugin.ts
+  h_9d56aba080c170 1-20
+packages/api-keys/src/store.ts
+  h_9d56aba080c170 1-53
+packages/api-keys/test/core.test.ts
+  h_9d56aba080c170 1-219
+packages/api-keys/test/d1.test.ts
+  h_9d56aba080c170 1-41
+packages/api-keys/test/drizzle.test.ts
+  h_9d56aba080c170 1-261
+packages/api-keys/test/fixture.ts
+  h_9d56aba080c170 1-92
+packages/api-keys/test/integration.test.ts
+  h_9d56aba080c170 1-411
+packages/api-keys/test/package.test.ts
+  h_9d56aba080c170 1-45
+packages/api-keys/test/postgres.test.ts
+  h_9d56aba080c170 1-279
+packages/api-keys/tsconfig.build.json
+  h_9d56aba080c170 1-11
+packages/api-keys/tsconfig.json
+  h_9d56aba080c170 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ddf346fd4a2175ace64e1f940f7fc320b3c3c2d6",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
