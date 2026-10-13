@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.3
       - name: Select checks
         id: scope
         env:
@@ -30,9 +30,13 @@ jobs:
         if: steps.scope.outputs.route != 'light'
         with:
           node-version: 24.21.0
+      - name: Prepare pinned Runtime SDK
+        run: bun run prepare:runtime
       - run: bun install --frozen-lockfile
       - name: Docs routing regression tests
         run: bun test scripts/ci-docs.test.ts
+      - name: Runtime SDK preparation regression tests
+        run: bun run runtime:test && bun run runtime:typecheck
       - name: Documentation checks
         if: steps.scope.outputs.route == 'light'
         env:

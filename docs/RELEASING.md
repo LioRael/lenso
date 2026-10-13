@@ -3,7 +3,7 @@
 Local preparation never publishes, pushes, creates Git tags or remote releases.
 The GitHub Actions release workflow can publish only through its separate
 `npm-release` Environment job after repository administrators configure approval.
-Use the repository's Bun version (`1.4.2`) and installed dependencies. `tar` must
+Use the repository's Bun version (`1.4.3`) and installed dependencies. `tar` must
 be available on PATH. Do not invoke a real local publish as a validation step.
 
 ## Decide before a first publication
@@ -23,12 +23,13 @@ prerelease. The official [npm metadata](https://registry.npmjs.org/@changesets/c
 and [release](https://github.com/changesets/changesets/releases/tag/%40changesets/cli%403.0.3)
 identify this as a published, non-prerelease version. The package declares Node
 `^22.11 || ^24 || >=26` for Node execution. Our scripts explicitly run the installed
-CLI with Bun `1.4.2`; local status and fixture version tests exercise that path.
+CLI with Bun `1.4.3`; local status and fixture version tests exercise that path.
 These checks are not a claim of official Bun support for every Changesets command.
 
 From the repository root, record a source change and preview it:
 
 ```sh
+bun run prepare:runtime
 bun install --frozen-lockfile
 bun run changeset
 bun run release:status
@@ -273,7 +274,7 @@ There is intentionally no root `release:publish` shortcut.
 
 ### Toolchain and official references
 
-Bun is pinned to project `1.4.2`. Node `24.21.0` is pinned from the official
+Bun is pinned to project `1.4.3`. Node `24.21.0` is pinned from the official
 [Node distribution index](https://nodejs.org/dist/index.json), on the supported
 24 LTS line. npm `12.2.0` is pinned from official
 [npm package metadata](https://registry.npmjs.org/npm/12.2.0); its Node engine

@@ -1,0 +1,51 @@
+{
+  "name": "@lenso/runtime",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./engine": {
+      "types": "./dist/engine.d.ts",
+      "import": "./dist/engine.js"
+    },
+    "./manage": {
+      "types": "./dist/manage.d.ts",
+      "import": "./dist/manage.js"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/index.ts src/engine.ts src/manage.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "@lenso/core": "workspace:^",
+    "@standard-schema/spec": "1.1.0"
+  },
+  "devDependencies": {
+    "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
+    "@lenso/runtime-sdk": "file:../../.runtime-deps/sdk"
+  },
+  "peerDependencies": {
+    "@lenso/engine": "^0.6.0",
+    "@lenso/manage": "^0.5.2",
+    "@lenso/runtime-sdk": "0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/engine": {
+      "optional": true
+    },
+    "@lenso/manage": {
+      "optional": true
+    }
+  }
+}
