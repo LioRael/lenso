@@ -3,7 +3,7 @@ import { createRuntimePlugin, startRuntimeApp } from "@lenso/runtime";
 import { RuntimeError } from "@lenso/runtime-sdk";
 import { reportDevReady } from "@lenso/engine/dev-ready";
 import { setTimeout as delay } from "node:timers/promises";
-import { batch } from "./batch-app";
+import { batch, batchPlugins } from "./batch-app";
 import { EmptyBatchError } from "./aggregate";
 import { logsContract, type AggregateInput, type ProgressInput } from "./generated/logs";
 
@@ -23,7 +23,7 @@ const transport = createRuntimePlugin({
     return {
       async aggregate(input, context) {
         try {
-          return service.aggregate(input as AggregateInput, context.signal);
+          return await service.aggregate(input as AggregateInput, context.signal);
         } catch (error) {
           if (error instanceof EmptyBatchError)
             throw new RuntimeError("business", error.message, { reason: error.message });
@@ -46,7 +46,7 @@ const transport = createRuntimePlugin({
     };
   },
 });
-const running = await startRuntimeApp(defineApp({ plugins: [batch, transport] }));
+const running = await startRuntimeApp(defineApp({ plugins: [...batchPlugins, transport] }));
 console.error(
   JSON.stringify({
     event: "service_ready",

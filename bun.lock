@@ -76,8 +76,10 @@
       "name": "@lenso/example-runtime",
       "version": "0.1.0",
       "dependencies": {
+        "@lenso/cache": "workspace:^",
         "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
+        "@lenso/log": "workspace:^",
         "@lenso/runtime": "workspace:^",
         "@lenso/runtime-sdk": "file:../../.runtime-deps/sdk",
         "@standard-schema/spec": "1.1.0",
