@@ -9,6 +9,7 @@
     "dev:companions": "LENSO_RUNTIME_EXTERNAL=1 bun src/dev.ts",
     "offline": "bun src/offline.ts",
     "start": "bun src/server.ts",
+    "test": "bun test src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "bun build src/server.ts --outdir dist --target bun --packages external"
   },
