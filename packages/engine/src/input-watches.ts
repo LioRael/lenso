@@ -13,6 +13,7 @@ const contains = (parent: string, path: string) => path === parent || path.start
 function fingerprint(path: string): string | undefined {
   try {
     const stat = lstatSync(path, { bigint: true });
+    if (stat.isDirectory()) return `directory:${stat.ino}:${stat.mode}`;
     return `${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
   } catch {
     return undefined;
@@ -34,6 +35,7 @@ function existingParent(path: string): string {
 export class InputWatches {
   private readonly listeners = new Map<string, Listener>();
   private readonly canonicalRoot: string;
+  private reconciliation: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     private readonly root: string,
@@ -45,6 +47,89 @@ export class InputWatches {
 
   private ignored(path: string): boolean {
     return ignoredInput(this.root, path) || ignoredInput(this.canonicalRoot, path);
+  }
+
+  private snapshot(parent: string, plan: Plan, sourceDirectory: boolean) {
+    const observed = new Map<string, string | undefined>();
+    const visit = (path: string) => {
+      observed.set(path, fingerprint(path));
+      let entries;
+      try {
+        entries = readdirSync(path, { withFileTypes: true });
+      } catch (cause) {
+        if (
+          ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(
+            (cause as NodeJS.ErrnoException).code ?? "",
+          )
+        )
+          return;
+        throw cause;
+      }
+      for (const entry of entries) {
+        const child = resolve(path, entry.name);
+        if (this.ignored(child) || entry.name === "node_modules") continue;
+        observed.set(child, fingerprint(child));
+        if (entry.isDirectory()) visit(child);
+      }
+    };
+    if (plan.recursive) visit(parent);
+    for (const file of plan.files) {
+      observed.set(file, fingerprint(file));
+      for (
+        let ancestor = dirname(file);
+        ancestor !== parent && contains(parent, ancestor);
+        ancestor = dirname(ancestor)
+      )
+        observed.set(ancestor, fingerprint(ancestor));
+    }
+    if (sourceDirectory && !plan.recursive) {
+      let entries: string[];
+      try {
+        entries = readdirSync(parent);
+      } catch (cause) {
+        if (
+          !["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(
+            (cause as NodeJS.ErrnoException).code ?? "",
+          )
+        )
+          throw cause;
+        entries = [];
+      }
+      for (const entry of entries)
+        if (sourceFile(entry)) {
+          const path = resolve(parent, entry);
+          observed.set(path, fingerprint(path));
+        }
+    }
+    return observed;
+  }
+
+  private reconcile(eventParent?: string) {
+    let invalidated = false;
+    for (const [parent, listener] of this.listeners) {
+      if (eventParent !== undefined && eventParent !== parent) continue;
+      try {
+        const next = this.snapshot(parent, listener, listener.sourceDirectory);
+        for (const path of new Set([...listener.observed.keys(), ...next.keys()])) {
+          const before = listener.observed.get(path);
+          const after = next.get(path);
+          if (before === after) continue;
+          const unownedSource =
+            !listener.recursive &&
+            listener.sourceDirectory &&
+            dirname(path) === parent &&
+            sourceFile(path) &&
+            !listener.files.has(path);
+          const owned = listener.recursive || listener.files.has(path) || next.has(path);
+          if (unownedSource ? (before === undefined) !== (after === undefined) : owned)
+            invalidated = true;
+        }
+        listener.observed = next;
+      } catch (error) {
+        this.failed(error);
+      }
+    }
+    if (invalidated) this.changed();
   }
 
   replace(paths: readonly string[], sourceDirectories: readonly string[] = []): void {
@@ -99,86 +184,38 @@ export class InputWatches {
         current.sourceDirectory = sourceDirectory;
         continue;
       }
-      const observed = new Map<string, string | undefined>();
-      const baseline = (path: string) => {
-        observed.set(path, fingerprint(path));
-        let entries;
-        try {
-          entries = readdirSync(path, { withFileTypes: true });
-        } catch (cause) {
-          if (
-            ["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(
-              (cause as NodeJS.ErrnoException).code ?? "",
-            )
-          )
-            return;
-          throw cause;
-        }
-        for (const entry of entries) {
-          const child = resolve(path, entry.name);
-          if (this.ignored(child) || entry.name === "node_modules") continue;
-          observed.set(child, fingerprint(child));
-          if (entry.isDirectory()) baseline(child);
-        }
-      };
-      if (plan.recursive) baseline(parent);
-      else {
-        for (const file of plan.files) observed.set(file, fingerprint(file));
-        if (sourceDirectory)
-          for (const entry of readdirSync(parent))
-            if (sourceFile(entry)) {
-              const path = resolve(parent, entry);
-              observed.set(path, fingerprint(path));
-            }
-      }
+      const observed = this.snapshot(parent, plan, sourceDirectory);
       const listener: Listener = { ...plan, observed, sourceDirectory, watcher: undefined! };
       listener.watcher = watch(parent, { recursive: plan.recursive }, (_event, filename) => {
         const path = filename ? resolve(parent, filename.toString()) : parent;
         if (this.ignored(path)) return;
-        const candidates = listener.recursive
-          ? filename
-            ? [path]
-            : [...listener.observed.keys()]
-          : [...listener.files].filter(
-              (file) => !filename || contains(path, file) || contains(file, path),
-            );
-        let invalidated = false;
-        // A newly created ancestor may still lack the unresolved leaf when its
-        // event arrives. Replan at that ancestor rather than waiting for a leaf
-        // event a nonrecursive parent listener cannot receive.
-        if (!listener.recursive && candidates.length && path !== parent && directory(path)) {
-          const value = fingerprint(path);
-          if (listener.observed.get(path) !== value) {
-            listener.observed.set(path, value);
-            invalidated = true;
-          }
-        }
-        // New/deleted modules in a participating local source directory can repair
-        // imports. Edits to unrelated existing modules are not graph invalidations.
-        if (listener.sourceDirectory && filename && sourceFile(path) && !listener.files.has(path)) {
-          const previous = listener.observed.get(path);
-          const value = fingerprint(path);
-          listener.observed.set(path, value);
-          if ((previous === undefined) !== (value === undefined)) this.changed();
-        }
-        for (const file of candidates) {
-          const value = fingerprint(file);
-          if (listener.observed.get(file) === value) continue;
-          listener.observed.set(file, value);
-          invalidated = true;
-        }
-        if (invalidated) this.changed();
+        this.reconcile(parent);
       });
       listener.watcher.on("error", (error) => {
         listener.watcher.close();
         if (this.listeners.get(parent) === listener) this.listeners.delete(parent);
+        if (!this.listeners.size) {
+          clearInterval(this.reconciliation);
+          this.reconciliation = undefined;
+        }
         this.failed(error);
       });
       this.listeners.set(parent, listener);
     }
+    // fs.watch can return before its native subscription is active. The same
+    // ownership snapshots also reconcile persistent changes when an event is lost.
+    if (this.listeners.size && !this.reconciliation) {
+      this.reconciliation = setInterval(() => this.reconcile(), 250);
+      this.reconciliation.unref();
+    } else if (!this.listeners.size) {
+      clearInterval(this.reconciliation);
+      this.reconciliation = undefined;
+    }
   }
 
   close(): void {
+    clearInterval(this.reconciliation);
+    this.reconciliation = undefined;
     for (const listener of this.listeners.values()) listener.watcher.close();
     this.listeners.clear();
   }

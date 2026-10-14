@@ -115,6 +115,87 @@ test("graph and explicit watches share listeners, replace ownership and close re
   }
 });
 
+test("immediate changes across fresh subscriptions are reconciled and close releases ownership", async () => {
+  const root = await fixture();
+  const owners: InputWatches[] = [];
+  const changes = Array.from({ length: 20 }, () => 0);
+  const errors: unknown[] = [];
+  try {
+    for (let index = 0; index < changes.length; index++) {
+      const directory = join(root, `owner-${index}`);
+      const file = join(directory, "data.json");
+      await Bun.write(file, "{}");
+      const watches = new InputWatches(
+        root,
+        () => changes[index]++,
+        (error) => errors.push(error),
+      );
+      owners.push(watches);
+      watches.replace([directory]);
+      await Bun.write(file, '{"changed":true}');
+    }
+    await until(() => changes.every((count) => count > 0));
+    for (const watches of owners) watches.close();
+    const closed = [...changes];
+    for (let index = 0; index < changes.length; index++)
+      await Bun.write(join(root, `owner-${index}/data.json`), '{"closed":true}');
+    await Bun.sleep(300);
+    expect(changes).toEqual(closed);
+    expect(errors).toEqual([]);
+  } finally {
+    for (const watches of owners) watches.close();
+  }
+});
+
+test("recursive reconciliation ignores generated/cache directory membership changes", async () => {
+  const root = await fixture();
+  await Bun.write(join(root, "entry.ts"), "export {}");
+  let changes = 0;
+  const watches = new InputWatches(
+    root,
+    () => changes++,
+    (error) => {
+      throw error;
+    },
+  );
+  try {
+    watches.replace([root]);
+    for (const name of ["dist", ".lenso", "node_modules"])
+      await Bun.write(join(root, name, "generated.ts"), "export {}");
+    await Bun.sleep(350);
+    expect(changes).toBe(0);
+    for (const name of ["dist", ".lenso", "node_modules"])
+      await rm(join(root, name), { recursive: true });
+    await Bun.sleep(350);
+    expect(changes).toBe(0);
+  } finally {
+    watches.close();
+  }
+});
+
+test("deleting a participating source directory invalidates without repeated read failures", async () => {
+  const root = await fixture();
+  const source = join(root, "src");
+  const file = join(source, "entry.ts");
+  await Bun.write(file, "export {}");
+  let changes = 0;
+  const errors: unknown[] = [];
+  const watches = new InputWatches(
+    root,
+    () => changes++,
+    (error) => errors.push(error),
+  );
+  try {
+    watches.replace([file], [source]);
+    await rm(source, { recursive: true });
+    await until(() => changes > 0);
+    await Bun.sleep(300);
+    expect(errors).toEqual([]);
+  } finally {
+    watches.close();
+  }
+});
+
 test("nearest existing parent watches repair new nested source and missing package manifests", async () => {
   const root = await fixture();
   await Bun.write(
