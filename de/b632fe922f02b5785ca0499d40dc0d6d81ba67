@@ -1,0 +1,14 @@
+packages/realtime/README.md
+  h_9d56aba080c170 279-283,301,393,397-421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "deb632fe922f02b5785ca0499d40dc0d6d81ba67",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

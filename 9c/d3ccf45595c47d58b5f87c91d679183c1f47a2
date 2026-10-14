@@ -1,0 +1,68 @@
+bun.lock
+  h_9d56aba080c170 54,105-141,154,234,571-572
+examples/notes/package.json
+  h_9d56aba080c170 35
+examples/notes/src/operations.ts
+  h_9d56aba080c170 16,18-20,46,49-70,116-137,146,150,156
+packages/audit/CHECKS.md
+  h_9d56aba080c170 1-84
+packages/audit/README.md
+  h_9d56aba080c170 1-241
+packages/audit/migrations/pg/0000_audit.sql
+  h_9d56aba080c170 1-15
+packages/audit/migrations/sqlite/0000_audit.sql
+  h_9d56aba080c170 1-15
+packages/audit/package.json
+  h_9d56aba080c170 1-106
+packages/audit/src/auth.ts
+  h_9d56aba080c170 1-24
+packages/audit/src/contracts.ts
+  h_9d56aba080c170 1-144
+packages/audit/src/diagnostics.ts
+  h_9d56aba080c170 1-22
+packages/audit/src/index.ts
+  h_9d56aba080c170 1-2
+packages/audit/src/manage.ts
+  h_9d56aba080c170 1-65
+packages/audit/src/plugin.ts
+  h_9d56aba080c170 1-41
+packages/audit/src/postgres.ts
+  h_9d56aba080c170 1-112
+packages/audit/src/repository-helpers.ts
+  h_9d56aba080c170 1-15
+packages/audit/src/service.ts
+  h_9d56aba080c170 1-220
+packages/audit/src/sqlite.ts
+  h_9d56aba080c170 1-112
+packages/audit/src/tasks.ts
+  h_9d56aba080c170 1-57
+packages/audit/src/validation.ts
+  h_9d56aba080c170 1-236
+packages/audit/test/consumer.test.ts
+  h_9d56aba080c170 1-263
+packages/audit/test/d1.test.ts
+  h_9d56aba080c170 1-91
+packages/audit/test/integrations.test.ts
+  h_9d56aba080c170 1-141
+packages/audit/test/postgres.test.ts
+  h_9d56aba080c170 1-258
+packages/audit/test/repository.test.ts
+  h_9d56aba080c170 1-105
+packages/audit/test/service.test.ts
+  h_9d56aba080c170 1-406
+packages/audit/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/audit/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9cd3ccf45595c47d58b5f87c91d679183c1f47a2",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

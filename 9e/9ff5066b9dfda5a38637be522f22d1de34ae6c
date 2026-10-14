@@ -1,0 +1,32 @@
+packages/auth/README.md
+  h_9d56aba080c170 1-59
+packages/auth/package.json
+  h_9d56aba080c170 1-27
+packages/auth/src/index.ts
+  h_9d56aba080c170 1-161
+packages/auth/test/auth.test.ts
+  h_9d56aba080c170 1-183
+packages/auth/tsconfig.build.json
+  h_9d56aba080c170 1-11
+packages/auth/tsconfig.json
+  h_9d56aba080c170 1
+packages/web/README.md
+  h_9d56aba080c170 1-60
+packages/web/src/index.ts
+  h_9d56aba080c170 4-5,8,13,18-21,32-43,49-56,59-76
+packages/web/src/lifetime.ts
+  h_9d56aba080c170 1-206
+packages/web/test/stream.test.ts
+  h_9d56aba080c170 1-329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e9ff5066b9dfda5a38637be522f22d1de34ae6c",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

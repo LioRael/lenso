@@ -1,0 +1,38 @@
+README.md
+  h_9d56aba080c170 20,29
+bun.lock
+  h_9d56aba080c170 25-55,66,72-80,99-162,165-166,325-326,331-340,351-352,355-360,365-366,376-475
+docs/CLI.md
+  h_9d56aba080c170 3
+examples/greeting/lenso.config.ts
+  h_9d56aba080c170 2-3,6-16
+examples/greeting/package.json
+  h_9d56aba080c170 21-23
+examples/greeting/src/contracts.ts
+  h_9d56aba080c170 1-11
+examples/greeting/src/greeting.ts
+  h_9d56aba080c170 2,12-14
+examples/greeting/src/router.ts
+  h_9d56aba080c170 4,13,17
+examples/greeting/src/server.ts
+  h_9d56aba080c170 2,41-44
+packages/cli/README.md
+  h_9d56aba080c170 8,11-13,19
+packages/cli/package.json
+  h_9d56aba080c170 16-19,23
+packages/cli/src/dev-ready.ts
+  h_9d56aba080c170 1-21
+packages/cli/src/index.ts
+  h_9d56aba080c170 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa802830172b733707d598c7e4482a2301013b6b",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
