@@ -345,7 +345,7 @@
     },
     "packages/manage": {
       "name": "@lenso/manage",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",

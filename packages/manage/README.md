@@ -42,6 +42,12 @@ callbacks, never business handlers. `canList(operation)` must check the current
 entry identity's operation-level permission. It filters catalog and gates invocation;
 the real service still enforces realm/audience, object, owner and tenant policies.
 
+Catalog policy checks are serial by default. A trusted host with independent
+policies may set `catalogConcurrency` to an integer from 1 to 8 (for example 4)
+on the adapter. This bounds concurrent `canList` calls without caching permission
+results or changing invocation guards. Catalog order stays deterministic, and an
+error stops new checks and drains every in-flight check before rejecting.
+
 ### Selection lifetime and replacement
 
 For retained tools or routers, prepare the selection once and register its close
