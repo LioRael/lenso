@@ -33,6 +33,8 @@ export interface ManageRequestOptions<O extends Operation = Operation> {
   ) => OperationBoundOptions<NoInfer<O>> | Promise<OperationBoundOptions<NoInfer<O>>>;
   readonly canList: (operation: O) => boolean | Promise<boolean>;
   readonly maxOutputBytes?: number;
+  /** Trusted host opt-in for independent catalog policies; dispatch stays serial. */
+  readonly catalogConcurrency?: number;
 }
 
 export interface ManageSelection<O extends Operation = Operation> {
@@ -161,7 +163,12 @@ function selectionFromState<O extends Operation>(
       state.entries.length = 0;
       state = undefined;
     },
-    createAdapter({ binding, canList, maxOutputBytes }: ManageRequestOptions<O>) {
+    createAdapter({
+      binding,
+      canList,
+      maxOutputBytes,
+      catalogConcurrency = 1,
+    }: ManageRequestOptions<O>) {
       current();
       if (typeof binding !== "function" || typeof canList !== "function")
         refuse("invalid-manage", "Manage requires invocation binding and caller catalog policy.");
@@ -170,6 +177,12 @@ function selectionFromState<O extends Operation>(
         (!Number.isSafeInteger(maxOutputBytes) || maxOutputBytes < 1)
       )
         refuse("invalid-manage", "Output byte limit must be a positive safe integer.");
+      if (
+        !Number.isSafeInteger(catalogConcurrency) ||
+        catalogConcurrency < 1 ||
+        catalogConcurrency > 8
+      )
+        refuse("invalid-manage", "Catalog concurrency must be an integer from 1 to 8.");
       async function visible(entry: SelectionEntry<O>) {
         target(entry);
         const allowed = await canList(entry.operation);
@@ -235,17 +248,36 @@ function selectionFromState<O extends Operation>(
         async catalog() {
           const instanceId = current().running.instanceId;
           try {
-            const result: ManageCatalogEntry[] = [];
-            for (const entry of current().entries) {
-              if (await visible(entry))
-                result.push({
-                  ...redactOperationDescription(
-                    describeOperation(entry.operation, "lenso.config.ts"),
-                  ),
-                  schemaVersion: 1,
-                  key: entry.key,
-                });
-            }
+            const entries = [...current().entries];
+            const projected: (ManageCatalogEntry | undefined)[] = new Array(entries.length);
+            let next = 0;
+            let failed = false;
+            const outcomes = await Promise.allSettled(
+              Array.from({ length: Math.min(catalogConcurrency, entries.length) }, async () => {
+                try {
+                  while (!failed && next < entries.length) {
+                    const index = next++;
+                    const entry = entries[index]!;
+                    if (await visible(entry))
+                      projected[index] = {
+                        ...redactOperationDescription(
+                          describeOperation(entry.operation, "lenso.config.ts"),
+                        ),
+                        schemaVersion: 1,
+                        key: entry.key,
+                      };
+                  }
+                } catch (error) {
+                  failed = true;
+                  throw error;
+                }
+              }),
+            );
+            // Drain every in-flight policy before a request owner can clean up.
+            for (const outcome of outcomes) if (outcome.status === "rejected") throw outcome.reason;
+            const result = projected.filter(
+              (entry): entry is ManageCatalogEntry => entry !== undefined,
+            );
             current();
             return JSON.parse(boundedJson(result, maxOutputBytes)) as typeof result;
           } catch (error) {

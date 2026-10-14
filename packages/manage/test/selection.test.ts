@@ -6,6 +6,72 @@ import { z } from "zod";
 import { createAgentTools, createManageAdapter, createManageSelection } from "../src";
 import { createManageRouter } from "../src/orpc";
 
+test("opted-in catalog bounds live policies, preserves order and never grants dispatch", async () => {
+  const plugin = definePlugin({ id: "parallel-catalog", setup: () =>
+    Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`m${index}`, () => index])) });
+  const operations = Array.from({ length: 8 }, (_, index) =>
+    defineOperation({ plugin, method: `m${index}`, input: z.unknown(), description: "Catalog check" }));
+  const running = await startApp({ plugins: [plugin] });
+  const releases: (() => void)[] = [];
+  let active = 0, peak = 0, allowed = true;
+  const firstWave = Promise.withResolvers<void>();
+  const secondWave = Promise.withResolvers<void>();
+  const adapter = createManageAdapter({ running, plugins: [plugin], operations, binding: () => ({}),
+    catalogConcurrency: 4, async canList(operation) {
+      if (!allowed) return false;
+      const index = Number(operation.method.slice(1));
+      active++; peak = Math.max(peak, active);
+      const pending = Promise.withResolvers<void>();
+      releases[index] = pending.resolve;
+      if (releases.filter(Boolean).length === 4) firstWave.resolve();
+      if (releases.filter(Boolean).length === 8) secondWave.resolve();
+      await pending.promise;
+      active--;
+      return index !== 2;
+    } });
+  try {
+    const pending = adapter.catalog();
+    await firstWave.promise;
+    expect(active).toBe(4);
+    for (const index of [3, 1, 2, 0]) releases[index]!();
+    await secondWave.promise;
+    for (const index of [7, 5, 6, 4]) releases[index]!();
+    expect((await pending).map(entry => entry.method)).toEqual(["m0", "m1", "m3", "m4", "m5", "m6", "m7"]);
+    expect(peak).toBe(4);
+    allowed = false;
+    await expect(adapter.invoke(plugin.id, "m0", null)).rejects.toThrow("Operation is not available");
+  } finally { releases.forEach(release => release()); await running.stop(); }
+});
+
+test("parallel catalog failure drains in-flight policies and stops scheduling", async () => {
+  const plugin = definePlugin({ id: "catalog-drain", setup: () => ({ a() {}, b() {}, c() {} }) });
+  const operations = (["a", "b", "c"] as const).map(method => defineOperation({ plugin, method, input: z.unknown(), description: "Check" }));
+  const running = await startApp({ plugins: [plugin] });
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const failure = Promise.withResolvers<void>();
+  const calls: string[] = [];
+  let settled = false;
+  const adapter = createManageAdapter({ running, plugins: [plugin], operations, binding: () => ({}),
+    catalogConcurrency: 2, async canList(operation) {
+      calls.push(operation.method);
+      if (calls.length === 2) started.resolve();
+      await (operation.method === "a" ? failure.promise : release.promise);
+      return true;
+    } });
+  try {
+    const result = adapter.catalog().then(() => null, error => error).finally(() => { settled = true; });
+    await started.promise;
+    failure.reject(new Error("Policy unavailable"));
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(calls).toEqual(["a", "b"]);
+    release.resolve();
+    expect(await result).toBeInstanceOf(Error);
+    expect(calls).toEqual(["a", "b"]);
+  } finally { release.resolve(); await running.stop(); }
+});
+
 test("100-operation selection reads declaration metadata once, not per adapter invocation", async () => {
   let descriptions = 0;
   const plugin = definePlugin({
