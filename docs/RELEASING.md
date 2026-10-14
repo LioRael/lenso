@@ -42,13 +42,29 @@ bun run release:status --output output/release/status.json
 Select the affected public packages, SemVer bump types and changelog summary.
 Commit the new `.changeset/*.md` with its source change. For changes that need no
 package release, no changeset is necessary; there is no CI requiring empty files.
-However, Changesets status exits 1 if it detects changed packages with no pending
-changesets. For an intentional no-release batch, `bun run changeset --empty`
-records that decision and lets status succeed without planning a version bump.
+For an intentional no-release batch, `bun run changeset --empty` records that
+decision without planning a version bump.
 Status reads pending changesets without bumping repository versions or querying
 a registry. It is a version plan, not a list of unpublished remote versions.
-The configured base branch is `main`; it must exist locally for change detection.
-Use `--since <local-ref>` when preparing against a different base.
+The repository status/version entry points use Changesets' official read, config,
+assemble and apply APIs. They exclude the foreign `.runtime-deps/sdk` workspace
+from version ownership; its immutable public snapshot belongs to Runtime's repository.
+Changesets still owns all version calculation, dependency cascades and changelogs.
+
+To prepare only reviewed changeset IDs, pass the same explicit selection to both
+commands (repeat `--changeset` for multiple IDs):
+
+```sh
+bun run release:status --changeset stable-mcp-operation-names
+bun run release:version --changeset stable-mcp-operation-names
+```
+
+Omitting `--changeset` selects all pending changesets, including in the automatic
+version workflow. Selection is by changeset, not by an enforced package allowlist:
+review the computed dependency cascade before applying. Unselected changesets stay
+in place and are not consumed. Unknown/duplicate IDs and changesets targeting the
+foreign SDK fail before writing. This stable preparation entry point does not
+support Changesets prerelease, snapshot, automatic commit or ignore modes.
 
 When ready to prepare a release, inspect the plan **before** consuming it:
 
@@ -68,6 +84,16 @@ reviews its lockfile diff together with the manifests. Do not use frozen install
 as the update step, install inside individual packages, or introduce another
 package-manager lockfile. See Bun's official [workspaces](https://bun.sh/docs/pm/workspaces)
 and [lockfile](https://bun.sh/docs/pm/lockfile) documentation.
+
+Run `prepare:runtime` before installation. The pinned, verified SDK is staged as
+the explicit `.runtime-deps/sdk` workspace, and its three existing development/example
+edges use `workspace:*`. Bun 1.4.3 cannot reliably re-resolve a `file:` SDK alongside
+Runtime's same-name mandatory semver peer during version preparation. Mixing
+workspace and file SDK edges also produces duplicate lock entries. This narrow
+build-input exception does not change Runtime's public SDK peer `0.1.0`, make it
+optional, or replace ordinary framework dependencies with source overrides.
+The archive verifier permits this external SDK workspace only as a development
+build edge; publication candidates still come exclusively from direct `packages/*`.
 
 `.changeset/config.json` uses independent stable versions (`fixed` and `linked`
 are empty), no automatic commits, and no private package versions or tags.

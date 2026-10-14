@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { prepareVersions } from "./release-version";
 import {
   releaseOrder,
   validateArchive,
@@ -59,6 +60,21 @@ test("unresolved, duplicate, private runtime and cyclic dependencies fail", () =
   expect(() => releaseOrder([pkg({ ...core, dependencies: { "@lenso/core": "*" } })])).toThrow(
     "cycle",
   );
+});
+
+test("foreign staged SDK is build-only, never a publication candidate or unresolved runtime exception", () => {
+  expect(
+    releaseOrder([
+      pkg({
+        ...core,
+        devDependencies: { "@lenso/runtime-sdk": "workspace:*" },
+        peerDependencies: { "@lenso/runtime-sdk": "0.1.0" },
+      }),
+    ]).map((entry) => entry.manifest.name),
+  ).toEqual(["@lenso/core"]);
+  expect(() =>
+    releaseOrder([pkg({ ...core, dependencies: { "@lenso/runtime-sdk": "workspace:*" } })]),
+  ).toThrow("unresolved");
 });
 
 test("valid packed metadata, wildcard exports and CLI entry points pass", () => {
@@ -170,6 +186,9 @@ test("installed Changesets plans and versions a Bun workspace without publishing
   const root = await mkdtemp(join(tmpdir(), "lenso-changesets-test-"));
   const cli = join(import.meta.dir, "../node_modules/@changesets/cli/bin.js");
   const config = await Bun.file(join(import.meta.dir, "../.changeset/config.json")).json();
+  const source = await Bun.file(join(import.meta.dir, "../package.json")).json();
+  const runtime = await Bun.file(join(import.meta.dir, "../packages/runtime/package.json")).json();
+  const example = await Bun.file(join(import.meta.dir, "../examples/runtime/package.json")).json();
   const manifests = {
     core: { name: "fixture-core", version: "1.0.0" },
     consumer: {
@@ -183,6 +202,12 @@ test("installed Changesets plans and versions a Bun workspace without publishing
       peerDependencies: { "fixture-core": "^1.0.0" },
     },
     independent: { name: "fixture-independent", version: "7.0.0" },
+    runtime: {
+      name: "fixture-runtime",
+      version: "0.1.0",
+      devDependencies: { "@lenso/runtime-sdk": runtime.devDependencies["@lenso/runtime-sdk"] },
+      peerDependencies: { "@lenso/runtime-sdk": runtime.peerDependencies["@lenso/runtime-sdk"] },
+    },
     hidden: {
       name: "fixture-hidden",
       version: "1.0.0",
@@ -209,7 +234,20 @@ test("installed Changesets plans and versions a Bun workspace without publishing
     ]);
     await Bun.write(
       join(root, "package.json"),
-      JSON.stringify({ private: true, version: "1.0.0", workspaces: ["packages/*", "examples/*"] }),
+      JSON.stringify({
+        private: true,
+        version: "1.0.0",
+        workspaces: [
+          "packages/*",
+          "examples/*",
+          ...source.workspaces.filter((path: string) => path === ".runtime-deps/sdk"),
+        ],
+        devDependencies: { "@lenso/runtime-sdk": source.devDependencies["@lenso/runtime-sdk"] },
+      }),
+    );
+    await Bun.write(
+      join(root, ".runtime-deps/sdk/package.json"),
+      JSON.stringify({ name: "@lenso/runtime-sdk", version: "0.1.0" }),
     );
     await Bun.write(join(root, ".changeset/config.json"), JSON.stringify(config));
     for (const [directory, manifest] of Object.entries(manifests)) {
@@ -221,7 +259,10 @@ test("installed Changesets plans and versions a Bun workspace without publishing
         name: "fixture-example",
         version: "1.0.0",
         private: true,
-        dependencies: { "fixture-core": "workspace:^" },
+        dependencies: {
+          "fixture-core": "workspace:^",
+          "@lenso/runtime-sdk": example.dependencies["@lenso/runtime-sdk"],
+        },
       }),
     );
     for (const directory of ["templates/demo", "packages/core/examples/plugin"]) {
@@ -234,10 +275,15 @@ test("installed Changesets plans and versions a Bun workspace without publishing
       join(root, ".changeset/core-major.md"),
       '---\n"fixture-core": major\n---\n\nChange the fixture core contract.\n',
     );
+    const pending = '---\n"fixture-independent": minor\n---\n\nUnrelated pending release.\n';
+    await Bun.write(join(root, ".changeset/unrelated.md"), pending);
     await run(root, [process.execPath, "install", "--ignore-scripts"]);
     await run(root, [process.execPath, cli, "add", "--empty"]);
-    await run(root, [process.execPath, cli, "status", "--output", "status.json"]);
-    const plan = await Bun.file(join(root, "status.json")).json();
+    await expect(prepareVersions(root, { changesets: ["missing"], write: true })).rejects.toThrow(
+      "Unknown pending",
+    );
+    const plan = await prepareVersions(root, { changesets: ["core-major"] });
+    expect(plan.releases.some((release) => release.name === "@lenso/runtime-sdk")).toBe(false);
     expect(
       plan.releases
         .filter((release: { type: string }) => release.type !== "none")
@@ -251,7 +297,7 @@ test("installed Changesets plans and versions a Bun workspace without publishing
     }
     expect((await Bun.file(join(root, "packages/core/package.json")).json()).version).toBe("1.0.0");
 
-    await run(root, [process.execPath, cli, "version"]);
+    await prepareVersions(root, { changesets: ["core-major"], write: true });
     const coreManifest = await Bun.file(join(root, "packages/core/package.json")).json();
     const consumer = await Bun.file(join(root, "packages/consumer/package.json")).json();
     const peer = await Bun.file(join(root, "packages/peer/package.json")).json();
@@ -278,9 +324,25 @@ test("installed Changesets plans and versions a Bun workspace without publishing
       "Change the fixture core contract.",
     );
     expect(await Bun.file(join(root, ".changeset/core-major.md")).exists()).toBe(false);
+    expect(await Bun.file(join(root, ".changeset/unrelated.md")).text()).toBe(pending);
+    expect(await Bun.file(join(root, ".runtime-deps/sdk/package.json")).json()).toEqual({
+      name: "@lenso/runtime-sdk",
+      version: "0.1.0",
+    });
 
     await run(root, [process.execPath, "install", "--ignore-scripts"]);
     await run(root, [process.execPath, "install", "--frozen-lockfile", "--ignore-scripts"]);
+    const lock = await Bun.file(join(root, "bun.lock")).text();
+    await rm(join(root, "node_modules"), { recursive: true, force: true });
+    await run(root, [process.execPath, "install", "--frozen-lockfile", "--ignore-scripts"]);
+    expect(await Bun.file(join(root, "bun.lock")).text()).toBe(lock);
+    await Bun.write(
+      join(root, ".changeset/foreign-sdk.md"),
+      '---\n"@lenso/runtime-sdk": patch\n---\n\nForeign SDK cannot be versioned here.\n',
+    );
+    await expect(
+      prepareVersions(root, { changesets: ["foreign-sdk"], write: true }),
+    ).rejects.toThrow("foreign package");
     expect(await Bun.file(join(root, "bun.lock")).text()).toContain('"version": "2.0.0"');
     expect((await run(root, ["git", "rev-list", "--count", "HEAD"])).trim()).toBe("1");
     expect((await run(root, ["git", "tag", "--list"])).trim()).toBe("");

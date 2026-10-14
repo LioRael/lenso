@@ -33,7 +33,7 @@
   "devDependencies": {
     "@lenso/engine": "workspace:^",
     "@lenso/manage": "workspace:^",
-    "@lenso/runtime-sdk": "file:../../.runtime-deps/sdk"
+    "@lenso/runtime-sdk": "workspace:*"
   },
   "peerDependencies": {
     "@lenso/engine": "^0.6.0",

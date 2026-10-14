@@ -44,6 +44,13 @@ export function releaseOrder(packages: ReleasePackage[]): ReleasePackage[] {
       for (const [dependency, range] of Object.entries(pkg.manifest[group] ?? {})) {
         const target = byName.get(dependency);
         if (range.startsWith("workspace:") && !target) {
+          // The prepared foreign SDK is build-only here; its public peer stays registry-owned.
+          if (
+            group === "devDependencies" &&
+            dependency === "@lenso/runtime-sdk" &&
+            range === "workspace:*"
+          )
+            continue;
           throw Error(`${name}: unresolved workspace dependency ${dependency}`);
         }
         if (target) {
