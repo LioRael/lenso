@@ -8,6 +8,85 @@ native plugin after setup. Only the selected aggregate
 operation is declared for finite CLI JSON output. Progress is not automatically
 exposed through Manage, MCP or Console.
 
+## One source-workspace entry
+
+Requirements: Bun 1.4.3, Cargo and a POSIX shell (macOS/Linux source
+development; Windows has not been verified). From the Lenso repository root:
+
+```sh
+export LENSO_RUNTIME_ROOT=/absolute/path/to/lenso-runtime
+export LENSO_RUST_ROOT=/absolute/path/to/lenso-rust
+bun run dev:runtime
+```
+
+This prepares the **explicit local SDK candidate**, frozen-installs TS dependencies,
+uses cached builds of the required framework packages, generates the TS binding
+from Runtime's one contract, and starts kernel → native Rust batch → TS frontend.
+The three checkouts can live anywhere. No package publication or dependency pin
+changes are needed. `LENSO_RUNTIME_PORT` selects a port (default 7331); a conflict
+fails without borrowing or stopping the existing listener.
+
+Once prepared, the direct entry is:
+
+```sh
+bun packages/cli/src/bin.ts dev --workspace examples/runtime/lenso.workspace.ts
+```
+
+`lenso.workspace.ts` declares process boundaries only; `lenso.config.ts` still owns
+the TS plugins and typed instance dependencies. Customize commands, cwd, watches,
+timeouts and ready/activate callbacks through `defineWorkspace`. Config imports
+acquire no resources. States include real PID, candidate instance, version,
+elapsed time, errors and retained old instance information. Ctrl-C closes
+dependents before dependencies; unexpected service exit closes the workspace.
+
+- TS implementation edits use the existing Engine source graph, restarting only
+  the TS frontend.
+- Rust source edits build only `logs-batch` and affected Cargo dependencies in an
+  owned staging directory. Unchanged source timestamps and Cargo artifacts remain
+  reusable. A compile failure reports `failed` and `retained`; old calls still work.
+- A successful candidate must register, become ready **under its unique token**,
+  and pass `RuntimeHost.promote` before new calls move. Old assigned streams drain
+  for up to 5 seconds; process shutdown has an 8-second bound. No state migration,
+  retry, replay or reconnect fallback occurs.
+- A different contract, including a version bump, cannot replace a running
+  selection. The frontend's client binding is prepared at startup; TS and Rust
+  service candidates use generated bindings from the canonical contract. TS
+  candidates bundle their binding into an owned staging artifact, without
+  overwriting the running frontend's client when promotion is rejected.
+  Rust bindings regenerate only when canonical contract/generator changes. Intentional
+  incompatible upgrades require a coordinated workspace restart, not live coercion.
+- The kernel is not watched/replaced automatically: replacing it would fail all
+  in-flight work. Stop and start the workspace when changing kernel code.
+  TS SDK/framework changes require rerunning `bun run dev:runtime` to refresh
+  prepared SDK bytes and cached framework output; business edits do not do that.
+
+Choose the separate TS service implementation at launch with
+`LENSO_BATCH_IMPLEMENTATION=ts`. It exports the same generated contract through a
+native TS App; the frontend still makes an explicitly remote Service call.
+For a transport-free TS application, `bun run --cwd examples/runtime offline`
+uses the same ordinary business function and Core, with no Runtime listener.
+Rust's corresponding standalone example is
+`cargo run --locked -p lenso-log-plugins --example offline` in its checkout.
+
+The single contract is Runtime's `examples/contracts/logs.json`. Integers are
+canonical safe JSON integers, optional differs from null, decimal money/time
+formats are not invented, and unsupported schemas fail in the existing generator.
+Internal plugin methods and the local journal do not become remote operations.
+
+`RuntimeHost.status()` exposes actual instances, exports, contract versions,
+selection, recent trace/parent IDs and measured queue/execution/total durations.
+Kernel `execution_ms` includes host validation/scheduling, **not only business
+computation**. Existing authorized Runtime Manage returns this same snapshot.
+This example has no Auth or DB, so it reports no fabricated reads or DB counters.
+Initialization emits one event per actual TS setup; Rust readiness reports its
+successfully initialized instance count and startup elapsed time. No request
+identity/transaction is cached globally. Console UI lives in its separately owned
+repository and is not changed here.
+
+All Runtime control is **trusted local loopback**, not authenticated management,
+cross-machine production security or end-user identity propagation. No ordinary
+business operation is automatically exposed to Manage, MCP or agents.
+
 ## Prepare once
 
 From the Lenso repository root, run `bun scripts/prepare-runtime.ts` before
@@ -38,7 +117,8 @@ types. Do not edit the generated TypeScript client by hand.
 
 ## Independent development lifetimes
 
-Run `bun run dev`. The outer launcher owns the kernel and Rust batch process once,
+The retained `bun run dev:companions` entry is the earlier prebuilt-binary workflow.
+The outer launcher owns the kernel and Rust batch process once,
 selecting borrowed-companion mode in the initial process environment (Bun's
 implicit child environment can cache values before later mutations).
 then starts the public Engine TypeScript supervisor. `lenso.engine.ts` borrows those

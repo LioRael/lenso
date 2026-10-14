@@ -10,6 +10,7 @@
     "prepare:runtime": "bun scripts/prepare-runtime.ts",
     "runtime:typecheck": "tsc --noEmit -p scripts/tsconfig.json",
     "runtime:test": "bun test scripts/prepare-runtime.test.ts",
+    "dev:runtime": "bun scripts/dev-runtime-workspace.ts",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck && bun run release:typecheck",
     "test": "turbo run test && bun run release:test",

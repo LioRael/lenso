@@ -496,7 +496,9 @@ export async function createWorkspaceSupervisor(
     return (closing = Promise.resolve().then(async () => {
       const watchFailures: unknown[] = [];
       controller.abort(new Error("Workspace closed"));
-      for (const candidate of controllers) candidate.abort(signal.reason);
+      const activeControllers = new Set([...active.values()].map((value) => value.controller));
+      for (const candidate of controllers)
+        if (!activeControllers.has(candidate)) candidate.abort(signal.reason);
       for (const value of active.values()) clearTimeout(value.startupTimer);
       options.signal?.removeEventListener("abort", aborted);
       for (const timer of timers.values()) clearTimeout(timer);
@@ -507,11 +509,27 @@ export async function createWorkspaceSupervisor(
           watchFailures.push(error);
         }
       }
+      const activeProcesses = new Set([...active.values()].map((value) => value.process));
+      const activeDevs = new Set([...active.values()].map((value) => value.dev));
       const cleanup = await Promise.allSettled([
-        ...[...owned.keys()].map(stop),
-        ...[...devs].map((dev) => dev.close().finally(() => devs.delete(dev))),
+        ...[...owned.keys()].filter((child) => !activeProcesses.has(child)).map(stop),
+        ...[...devs]
+          .filter((dev) => !activeDevs.has(dev))
+          .map((dev) => dev.close().finally(() => devs.delete(dev))),
       ]);
       await Promise.allSettled(jobs.values());
+      // Dependents drain while their dependencies are still available.
+      for (const service of [...services].reverse()) {
+        const value = active.get(service.id);
+        if (!value) continue;
+        try {
+          await stopActive(value);
+        } catch (error) {
+          watchFailures.push(error);
+        } finally {
+          active.delete(service.id);
+        }
+      }
       // Creation can settle during cancellation and add an owner after the first snapshot.
       const remaining = await Promise.allSettled([
         ...[...owned.keys()].map(stop),

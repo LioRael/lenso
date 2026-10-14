@@ -116,6 +116,46 @@ test("dependencies await actual readiness, activation precedes old shutdown, clo
   for (const event of events) if (event.pid) expect(alive(event.pid)).toBe(false);
 });
 
+test("shutdown drains dependents before stopping their dependencies", async () => {
+  const root = mkdtempSync(join(tmpdir(), "lenso-workspace-drain-"));
+  const logfile = join(root, "closed");
+  const make = (id: string, dependsOn: string[] = []) =>
+    service(id, {
+      dependsOn,
+      stopTimeoutMs: 1000,
+      command: [
+        process.execPath,
+        "-e",
+        `
+      import {appendFileSync,writeFileSync} from 'node:fs';
+      process.once('SIGTERM', async () => {
+        appendFileSync(${JSON.stringify(logfile)}, ${JSON.stringify(id + "\n")});
+        await Bun.sleep(50);
+        process.exit(0);
+      });
+      writeFileSync(${JSON.stringify(join(root, id))}, 'ready');
+      setInterval(()=>{},1000);
+    `,
+      ],
+      async ready() {
+        while (!(await Bun.file(join(root, id)).exists())) await Bun.sleep(5);
+      },
+    });
+  const supervisor = await createWorkspaceSupervisor({
+    workspace: { services: [make("consumer", ["producer"]), make("producer")] },
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  try {
+    await supervisor.close();
+    await supervisor.done;
+    expect(await Bun.file(logfile).text()).toBe("consumer\nproducer\n");
+  } finally {
+    await supervisor.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("failed build, ready and activation retain the previous instance", async () => {
   const root = mkdtempSync(join(tmpdir(), "lenso-workspace-"));
   let readyFail = false,

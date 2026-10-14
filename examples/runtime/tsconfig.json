@@ -1,4 +1,4 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["src/**/*.ts", "lenso.config.ts", "lenso.engine.ts"]
+  "include": ["src/**/*.ts", "lenso.config.ts", "lenso.engine.ts", "lenso.workspace.ts"]
 }

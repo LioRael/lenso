@@ -128,6 +128,34 @@ test("failed SDK build preserves all previous ready state", async () => {
   expect((await readdir(ready)).sort()).toEqual([".owner", "provenance.json", "sdk", "source"]);
 });
 
+test("cancelled SDK preparation releases its lock and preserves the ready artifact", async () => {
+  const root = await fixture();
+  await prepareRuntime(root, { fetch: fetchFixture, run: buildFixture, pin });
+  const output = join(root, ".runtime-deps");
+  const before = await readFile(join(output, "provenance.json"), "utf8");
+  const abort = new AbortController();
+  const reason = new Error("workspace cancelled");
+  await expect(
+    prepareRuntime(
+      root,
+      {
+        fetch: fetchFixture,
+        pin,
+        async run(args, _cwd, signal) {
+          expect(signal).toBe(abort.signal);
+          if (args[0] === "run") {
+            abort.abort(reason);
+            signal!.throwIfAborted();
+          }
+        },
+      },
+      { signal: abort.signal },
+    ),
+  ).rejects.toBe(reason);
+  expect(await readFile(join(output, "provenance.json"), "utf8")).toBe(before);
+  expect((await readdir(output)).sort()).toEqual([".owner", "provenance.json", "sdk", "source"]);
+});
+
 test("explicit local source captures dirty tracked bytes and rejects symlinks without replacing ready state", async () => {
   const root = await fixture();
   const runtime = await fixture();
