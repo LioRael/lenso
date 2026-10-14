@@ -1,0 +1,20 @@
+packages/auth/README.md
+  h_9d56aba080c170 185-200
+packages/auth/src/core.ts
+  h_9d56aba080c170 21-38,116-122,170-199,202-205,239-258,315,336,345-346,354-355,366,398,456-542,565
+packages/auth/src/index.ts
+  h_9d56aba080c170 14-16
+packages/auth/test/read-scope.test.ts
+  h_9d56aba080c170 1-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e1ec868066e48c50b4cf57d19c394f12bbcb2ce4",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
