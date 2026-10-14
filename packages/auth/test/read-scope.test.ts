@@ -82,7 +82,7 @@ test("finite read reuses entry identity, checks each policy and refreshes once b
 
 test("finish rejects authoritative revocation, identity/kind changes, policy and membership changes", async () => {
   for (const change of ["rejected", "subject", "kind", "membership", "policy"] as const) {
-    const { auth, access, state, begin } = fixture();
+    const { auth, access, state, begin, signal } = fixture();
     const scoped = access.memberships(async () => (state.allowed ? true : null));
     let policyAllowed = true;
     try {
@@ -106,7 +106,7 @@ test("finish rejects authoritative revocation, identity/kind changes, policy and
 
 test("read lifetime rejects TTL, session expiry, cancellation, close and Auth close", async () => {
   for (const change of ["ttl", "expiry", "abort", "close", "auth-close"] as const) {
-    const { auth, access, state, begin, signal } = fixture();
+    const { auth, access, state, begin } = fixture();
     const controller = new AbortController();
     if (change === "expiry") state.expiry = 20;
     const scope = await begin({ signal: controller.signal, maxAgeMs: 20 });
