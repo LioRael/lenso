@@ -1,5 +1,11 @@
 # @lenso/auth
 
+## 0.5.2
+
+### Patch Changes
+
+- Add optional request-owned read scopes with bounded lifetime, exact cancellation identity, repeated policy checks, and authoritative final verification before disclosure. Existing authorization APIs retain fresh verification.
+
 ## 0.5.1
 
 ### Patch Changes
