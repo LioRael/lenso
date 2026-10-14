@@ -4,7 +4,8 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "examples/*",
+    ".runtime-deps/sdk"
   ],
   "scripts": {
     "prepare:runtime": "bun scripts/prepare-runtime.ts",
@@ -23,16 +24,21 @@
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
     "changeset": "bun node_modules/@changesets/cli/bin.js add",
-    "release:status": "bun node_modules/@changesets/cli/bin.js status",
-    "release:version": "bun node_modules/@changesets/cli/bin.js version",
+    "release:status": "bun scripts/release-version.ts status",
+    "release:version": "bun scripts/release-version.ts version",
     "release:verify": "bun scripts/release-verify.ts",
     "release:typecheck": "tsc --noEmit -p scripts/tsconfig.json",
     "release:test": "bun test scripts/release.test.ts scripts/release-ci.test.ts scripts/release-select.test.ts",
     "release:prepare": "bun scripts/release-ci.ts prepare"
   },
   "devDependencies": {
+    "@changesets/apply-release-plan": "8.1.1",
+    "@changesets/assemble-release-plan": "7.0.0",
     "@changesets/cli": "3.0.3",
-    "@lenso/runtime-sdk": "file:.runtime-deps/sdk",
+    "@changesets/config": "4.0.1",
+    "@changesets/read": "1.0.1",
+    "@lenso/runtime-sdk": "workspace:*",
+    "@manypkg/get-packages": "3.1.0",
     "@types/bun": "1.4.2",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",

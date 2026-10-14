@@ -19,7 +19,7 @@
     "@lenso/engine": "workspace:^",
     "@lenso/log": "workspace:^",
     "@lenso/runtime": "workspace:^",
-    "@lenso/runtime-sdk": "file:../../.runtime-deps/sdk",
+    "@lenso/runtime-sdk": "workspace:*",
     "@standard-schema/spec": "1.1.0"
   },
   "devDependencies": {

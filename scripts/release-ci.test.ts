@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   assertPublishContext,
@@ -376,13 +376,28 @@ test("real preparation records the checked-out source/run and explicit archive s
     return stdout.trim();
   }
   try {
-    await Bun.write(join(directory, ".gitignore"), "output/\nnode_modules/\nbun.lock\n");
+    await Bun.write(
+      join(directory, ".gitignore"),
+      "output/\nnode_modules/\nbun.lock\n.runtime-deps/\n",
+    );
     await Bun.write(
       join(directory, "package.json"),
       JSON.stringify({
         private: true,
-        workspaces: ["packages/*"],
+        workspaces: ["packages/*", ".runtime-deps/sdk"],
         engines: { bun: Bun.version },
+      }),
+    );
+    await Bun.write(
+      join(directory, ".runtime-deps/sdk/package.json"),
+      JSON.stringify({
+        name: "@lenso/runtime-sdk",
+        version: "0.1.0",
+        files: ["dist"],
+        exports: "./dist/index.js",
+        scripts: {
+          build: "bun -e 'throw Error(\"Foreign SDK must not be built by release owner\")'",
+        },
       }),
     );
     for (const name of ["fixture", "unselected"]) {
@@ -394,6 +409,7 @@ test("real preparation records the checked-out source/run and explicit archive s
           files: ["dist"],
           exports: "./dist/index.js",
           scripts: { build: "bun -e 'process.exit(0)'" },
+          devDependencies: { "@lenso/runtime-sdk": "workspace:*" },
         }),
       );
       await Bun.write(
@@ -401,6 +417,7 @@ test("real preparation records the checked-out source/run and explicit archive s
         "export const fixture = true;\n",
       );
     }
+    await command([process.execPath, "install", "--ignore-scripts"]);
     await command(["git", "init", "--initial-branch=main"]);
     await command(["git", "add", "."]);
     await command([
@@ -424,6 +441,11 @@ test("real preparation records the checked-out source/run and explicit archive s
     expect(data.runId).toBe(env.GITHUB_RUN_ID);
     expect(data.policy).toEqual(policy);
     expect(data.packages.map((item: { name: string }) => item.name)).toEqual(["fixture"]);
+    const verified = await Bun.file(join(dirname(path), "verified.json")).json();
+    expect(verified.packages.map((item: { name: string }) => item.name)).toEqual([
+      "fixture",
+      "unselected",
+    ]);
     const archive = join(
       directory,
       "output",
@@ -434,6 +456,9 @@ test("real preparation records the checked-out source/run and explicit archive s
     expect(sha256(new Uint8Array(await Bun.file(archive).arrayBuffer()))).toBe(
       data.packages[0].sha256,
     );
+    await expect(
+      prepare(directory, { ...env, GITHUB_SHA: sourceSha, RELEASE_PACKAGES: "@lenso/runtime-sdk" }),
+    ).rejects.toThrow("Unknown or private release package");
     await expect(prepare(directory, { ...env, GITHUB_SHA: "b".repeat(40) })).rejects.toThrow(
       "Checkout SHA",
     );

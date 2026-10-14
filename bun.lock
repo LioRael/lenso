@@ -5,14 +5,23 @@
     "": {
       "name": "lenso-workspace",
       "devDependencies": {
+        "@changesets/apply-release-plan": "8.1.1",
+        "@changesets/assemble-release-plan": "7.0.0",
         "@changesets/cli": "3.0.3",
-        "@lenso/runtime-sdk": "file:.runtime-deps/sdk",
+        "@changesets/config": "4.0.1",
+        "@changesets/read": "1.0.1",
+        "@lenso/runtime-sdk": "workspace:*",
+        "@manypkg/get-packages": "3.1.0",
         "@types/bun": "1.4.2",
         "oxfmt": "0.72.0",
         "oxlint": "1.87.0",
         "turbo": "2.11.7",
         "typescript": "7.0.2",
       },
+    },
+    ".runtime-deps/sdk": {
+      "name": "@lenso/runtime-sdk",
+      "version": "0.1.0",
     },
     "examples/greeting": {
       "name": "@lenso/example-greeting",
@@ -81,7 +90,7 @@
         "@lenso/engine": "workspace:^",
         "@lenso/log": "workspace:^",
         "@lenso/runtime": "workspace:^",
-        "@lenso/runtime-sdk": "file:../../.runtime-deps/sdk",
+        "@lenso/runtime-sdk": "workspace:*",
         "@standard-schema/spec": "1.1.0",
       },
       "devDependencies": {
@@ -370,7 +379,7 @@
     },
     "packages/mcp": {
       "name": "@lenso/mcp",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "dependencies": {
         "@lenso/cli": "workspace:^",
         "@lenso/core": "workspace:^",
@@ -554,7 +563,7 @@
       "devDependencies": {
         "@lenso/engine": "workspace:^",
         "@lenso/manage": "workspace:^",
-        "@lenso/runtime-sdk": "file:../../.runtime-deps/sdk",
+        "@lenso/runtime-sdk": "workspace:*",
       },
       "peerDependencies": {
         "@lenso/engine": "^0.6.0",
@@ -1006,7 +1015,7 @@
 
     "@lenso/runtime": ["@lenso/runtime@workspace:packages/runtime"],
 
-    "@lenso/runtime-sdk": ["@lenso/runtime-sdk@file:.runtime-deps/sdk", {}],
+    "@lenso/runtime-sdk": ["@lenso/runtime-sdk@workspace:.runtime-deps/sdk"],
 
     "@lenso/scheduler": ["@lenso/scheduler@workspace:packages/scheduler"],
 
@@ -1677,10 +1686,6 @@
     "zod-to-json-schema": ["zod-to-json-schema@3.25.2", "", { "peerDependencies": { "zod": "^3.25.28 || ^4" } }, "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="],
 
     "@esbuild-kit/core-utils/esbuild": ["esbuild@0.18.20", "", { "optionalDependencies": { "@esbuild/android-arm": "0.18.20", "@esbuild/android-arm64": "0.18.20", "@esbuild/android-x64": "0.18.20", "@esbuild/darwin-arm64": "0.18.20", "@esbuild/darwin-x64": "0.18.20", "@esbuild/freebsd-arm64": "0.18.20", "@esbuild/freebsd-x64": "0.18.20", "@esbuild/linux-arm": "0.18.20", "@esbuild/linux-arm64": "0.18.20", "@esbuild/linux-ia32": "0.18.20", "@esbuild/linux-loong64": "0.18.20", "@esbuild/linux-mips64el": "0.18.20", "@esbuild/linux-ppc64": "0.18.20", "@esbuild/linux-riscv64": "0.18.20", "@esbuild/linux-s390x": "0.18.20", "@esbuild/linux-x64": "0.18.20", "@esbuild/netbsd-x64": "0.18.20", "@esbuild/openbsd-x64": "0.18.20", "@esbuild/sunos-x64": "0.18.20", "@esbuild/win32-arm64": "0.18.20", "@esbuild/win32-ia32": "0.18.20", "@esbuild/win32-x64": "0.18.20" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-ceqxoedUrcayh7Y7ZX6NdbbDzGROiyVBgC4PriJThBKSVPWnnFHZAkfI1lJT8QFkOwH4qOS2SJkS4wvpGl8BpA=="],
-
-    "@lenso/example-runtime/@lenso/runtime-sdk": ["@lenso/runtime-sdk@file:.runtime-deps/sdk", {}],
-
-    "@lenso/runtime/@lenso/runtime-sdk": ["@lenso/runtime-sdk@file:.runtime-deps/sdk", {}],
 
     "body-parser/content-type": ["content-type@2.1.0", "", {}, "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag=="],
 
