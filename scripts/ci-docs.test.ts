@@ -98,31 +98,30 @@ test("complete PR/push diff allows ordinary docs and NUL-delimited spaced filena
   });
 });
 
-test("each unknown/runtime/config path and mixed diff goes full", () => {
-  for (const path of [
-    "other.md",
-    "tests/fixtures/a.md",
-    ".changeset/a.md",
-    ".github/workflows/checks.yml",
-    "scripts/ci-docs.ts",
-    "scripts/ci-docs.test.ts",
-    "scripts/tsconfig.json",
-    "package.json",
-    "bun.lock",
-    "mise.toml",
-    "source.ts",
-  ]) {
-    fixture((root, base) => {
-      write(root, "docs/new.md");
-      write(root, path, "changed\n");
-      commit(root);
-      expect(selectRoute(root, { event: "pull_request", base }).route).toBe("full");
-    });
-  }
+test.each([
+  "other.md",
+  "tests/fixtures/a.md",
+  ".changeset/a.md",
+  ".github/workflows/checks.yml",
+  "scripts/ci-docs.ts",
+  "scripts/ci-docs.test.ts",
+  "scripts/tsconfig.json",
+  "package.json",
+  "bun.lock",
+  "mise.toml",
+  "source.ts",
+])("unknown/runtime/config path %s with a mixed diff goes full", (path) => {
+  fixture((root, base) => {
+    write(root, "docs/new.md");
+    write(root, path, "changed\n");
+    commit(root);
+    expect(selectRoute(root, { event: "pull_request", base }).route).toBe("full");
+  });
 });
 
-test("source-to-doc rename, deletion, executable mode, symlink and tree changes go full", () => {
-  for (const change of ["rename", "delete", "executable", "symlink", "tree"]) {
+test.each(["rename", "delete", "executable", "symlink", "tree"])(
+  "source-to-doc rename or unsafe documentation change %s goes full",
+  (change) => {
     fixture((root, base) => {
       if (change === "rename") {
         mkdirSync(join(root, "docs"));
@@ -141,8 +140,8 @@ test("source-to-doc rename, deletion, executable mode, symlink and tree changes 
       commit(root);
       expect(selectRoute(root, { event: "push", base }).route).toBe("full");
     });
-  }
-});
+  },
+);
 
 test("dispatch, initial/missing/invalid/unavailable base, empty diff and Git failure go full", () => {
   fixture((root, base) => {
