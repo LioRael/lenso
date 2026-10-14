@@ -1,5 +1,11 @@
 # @lenso/manage
 
+## 0.5.3
+
+### Patch Changes
+
+- Add bounded, opt-in catalog policy concurrency while preserving sequential defaults and draining failed asynchronous checks.
+
 ## 0.5.2
 
 ### Patch Changes

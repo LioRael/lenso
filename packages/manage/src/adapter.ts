@@ -249,7 +249,10 @@ function selectionFromState<O extends Operation>(
           const instanceId = current().running.instanceId;
           try {
             const entries = [...current().entries];
-            const projected: (ManageCatalogEntry | undefined)[] = new Array(entries.length);
+            const projected: (ManageCatalogEntry | undefined)[] = Array.from(
+              { length: entries.length },
+              () => undefined,
+            );
             let next = 0;
             let failed = false;
             const outcomes = await Promise.allSettled(
