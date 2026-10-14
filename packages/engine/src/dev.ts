@@ -10,7 +10,7 @@ import { InputWatches } from "./input-watches";
 
 export type DevSupervisorEvent =
   | { type: "starting" }
-  | { type: "ready"; urls?: readonly string[]; capabilities?: readonly string[] }
+  | { type: "ready"; pid?: number; urls?: readonly string[]; capabilities?: readonly string[] }
   | { type: "failed"; diagnostic: EngineDiagnostic }
   | { type: "exited"; code: number };
 
@@ -20,6 +20,9 @@ export interface DevSupervisorOptions extends ApplicationTarget {
   onEvent?(event: DevSupervisorEvent): void;
   stdout?: "inherit" | "ignore";
   stderr?: "inherit" | "ignore";
+  env?: Record<string, string | undefined> | (() => Record<string, string | undefined>);
+  signal?: AbortSignal;
+  stopTimeoutMs?: number;
 }
 
 export interface DevSupervisor {
@@ -37,21 +40,21 @@ function includesCleanup(detail: EngineDiagnostic): boolean {
   );
 }
 
-async function stopProcess(previous: ReturnType<typeof Bun.spawn>) {
+async function stopProcess(previous: ReturnType<typeof Bun.spawn>, timeoutMs = 5000) {
   if (previous.exitCode !== null) return;
   let forced = false;
   previous.kill("SIGTERM");
   const timeout = setTimeout(() => {
     forced = true;
     previous.kill("SIGKILL");
-  }, 5000);
+  }, timeoutMs);
   try {
     await previous.exited;
     if (forced)
       throw new EngineError({
         code: "dev-runtime-timeout",
         phase: "engine-cleanup",
-        message: "Development runtime shutdown exceeded 5 seconds; the process was terminated.",
+        message: `Development runtime shutdown exceeded ${timeoutMs / 1000} seconds; the process was terminated.`,
       });
   } finally {
     clearTimeout(timeout);
@@ -59,6 +62,15 @@ async function stopProcess(previous: ReturnType<typeof Bun.spawn>) {
 }
 
 export async function createDevSupervisor(options: DevSupervisorOptions): Promise<DevSupervisor> {
+  if (
+    options.stopTimeoutMs !== undefined &&
+    (!Number.isFinite(options.stopTimeoutMs) || options.stopTimeoutMs <= 0)
+  )
+    throw new EngineError({
+      code: "invalid-engine-state",
+      phase: "engine-dev",
+      message: "Development shutdown timeout must be a positive finite number.",
+    });
   const root = realpathSync(resolve(options.root));
   type Active = {
     child: ReturnType<typeof Bun.spawn>;
@@ -102,7 +114,7 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
     if (previous)
       stopping = stopping.then(async () => {
         try {
-          await stopProcess(previous.child);
+          await stopProcess(previous.child, options.stopTimeoutMs);
         } catch (error) {
           cleanupFailed(error);
         }
@@ -141,6 +153,7 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
         queued = false;
         await stopActive();
         if (closed) break;
+        const env = typeof options.env === "function" ? options.env() : options.env;
         emit({ type: "starting" });
         if (!watchFiles.length) {
           const inputs = new SourceInputs(root);
@@ -170,6 +183,8 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
                 }
               }
             },
+            env,
+            options.signal,
           );
         } catch (error) {
           if (includesCleanup(diagnostic(error))) cleanupFailures.push(error);
@@ -192,6 +207,7 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
           const entry = await checkedEntry(root, engine.entry, "dev");
           const child = Bun.spawn([process.execPath, ...devConditionArgs(), entry], {
             cwd: root,
+            env: { ...process.env, ...env },
             stdout: options.stdout ?? "inherit",
             stderr: options.stderr ?? "inherit",
             ipc(message, subprocess) {
@@ -209,7 +225,12 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
                 .ready()
                 .then(() => {
                   if (!closed && active === current && current.child.exitCode === null)
-                    emit({ type: "ready", urls: message.urls, capabilities: message.capabilities });
+                    emit({
+                      type: "ready",
+                      pid: current.child.pid,
+                      urls: message.urls,
+                      capabilities: message.capabilities,
+                    });
                 })
                 .catch(async (error) => {
                   if (!closed && active === current) {
@@ -243,6 +264,7 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
   function close(): Promise<void> {
     return (closing ??= (async () => {
       closed = true;
+      options.signal?.removeEventListener("abort", aborted);
       if (debounce) clearTimeout(debounce);
       watchers.close();
       try {
@@ -256,6 +278,11 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
       }
     })());
   }
+  function aborted() {
+    void close().catch(report);
+  }
+  options.signal?.addEventListener("abort", aborted, { once: true });
+  if (options.signal?.aborted) aborted();
   try {
     await restart();
   } catch (error) {

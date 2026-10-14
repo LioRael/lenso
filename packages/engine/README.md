@@ -102,6 +102,109 @@ shutdown. Engine worker startup is bounded to 30 seconds, shutdown to 5 seconds.
 The embedding tool owns signals and presentation. Observer callbacks must be
 synchronous; their thrown exceptions are isolated from resource ownership.
 
+## Explicit development workspaces
+
+`defineWorkspace` describes owned development processes, not business services or
+operation exposure. Application entries remain ordinary `ApplicationTarget`s and
+delegate to `createDevSupervisor`, including native TypeScript source watches,
+fresh Engine workers and IPC readiness. An application service's `env` reaches
+both its Engine worker and runtime process.
+
+```ts
+import { defineWorkspace, createWorkspaceSupervisor } from "@lenso/engine";
+
+const workspace = defineWorkspace({
+  services: [
+    {
+      id: "kernel",
+      kind: "process",
+      cwd: ".",
+      command: ["./bin/kernel"],
+      ready: async ({ instance, process, signal }) => {
+        await waitForKernel({ instance, pid: process.pid, signal });
+      },
+    },
+    {
+      id: "worker",
+      kind: "process",
+      dependsOn: ["kernel"],
+      cwd: "worker",
+      build: ["cargo", "build", "--release"],
+      command: ["./target/release/worker"],
+      watch: ["src", "Cargo.toml"],
+      startupTimeoutMs: 120_000,
+      stopTimeoutMs: 5_000,
+      ready: async ({ instance, signal }) => {
+        await waitForRegisteredInstance(instance, signal);
+      },
+      activate: async ({ instance, signal }) => {
+        signal.throwIfAborted();
+        await runtime.promote({
+          namespace: "example",
+          service: "worker",
+          instance,
+          timeoutMs: 5_000,
+        });
+      },
+    },
+    {
+      id: "frontend",
+      kind: "application",
+      dependsOn: ["worker"],
+      target: { root: "frontend" },
+      env: { LENSO_RUNTIME_EXTERNAL: "1" },
+    },
+  ],
+});
+const supervisor = await createWorkspaceSupervisor({ workspace, root });
+try {
+  await supervisor.done;
+} finally {
+  await supervisor.close();
+}
+```
+
+The example's readiness helpers and `runtime` are application-owned trusted
+integration code. They must correlate the **exact candidate instance**, not merely
+an open port or a prior registration. Every candidate receives a fresh
+`LENSO_WORKSPACE_INSTANCE` environment token, including its build command.
+Commands are argv arrays passed directly to Bun, never implicitly to a shell.
+Use candidate-specific build output when a build might overwrite an active
+artifact. `activate` must perform an atomic compatible cutover or reject without
+changing admission; check/cooperate with its signal and bound any external call.
+The supervisor cannot undo arbitrary effects from a callback that ignores cancellation.
+If transport failure leaves cutover uncertain, reconcile the selected instance or
+throw `EngineError` with code `workspace-cutover-unknown`. That error, an activation
+timeout, or a candidate exit during activation fails and closes the whole workspace;
+none claims the old instance was safely retained. An ordinary activation rejection
+must establish that admission did not change.
+
+Initial startup waits for each declared dependency's readiness. Duplicate IDs,
+missing dependencies and cycles reject before any process starts. Optional trusted
+`prepare({signal})` runs once before startup (30-second bound) for local dependency
+preparation; it owns cleanup of anything it acquires. Configuration imports must
+remain free of resource acquisition.
+
+Only a process service's explicit `watch` inputs trigger its rebuild; dependencies
+order startup, not transitive rebuilds. Rebuilds are serial per service and coalesce
+changes during an in-flight candidate into one follow-up. A process candidate builds
+while the old instance stays active, launches with a new token, awaits readiness,
+then activates before sending the old process SIGTERM. The process owns its actual
+request drain; the supervisor sends SIGKILL after `stopTimeoutMs` (default 5 seconds).
+Failed build/readiness/activation stops the candidate and reports the retained old
+instance and version. Application restarts keep the existing stop-then-start policy.
+
+`onEvent` receives service state snapshots: `id`, `status`, `instance`, candidate
+`version`, actual `pid`, `elapsedMs`, confirmed `urls`, original `error`, and
+`retained` metadata on candidate failure. `states` exposes the latest snapshots;
+`rebuild(id)` requests an explicit rebuild. Startup defaults to 30 seconds per
+candidate; application Engine cleanup retains its existing five-second bound.
+Initial partial failure rolls back all started owners and throws. Unexpected active
+process exits fail the workspace and clean up peers; `done` rejects after cleanup.
+`close()` is idempotent and cancels candidates, stops owned build/runtime processes,
+closes watches and waits for cleanup. Callbacks must cooperate with cancellation
+and own any resources they acquire; observers cannot interrupt ownership.
+
 ## Engine plugins
 
 The default Bun build needs no extra config. Add a trusted `lenso.engine.ts`

@@ -123,7 +123,7 @@ test("failed Engine starts stay unready and recover; unexpected runtime exits co
     );
     await until(() => events.some((event) => event.type === "ready"));
     expect(events.filter((event) => event.type === "ready")).toEqual([
-      { type: "ready", urls: undefined, capabilities: ["recovered"] },
+      { type: "ready", pid: expect.any(Number), urls: undefined, capabilities: ["recovered"] },
     ]);
   } finally {
     await supervisor.close();
