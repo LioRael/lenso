@@ -200,9 +200,7 @@ test("cursor capacity rejects issuance without eviction and consuming releases a
     for (let i = 1; i < 1024; i++) {
       expect((await f.adapter.listTools(context)).nextCursor).toBeTruthy();
     }
-    await expect(f.adapter.listTools(context)).rejects.toThrow(
-      "Tool cursor capacity reached.",
-    );
+    await expect(f.adapter.listTools(context)).rejects.toThrow("Tool cursor capacity reached.");
     expect(
       (await f.adapter.listTools(context, retained.nextCursor)).tools.map((tool) => tool.title),
     ).toEqual(["adapter-test.write"]);
