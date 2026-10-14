@@ -49,8 +49,8 @@ export function bindMcpServer<I>(
     if (notification.params.requestId !== undefined)
       cancellations.get(notification.params.requestId)?.abort();
   });
-  server.setRequestHandler(ListToolsRequestSchema, (_request, extra) =>
-    dispatch(extra, (context) => adapter.listTools(context)),
+  server.setRequestHandler(ListToolsRequestSchema, (request, extra) =>
+    dispatch(extra, (context) => adapter.listTools(context, request.params?.cursor)),
   );
   server.setRequestHandler(CallToolRequestSchema, (request, extra) => {
     if (request.params.task)
