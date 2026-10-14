@@ -202,7 +202,7 @@
     },
     "packages/auth": {
       "name": "@lenso/auth",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "devDependencies": {
         "@cloudflare/workers-types": "5.20261008.1",
         "@lenso/core": "workspace:^",

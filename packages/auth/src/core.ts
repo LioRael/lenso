@@ -178,20 +178,37 @@ interface ReadState<R extends string, E, S extends string> {
   readonly startedAt: number;
   readonly deadline: number;
   readonly entryRequirements: SessionRequirements;
-  readonly checks: Array<(verified: Extract<AuthenticationResult<S>, { status: "verified" }>, signal: AbortSignal) => Promise<void>>;
+  readonly checks: Array<
+    (
+      verified: Extract<AuthenticationResult<S>, { status: "verified" }>,
+      signal: AbortSignal,
+    ) => Promise<void>
+  >;
   status: "open" | "finishing" | "closed";
   pending: number;
 }
 
 // Read selectors are immutable values, not arbitrary mutable application objects.
 function readSelector(value: unknown): void {
-  if (value === null || ["string", "number", "boolean", "undefined", "bigint"].includes(typeof value)) return;
-  if (typeof value !== "object" || !Object.isFrozen(value) ||
-      ![Object.prototype, null].includes(Object.getPrototypeOf(value)))
+  if (
+    value === null ||
+    ["string", "number", "boolean", "undefined", "bigint"].includes(typeof value)
+  )
+    return;
+  if (
+    typeof value !== "object" ||
+    !Object.isFrozen(value) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+  )
     throw new AuthConfigurationError("Read resource must be a primitive or frozen flat selector");
-  for (const descriptor of Reflect.ownKeys(value).map((key) => Object.getOwnPropertyDescriptor(value, key)!)) {
-    if (!("value" in descriptor) || (descriptor.value !== null &&
-        !["string", "number", "boolean", "undefined", "bigint"].includes(typeof descriptor.value)))
+  for (const descriptor of Reflect.ownKeys(value).map((key) =>
+    Object.getOwnPropertyDescriptor(value, key)!,
+  )) {
+    if (
+      !("value" in descriptor) ||
+      (descriptor.value !== null &&
+        !["string", "number", "boolean", "undefined", "bigint"].includes(typeof descriptor.value))
+    )
       throw new AuthConfigurationError("Read resource must be a primitive or frozen flat selector");
   }
 }
@@ -351,8 +368,14 @@ class Runtime<R extends string, E, S extends string> {
       audience: target.id,
       kind: verified.kind ?? "user",
     }) as Actor<R, S, A>;
-    this.proofs.set(actor, { evidence, signal, callerSignal,
-      verified: snapshotVerification(verified), verifiedStartedAt, readStarted: false });
+    this.proofs.set(actor, {
+      evidence,
+      signal,
+      callerSignal,
+      verified: snapshotVerification(verified),
+      verifiedStartedAt,
+      readStarted: false,
+    });
     return actor;
   }
 
@@ -395,7 +418,9 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
   const optional = (evidence: E, options: AuthenticationOptions = {}) =>
     runtime.run([options.signal], async (signal) => {
       const verified = await runtime.authenticate(evidence, requirements, signal);
-      return verified === null ? null : runtime.mint(target, verified, evidence, signal, options.signal);
+      return verified === null
+        ? null
+        : runtime.mint(target, verified, evidence, signal, options.signal);
     });
 
   async function authorize<U extends T>(
@@ -470,14 +495,27 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       return runtime.run([proof.signal, callerSignal], async (signal) => {
         runtime.checkEvidence(verified.session, authoritative);
         const state: ReadState<R, E, S> = {
-          target: target.id, evidence, signal, callerSignal, actor, verified, startedAt, deadline,
-          entryRequirements: authoritative, controller: new AbortController(),
-          checks: [], status: "open", pending: 0,
+          target: target.id,
+          evidence,
+          signal,
+          callerSignal,
+          actor,
+          verified,
+          startedAt,
+          deadline,
+          entryRequirements: authoritative,
+          controller: new AbortController(),
+          checks: [],
+          status: "open",
+          pending: 0,
         };
         runtime.checkRead(state);
         const scope = Object.freeze({
           actor,
-          close() { state.status = "closed"; state.controller.abort(new AuthError("UNAUTHORIZED")); },
+          close() {
+            state.status = "closed";
+            state.controller.abort(new AuthError("UNAUTHORIZED"));
+          },
           async finish() {
             runtime.checkRead(state);
             if (state.status !== "open" || state.pending !== 0) {
@@ -486,19 +524,28 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
             }
             state.status = "finishing";
             try {
-              return await runtime.run([state.signal, state.controller.signal], async (finishSignal) => {
-                const fresh = await runtime.authenticate(evidence, authoritative, finishSignal);
-                runtime.checkRead(state);
-                if (!fresh || fresh.subjectId !== actor.subjectId || (fresh.kind ?? "user") !== actor.kind)
-                  throw new AuthError("UNAUTHORIZED");
-                for (const check of state.checks) {
-                  await check(fresh, finishSignal);
+              return await runtime.run(
+                [state.signal, state.controller.signal],
+                async (finishSignal) => {
+                  const fresh = await runtime.authenticate(evidence, authoritative, finishSignal);
                   runtime.checkRead(state);
-                }
-                runtime.checkEvidence(fresh.session, authoritative);
-                return runtime.mint(target, fresh, evidence, signal, callerSignal);
-              });
-            } finally { state.status = "closed"; }
+                  if (
+                    !fresh ||
+                    fresh.subjectId !== actor.subjectId ||
+                    (fresh.kind ?? "user") !== actor.kind
+                  )
+                    throw new AuthError("UNAUTHORIZED");
+                  for (const check of state.checks) {
+                    await check(fresh, finishSignal);
+                    runtime.checkRead(state);
+                  }
+                  runtime.checkEvidence(fresh.session, authoritative);
+                  return runtime.mint(target, fresh, evidence, signal, callerSignal);
+                },
+              );
+            } finally {
+              state.status = "closed";
+            }
           },
         }) as ReadOnlyScope<R, S, A>;
         runtime.reads.set(scope, state);
@@ -506,7 +553,8 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       });
     },
     async enforceRead<U extends T>(
-      scope: ReadOnlyScope<string, string, string>, resource: U,
+      scope: ReadOnlyScope<string, string, string>,
+      resource: U,
       policy: Policy<PolicyContext<Actor<R, S, A>, U, M>>,
       options: ReadOnlyOperationOptions,
     ) {
@@ -518,11 +566,20 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       const operationSignal = options?.signal;
       if (!operationSignal || operationSignal !== state.callerSignal)
         throw new AuthError("UNAUTHORIZED");
-      const principal = runtime.mint(target, state.verified, state.evidence,
-        AbortSignal.any([state.signal, state.controller.signal]), state.callerSignal, state.startedAt);
+      const principal = runtime.mint(
+        target,
+        state.verified,
+        state.evidence,
+        AbortSignal.any([state.signal, state.controller.signal]),
+        state.callerSignal,
+        state.startedAt,
+      );
       // This actor is derived from an existing scope, never a new entry verification.
       runtime.proof(principal, target).readStarted = true;
-      const check = async (verified: Extract<AuthenticationResult<S>, { status: "verified" }>, signal: AbortSignal) => {
+      const check = async (
+        verified: Extract<AuthenticationResult<S>, { status: "verified" }>,
+        signal: AbortSignal,
+      ) => {
         const checkSignal = operationSignal ? AbortSignal.any([signal, operationSignal]) : signal;
         checkSignal.throwIfAborted();
         runtime.checkEvidence(verified.session, requirements);
@@ -530,15 +587,22 @@ function access<R extends string, E, S extends string, A extends string, T, M>(
       };
       state.pending++;
       try {
-        return await runtime.run([state.signal, state.controller.signal, operationSignal], async (signal) => {
-          await check(state.verified, signal);
-          runtime.checkRead(state);
-          if (state.status !== "open") throw new AuthError("UNAUTHORIZED");
-          state.checks.push(check);
-          return principal;
-        });
-      } catch (error) { state.status = "closed"; throw error; }
-      finally { state.pending--; }
+        return await runtime.run(
+          [state.signal, state.controller.signal, operationSignal],
+          async (signal) => {
+            await check(state.verified, signal);
+            runtime.checkRead(state);
+            if (state.status !== "open") throw new AuthError("UNAUTHORIZED");
+            state.checks.push(check);
+            return principal;
+          },
+        );
+      } catch (error) {
+        state.status = "closed";
+        throw error;
+      } finally {
+        state.pending--;
+      }
     },
     async required(evidence: E, options?: AuthenticationOptions) {
       const actor = await optional(evidence, options);
