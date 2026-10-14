@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { definePlugin, startApp } from "@lenso/core";
 import type { Operation } from "@lenso/engine/operations";
-import { createMcpAdapter, type McpRequestContext } from "../src/adapter";
+import { createMcpAdapter, operationToolName, type McpRequestContext } from "../src/adapter";
 
 test("MCP discovery and invocation share prepared immutable declarations and stable tool names", async () => {
   let descriptions = 0;
@@ -58,16 +58,17 @@ test("MCP discovery and invocation share prepared immutable declarations and sta
     descriptions = 0;
     const first = await adapter.listTools(request());
     expect(first.tools).toHaveLength(100);
-    expect(first.tools[0]!.name).toBe("operation_0");
-    expect(first.tools[99]!.name).toBe("operation_99");
+    expect(first.tools[0]!.name).toBe(operationToolName(plugin.id, "m0"));
+    expect(first.tools[99]!.name).toBe(operationToolName(plugin.id, "m99"));
     Object.assign(operations[0]!, { method: "hidden" });
     expect((await adapter.listTools(request())).tools).toHaveLength(100);
-    expect(await adapter.callTool("operation_0", {}, request())).toMatchObject({
+    expect(await adapter.callTool(first.tools[0]!.name, {}, request())).toMatchObject({
       content: [{ type: "text", text: "0" }],
+      structuredContent: { result: 0 },
     });
     expect(descriptions).toBe(0);
     await adapter.close();
-    expect(await adapter.callTool("operation_0", {}, request())).toMatchObject({
+    expect(await adapter.callTool(first.tools[0]!.name, {}, request())).toMatchObject({
       isError: true,
     });
   } finally {

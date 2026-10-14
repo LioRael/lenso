@@ -7,10 +7,15 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { createHttpMcp, type McpIdentity, type HttpMcpOptions } from "../src/http";
-import type { McpRequestContext } from "../src/adapter";
+import { operationToolName, type McpRequestContext } from "../src/adapter";
 
 const resource = "http://127.0.0.1:3000/mcp";
 const issuer = "https://identity.example/";
+const readName = operationToolName("http-fixture", "read");
+const writeName = operationToolName("http-fixture", "write");
+const waitName = operationToolName("http-fixture", "wait");
+const failName = operationToolName("http-fixture", "fail");
+const escapedName = operationToolName("http-fixture", "escaped");
 function identity(tenant = "one", scopes = ["mcp:use"]): McpIdentity {
   return {
     subject: "alice",
@@ -281,7 +286,7 @@ test("official client retains 2025-03-26 Streamable HTTP negotiation", async () 
     const { client, transport } = await f.connect("fixture-one", "2025-03-26");
     expect(transport.protocolVersion).toBe("2025-03-26");
     expect((await client.listTools()).tools).toHaveLength(5);
-    expect((await client.callTool({ name: "operation_0" })).isError).not.toBe(true);
+    expect((await client.callTool({ name: readName })).isError).not.toBe(true);
     expect(
       (
         await f.raw(
@@ -302,12 +307,12 @@ test("discovery is not authorization; revocation and hidden calls are rechecked"
     expect((await client.listTools()).tools).toHaveLength(5);
     f.revoke();
     expect((await client.listTools()).tools).toHaveLength(5);
-    expect(
-      text(await client.callTool({ name: "operation_1", arguments: { amount: 1 } })),
-    ).toContain("forbidden-operation");
+    expect(text(await client.callTool({ name: writeName, arguments: { amount: 1 } }))).toContain(
+      "forbidden-operation",
+    );
     f.hide();
     expect((await client.listTools()).tools).toEqual([]);
-    expect(text(await client.callTool({ name: "operation_0" }))).toContain("forbidden-operation");
+    expect(text(await client.callTool({ name: readName }))).toContain("forbidden-operation");
     expect(f.requests).toHaveLength(0);
   } finally {
     await f.close();
@@ -352,15 +357,87 @@ test("every protected request verifies token, issuer, expiry, audience and scope
   }
 });
 
+test("official HTTP cursor pages reverify identities and reject revoked visibility", async () => {
+  const f = await fixture({ listPageSize: 2 });
+  try {
+    const one = await f.connect();
+    const two = await f.connect("fixture-two");
+    const first = await one.client.listTools();
+    expect(first.tools.map((tool) => tool.name)).toEqual([readName, writeName]);
+    expect(first.nextCursor).toBeTruthy();
+    await expect(two.client.listTools({ cursor: first.nextCursor })).rejects.toThrow();
+    const before = f.verifies();
+    const second = await one.client.listTools({ cursor: first.nextCursor });
+    expect(f.verifies()).toBe(before + 1);
+    expect(second.tools.map((tool) => tool.name)).toEqual([waitName, failName]);
+    const last = await one.client.listTools({ cursor: second.nextCursor });
+    expect(last.tools.map((tool) => tool.name)).toEqual([escapedName]);
+    expect(last.nextCursor).toBeUndefined();
+    const stale = await one.client.listTools();
+    f.hide();
+    await expect(one.client.listTools({ cursor: stale.nextCursor })).rejects.toThrow();
+    expect((await one.client.listTools()).tools).toEqual([]);
+    expect((await one.client.callTool({ name: readName })).isError).toBe(true);
+  } finally {
+    await f.close();
+  }
+});
+
+test("personal tokens have no OAuth discovery and are verified on every protected request", async () => {
+  const f = await fixture({
+    authenticationMode: "personal-token",
+    personalTokenIssuer: "host-personal-tokens",
+    authorizationServers: undefined,
+  });
+  try {
+    f.tokens.set("fixture-one", { ...identity(), issuer: "host-personal-tokens" });
+    const { client, transport } = await f.connect();
+    const result = await client.callTool({ name: readName });
+    expect(result.structuredContent).toEqual({ tenant: "one", count: 0 });
+    const missing = await f.raw(undefined, { method: "GET", token: null });
+    expect(missing.status).toBe(401);
+    expect(missing.headers.get("www-authenticate")).toBe("Bearer");
+    expect(
+      (
+        await f.adapter.fetch(
+          new Request("http://127.0.0.1:3000/.well-known/oauth-protected-resource/mcp"),
+        )
+      ).status,
+    ).toBe(404);
+    for (const claims of [
+      { ...identity(), issuer: "host-personal-tokens", expiresAt: 1 },
+      { ...identity(), issuer: "host-personal-tokens", audience: ["https://other.example/mcp"] },
+      identity(),
+    ]) {
+      f.tokens.set("invalid-pat", claims);
+      expect((await f.raw(undefined, { method: "GET", token: "invalid-pat" })).status).toBe(401);
+    }
+    expect((await f.raw(undefined, { method: "GET", origin: "https://evil.example" })).status).toBe(
+      403,
+    );
+    const before = f.verifies();
+    f.tokens.delete("fixture-one");
+    const session = transport.sessionId;
+    for (const method of ["GET", "DELETE"])
+      expect((await f.raw(undefined, { method, session })).status).toBe(401);
+    expect(
+      (await f.raw({ jsonrpc: "2.0", id: 99, method: "tools/list" }, { session })).status,
+    ).toBe(401);
+    expect(f.verifies()).toBe(before + 3);
+  } finally {
+    await f.close();
+  }
+});
+
 test("same session identifier cannot cross identity/tenant bindings", async () => {
   const f = await fixture();
   try {
     const one = await f.connect();
     const two = await f.connect("fixture-two");
-    await one.client.callTool({ name: "operation_1", arguments: { amount: 3 } });
-    expect(text(await two.client.callTool({ name: "operation_0" }))).toContain('\\"count\\":0');
+    await one.client.callTool({ name: writeName, arguments: { amount: 3 } });
+    expect(text(await two.client.callTool({ name: readName }))).toContain('\\"count\\":0');
     const stolen = await f.raw(
-      { jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "operation_0" } },
+      { jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: readName } },
       { token: "fixture-two", session: one.transport.sessionId },
     );
     expect(stolen.status).toBe(404);
@@ -383,7 +460,7 @@ test("same session identifier cannot cross identity/tenant bindings", async () =
         })
       ).status,
     ).toBe(404);
-    expect(text(await one.client.callTool({ name: "operation_0" }))).toContain('\\"count\\":3');
+    expect(text(await one.client.callTool({ name: readName }))).toContain('\\"count\\":3');
   } finally {
     await f.close();
   }
@@ -398,7 +475,7 @@ test("transport validates Origin/Host, rejects oversized bodies and bounds safe 
     expect((await f.adapter.fetch(new Request("http://evil.example/mcp"))).status).toBe(403);
     expect((await f.raw({ huge: "x".repeat(4096) })).status).toBe(413);
     const { client, transport } = await f.connect();
-    const error = await client.callTool({ name: "operation_3" });
+    const error = await client.callTool({ name: failName });
     expect(error.isError).toBe(true);
     expect(text(error)).not.toContain("private-input");
     expect(text(error)).not.toContain("fixture-one");
@@ -406,7 +483,7 @@ test("transport validates Origin/Host, rejects oversized bodies and bounds safe 
       256,
     );
     expect(
-      text(await client.callTool({ name: "operation_0", arguments: { large: "x".repeat(256) } })),
+      text(await client.callTool({ name: readName, arguments: { large: "x".repeat(256) } })),
     ).toContain("input-too-large");
     expect((await f.raw(undefined, { method: "GET", session: transport.sessionId })).status).toBe(
       405,
@@ -432,7 +509,7 @@ test("SDK cancellation reaches cooperative service; disconnect is not cancellati
     const controller = new AbortController();
     const pending = client
       .request(
-        { method: "tools/call", params: { name: "operation_2", arguments: { cooperative: true } } },
+        { method: "tools/call", params: { name: waitName, arguments: { cooperative: true } } },
         CallToolResultSchema,
         { signal: controller.signal },
       )
@@ -445,7 +522,7 @@ test("SDK cancellation reaches cooperative service; disconnect is not cancellati
     // A canceled response must release the HTTP waiter without closing the
     // session or waiting for its 1080ms outer deadline.
     await Bun.sleep(5);
-    expect((await client.callTool({ name: "operation_0" })).isError).not.toBe(true);
+    expect((await client.callTool({ name: readName })).isError).not.toBe(true);
     await f.adapter.close();
     expect(f.stops()).toBe(0);
   } finally {
@@ -470,7 +547,7 @@ test("SDK cancellation reaches cooperative service; disconnect is not cancellati
           jsonrpc: "2.0",
           id: 20,
           method: "tools/call",
-          params: { name: "operation_2", arguments: { cooperative: false } },
+          params: { name: waitName, arguments: { cooperative: false } },
         }),
       }),
     );
@@ -498,7 +575,7 @@ test.each([0, ""])(
           jsonrpc: "2.0",
           id,
           method: "tools/call",
-          params: { name: "operation_2", arguments: { cooperative: true } },
+          params: { name: waitName, arguments: { cooperative: true } },
         },
         { session },
       );
@@ -565,7 +642,7 @@ test.each([0, ""])(
           jsonrpc: "2.0",
           id,
           method: "tools/call",
-          params: { name: "operation_1", arguments: { amount: 3 } },
+          params: { name: writeName, arguments: { amount: 3 } },
         },
         { session },
       );
@@ -597,15 +674,14 @@ test("SDK transport retains no completed streams/correlations across repeated HT
   const f = await fixture();
   try {
     const { client } = await f.connect();
-    for (let i = 0; i < 40; i++) await client.callTool({ name: "operation_0" });
+    for (let i = 0; i < 40; i++) await client.callTool({ name: readName });
     // Version-pinned regression for the SDK 1.32.1 JSON-mode resolver leak.
     for (const field of ["_streamMapping", "_requestToStreamMapping", "_requestResponseMap"]) {
       const map = Reflect.get(transports[0]!, field) as Map<unknown, unknown>;
       expect(map.size).toBe(0);
     }
-    const escaped = await client.callTool({ name: "operation_4" });
-    expect(escaped.isError).not.toBe(true);
-    expect(JSON.parse((escaped.content as { text: string }[])[0]!.text)).toHaveLength(400_000);
+    // Text plus structured JSON must still fit the complete HTTP response budget.
+    await expect(client.callTool({ name: escapedName })).rejects.toThrow();
   } finally {
     await f.close();
     spy.mockRestore();
@@ -618,11 +694,11 @@ test("services still deny a valid independently authenticated caller", async () 
     f.tokens.set("bob-fixture", { ...identity(), subject: "bob" });
     const { client } = await f.connect("bob-fixture");
     expect((await client.listTools()).tools).toHaveLength(5);
-    const result = await client.callTool({ name: "operation_1", arguments: { amount: 1 } });
+    const result = await client.callTool({ name: writeName, arguments: { amount: 1 } });
     expect(result.isError).toBe(true);
     expect(text(result)).not.toContain("private-authorization-error");
     const alice = await f.connect();
-    expect(text(await alice.client.callTool({ name: "operation_0" }))).toContain('\\"count\\":0');
+    expect(text(await alice.client.callTool({ name: readName }))).toContain('\\"count\\":0');
   } finally {
     await f.close();
   }
@@ -632,11 +708,11 @@ test("timeouts retain execution admission, rate limits isolate tenants, sessions
   const f = await fixture({ maxConcurrentCalls: 1, requestTimeoutMs: 30 });
   try {
     const { client } = await f.connect();
-    const pending = client.callTool({ name: "operation_2", arguments: { cooperative: false } });
+    const pending = client.callTool({ name: waitName, arguments: { cooperative: false } });
     await f.began;
-    expect(text(await client.callTool({ name: "operation_0" }))).toContain("adapter-busy");
+    expect(text(await client.callTool({ name: readName }))).toContain("adapter-busy");
     expect(text(await pending)).toContain("request-timeout");
-    expect(text(await client.callTool({ name: "operation_0" }))).toContain("adapter-busy");
+    expect(text(await client.callTool({ name: readName }))).toContain("adapter-busy");
     f.release();
   } finally {
     await f.close();

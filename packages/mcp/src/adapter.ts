@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Plugin } from "@lenso/core";
 import { createAgentTools, createManageSelection, type ManageSelection } from "@lenso/manage";
 import {
@@ -37,6 +38,18 @@ export interface McpAdapterOptions<I, O extends Operation = Operation> {
   readonly maxCatalogBytes?: number;
   readonly maxConcurrentCalls?: number;
   readonly requestTimeoutMs?: number;
+  /** Visible tools per page (default 100). Cursors are single-use, expire after five minutes,
+   * and are capped at 1024 outstanding per adapter. Restart listing after a visibility change. */
+  readonly listPageSize?: number;
+  /** Stable trusted identity key; otherwise cursors require the same identity reference. */
+  readonly identityKey?: (identity: I) => string;
+}
+
+/** Hash the exact tuple, not redacted metadata or a lossy punctuation-normalized label. */
+export function operationToolName(pluginId: string, method: string): string {
+  return `operation_${createHash("sha256")
+    .update(JSON.stringify([pluginId, method]))
+    .digest("base64url")}`;
 }
 
 const messages: Record<string, string> = {
@@ -121,10 +134,15 @@ async function adapterForSelection<I, O extends Operation>(
   const maxCatalog = positive(options.maxCatalogBytes, 256 * 1024);
   const maxConcurrent = positive(options.maxConcurrentCalls, 4);
   const timeout = positive(options.requestTimeoutMs, 30_000);
+  const pageSize = positive(options.listPageSize, 100);
   if ([options.binding, options.canList, options.authorize].some((fn) => typeof fn !== "function"))
     throw new TypeError("MCP requires trusted binding, catalog and invocation policies.");
+  const names = new Map<O, string>();
   const canonical = selection.createAdapter({
-    canList: () => true,
+    canList: (operation) => {
+      names.set(operation, operationToolName(operation.plugin.id, operation.method));
+      return true;
+    },
     binding: () => {
       throw new Error("Metadata adapter cannot invoke.");
     },
@@ -134,10 +152,11 @@ async function adapterForSelection<I, O extends Operation>(
     canonical.catalog(),
     createAgentTools(canonical),
   ]);
+  const exactNames = [...names.values()];
   const tools = agentTools.map((item, index): Tool => {
     const operation = catalog[index]!;
     const tool: Tool = {
-      name: `operation_${index}`,
+      name: exactNames[index]!,
       title: `${operation.pluginId}.${operation.method}`,
       description: [
         item.description,
@@ -160,6 +179,17 @@ async function adapterForSelection<I, O extends Operation>(
   });
   boundedJson({ tools }, maxCatalog);
   const toolByKey = new Map(catalog.map((operation, index) => [operation.key, tools[index]!]));
+  const entryByName = new Map(tools.map((tool, index) => [tool.name, catalog[index]!]));
+  if (entryByName.size !== tools.length) throw new TypeError("MCP tool name collision.");
+  const cursors = new Map<
+    string,
+    {
+      identity: I | string;
+      visible: string;
+      offset: number;
+      expires: number;
+    }
+  >();
   let closed = false;
   let closePromise: Promise<void> | undefined;
   const pending = new Set<Promise<unknown>>();
@@ -208,7 +238,10 @@ async function adapterForSelection<I, O extends Operation>(
   }
 
   return Object.freeze({
-    async listTools(request: McpRequestContext<I>): Promise<{ tools: Tool[] }> {
+    async listTools(
+      request: McpRequestContext<I>,
+      cursor?: string,
+    ): Promise<{ tools: Tool[]; nextCursor?: string }> {
       if (closed) throw new McpError(ErrorCode.InvalidRequest, "Adapter is closed.");
       if (pending.size >= maxConcurrent)
         throw new McpError(ErrorCode.InternalError, "Adapter is busy.");
@@ -228,10 +261,44 @@ async function adapterForSelection<I, O extends Operation>(
           const visible = (await scoped.catalog()).map((operation) =>
             toolByKey.get(operation.key)!,
           );
+          context.signal.throwIfAborted();
+          const now = Date.now();
+          for (const [key, state] of cursors) if (state.expires <= now) cursors.delete(key);
+          const identity = options.identityKey
+            ? options.identityKey(context.identity)
+            : context.identity;
+          const fingerprint = createHash("sha256")
+            .update(JSON.stringify(visible.map((tool) => tool.name)))
+            .digest("hex");
+          const state = cursor === undefined ? undefined : cursors.get(cursor);
+          if (
+            cursor !== undefined &&
+            (!state || state.identity !== identity || state.visible !== fingerprint)
+          )
+            throw new McpError(ErrorCode.InvalidParams, "Invalid or stale tool cursor.");
+          const offset = state?.offset ?? 0;
+          const page: { tools: Tool[]; nextCursor?: string } = {
+            tools: visible.slice(offset, offset + pageSize),
+          };
+          if (offset + pageSize < visible.length) {
+            if (cursors.size - (state ? 1 : 0) >= 1024)
+              throw new McpError(ErrorCode.InternalError, "Tool cursor capacity reached.");
+            page.nextCursor = crypto.randomUUID();
+          }
           // Return a fresh finite copy, preventing callers mutating subsequent discovery.
-          return JSON.parse(boundedJson({ tools: visible }, maxCatalog)) as { tools: Tool[] };
+          const result = JSON.parse(boundedJson(page, maxCatalog)) as typeof page;
+          if (cursor !== undefined) cursors.delete(cursor);
+          if (page.nextCursor)
+            cursors.set(page.nextCursor, {
+              identity,
+              visible: fingerprint,
+              offset: offset + pageSize,
+              expires: now + 5 * 60_000,
+            });
+          return result;
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof McpError) throw error;
         throw new McpError(ErrorCode.InternalError, "Tool discovery failed or was interrupted.");
       }
     },
@@ -240,9 +307,8 @@ async function adapterForSelection<I, O extends Operation>(
       input: unknown,
       request: McpRequestContext<I>,
     ): Promise<CallToolResult> {
-      const match = /^operation_(0|[1-9][0-9]*)$/.exec(name);
-      if (!match || !catalog[Number(match[1])])
-        throw new McpError(ErrorCode.InvalidParams, "Unknown tool.");
+      const entry = entryByName.get(name);
+      if (!entry) throw new McpError(ErrorCode.InvalidParams, "Unknown tool.");
       if (closed) return failure("adapter-closed");
       if (pending.size >= maxConcurrent) return failure("adapter-busy");
       if (request.signal.aborted) return failure("request-cancelled");
@@ -277,11 +343,18 @@ async function adapterForSelection<I, O extends Operation>(
               };
             },
           });
-          const result = await scoped.invokeEntry(catalog[Number(match[1])]!.key, input);
+          const result = await scoped.invokeEntry(entry.key, input);
           context.signal.throwIfAborted();
           return result;
         });
-        return { content: [{ type: "text", text: boundedJson(value, maxOutput) }] };
+        const text = boundedJson(value, maxOutput);
+        const finite: unknown = JSON.parse(text);
+        const structuredContent =
+          finite !== null && typeof finite === "object" && !Array.isArray(finite)
+            ? (finite as Record<string, unknown>)
+            : { result: finite };
+        boundedJson(structuredContent, maxOutput);
+        return { content: [{ type: "text", text }], structuredContent };
       } catch (error) {
         return failure(error instanceof EngineError ? error.diagnostic.code : "invocation-failed");
       }
@@ -289,6 +362,7 @@ async function adapterForSelection<I, O extends Operation>(
     close(): Promise<void> {
       if (closePromise) return closePromise;
       closed = true;
+      cursors.clear();
       for (const controller of controllers) controller.abort();
       closePromise = Promise.allSettled(pending).then(() => {
         selection.close();

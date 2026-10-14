@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { definePlugin, startApp } from "@lenso/core";
 import { defineOperation } from "@lenso/engine/operations";
 import { z } from "zod";
-import { createMcpAdapter } from "../src/adapter";
+import { createMcpAdapter, operationToolName } from "../src/adapter";
 
 const input = z.object({});
 const request = (signal = new AbortController().signal) => ({
@@ -64,7 +64,7 @@ test("MCP binding signal cancellation is mapped by Engine, including async bindi
     });
     try {
       if (!asynchronous) controller.abort({ message: "private-reason" });
-      const call = adapter.callTool("operation_0", {}, request());
+      const call = adapter.callTool(operationToolName(plugin.id, "run"), {}, request());
       await entered.promise;
       if (asynchronous) controller.abort("private-reason");
       finish.resolve();
@@ -113,7 +113,7 @@ test("MCP binding-only executing abort preserves real business failures and reje
     });
     try {
       let settled = false;
-      const call = adapter.callTool("operation_0", {}, request());
+      const call = adapter.callTool(operationToolName(plugin.id, "run"), {}, request());
       void call.then(() => {
         settled = true;
       });
@@ -121,7 +121,9 @@ test("MCP binding-only executing abort preserves real business failures and reje
       controller.abort({ message: "private-reason" });
       await Bun.sleep(0);
       expect(settled).toBe(false);
-      expect(resultCode(await adapter.callTool("operation_0", {}, request()))).toBe("adapter-busy");
+      expect(
+        resultCode(await adapter.callTool(operationToolName(plugin.id, "run"), {}, request())),
+      ).toBe("adapter-busy");
       finish.resolve();
       const result = await call;
       expect(resultCode(result)).toBe(
@@ -179,11 +181,17 @@ test("MCP request cancellation returns early but retains the slot and drains act
     maxConcurrentCalls: 1,
   });
   try {
-    const call = adapter.callTool("operation_0", {}, request(controller.signal));
+    const call = adapter.callTool(
+      operationToolName(plugin.id, "run"),
+      {},
+      request(controller.signal),
+    );
     await entered.promise;
     controller.abort("private-reason");
     expect(resultCode(await call)).toBe("request-cancelled");
-    expect(resultCode(await adapter.callTool("operation_0", {}, request()))).toBe("adapter-busy");
+    expect(
+      resultCode(await adapter.callTool(operationToolName(plugin.id, "run"), {}, request())),
+    ).toBe("adapter-busy");
     let drained = false;
     const close = adapter.close();
     expect(adapter.close()).toBe(close);
