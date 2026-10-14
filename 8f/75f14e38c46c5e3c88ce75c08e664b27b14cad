@@ -1,0 +1,74 @@
+.changeset/workspace-service-development.md
+  h_9d56aba080c170 1-10
+docs/CLI.md
+  h_9d56aba080c170 33-60
+examples/runtime/README.md
+  h_9d56aba080c170 11-89,120-121
+examples/runtime/lenso.config.ts
+  h_9d56aba080c170 3,6-19,26-27,30-33
+examples/runtime/lenso.workspace.ts
+  h_9d56aba080c170 1-16
+examples/runtime/package.json
+  h_9d56aba080c170 8-10
+examples/runtime/src/aggregate.ts
+  h_9d56aba080c170 1-19
+examples/runtime/src/batch-app.ts
+  h_9d56aba080c170 1-23
+examples/runtime/src/build-ts-batch.ts
+  h_9d56aba080c170 1-62
+examples/runtime/src/contracts.test.ts
+  h_9d56aba080c170 1-66
+examples/runtime/src/offline.ts
+  h_9d56aba080c170 1-18
+examples/runtime/src/plugins.ts
+  h_9d56aba080c170 12,46,60
+examples/runtime/src/ts-batch.ts
+  h_9d56aba080c170 1-79
+examples/runtime/src/workspace.ts
+  h_9d56aba080c170 1-309
+examples/runtime/tsconfig.json
+  h_9d56aba080c170 3
+package.json
+  h_9d56aba080c170 13
+packages/cli/src/bin.ts
+  h_9d56aba080c170 65-66,149-154,176-178,202-208,210,283-288
+packages/cli/src/dev.ts
+  h_9d56aba080c170 1-8,16-17,23-32,34,38,47-73
+packages/cli/test/workspace.test.ts
+  h_9d56aba080c170 1-89
+packages/engine/README.md
+  h_9d56aba080c170 105-207
+packages/engine/src/dev.ts
+  h_9d56aba080c170 13,23-25,43,50,57,65-73,117,156,186-187,210,228-233,267,281-285
+packages/engine/src/engine-dev.ts
+  h_9d56aba080c170 31-32,65,157-162,203
+packages/engine/src/index.ts
+  h_9d56aba080c170 23
+packages/engine/src/workspace.ts
+  h_9d56aba080c170 1-620
+packages/engine/test/dev-supervisor.test.ts
+  h_9d56aba080c170 126
+packages/engine/test/workspace.test.ts
+  h_9d56aba080c170 1-582
+scripts/dev-runtime-workspace.ts
+  h_9d56aba080c170 1-74
+scripts/prepare-runtime.test.ts
+  h_9d56aba080c170 131-158
+scripts/prepare-runtime.ts
+  h_9d56aba080c170 2,22,79-81,83-84,86-113,190,192,261-264,288
+scripts/runtime-sdk.json
+  h_9d56aba080c170 3-4
+scripts/tsconfig.json
+  h_9d56aba080c170 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f75f14e38c46c5e3c88ce75c08e664b27b14cad",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

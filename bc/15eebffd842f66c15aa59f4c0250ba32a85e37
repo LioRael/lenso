@@ -1,0 +1,23 @@
+packages/cli/package.json
+  s_e3dbe949a951a5::t_09b17bb0afb463 3
+bun.lock
+  s_e3dbe949a951a5::t_55e0d94547bfb4 113
+packages/engine/test/dev-supervisor.test.ts
+  s_e3dbe949a951a5::t_b17eee952205a1 153-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bc15eebffd842f66c15aa59f4c0250ba32a85e37",
+  "prompts": {},
+  "sessions": {
+    "s_e3dbe949a951a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11a4a-829c-7a91-8ac5-ef4c67bb9d37",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

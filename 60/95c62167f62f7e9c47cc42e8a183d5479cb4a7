@@ -1,0 +1,14 @@
+scripts/ci-docs.test.ts
+  h_9d56aba080c170 101-119,122-124,143-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6095c62167f62f7e9c47cc42e8a183d5479cb4a7",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

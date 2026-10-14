@@ -1,0 +1,14 @@
+bun.lock
+  h_9d56aba080c170 122-125,156-160,188,210-211,325,363-367,392-393,449-454,578-609,886-887
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a1cf7a38bbb0773f7806679c56c2176ebcecb69",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
