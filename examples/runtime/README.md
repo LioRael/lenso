@@ -64,9 +64,24 @@ Choose the separate TS service implementation at launch with
 `LENSO_BATCH_IMPLEMENTATION=ts`. It exports the same generated contract through a
 native TS App; the frontend still makes an explicitly remote Service call.
 For a transport-free TS application, `bun run --cwd examples/runtime offline`
-uses the same ordinary business function and Core, with no Runtime listener.
-Rust's corresponding standalone example is
-`cargo run --locked -p lenso-log-plugins --example offline` in its checkout.
+uses the same ordinary business function, local bounded Memory Cache, scoped
+Log and Core, with no Runtime listener. `batch.aggregate` is now async; callers
+must await it. `batchPlugins` is the explicit local dependency list used by
+both native and Runtime Apps.
+
+The Rust native App uses its own local Log/Cache and the retained aggregator,
+not a remote cache/logger. After its staged build, use `logs-batch --native`
+with a single `{logs:[...]}` JSON input on stdin, or run each plugin's standalone
+native example. `lenso-log-plugins` still means log reading/aggregation, not
+structured logging. The public Runtime `logs` contract is unchanged.
+
+`LENSO_BATCH_CACHE_TTL_MS` selects a finite TTL in milliseconds (default 60000,
+range 0..86400000); invalid present values fail startup, zero disables storage.
+The cache holds only synthetic batch summaries, never authentication or
+authorization decisions. SHA-256 of the input selects a local key. Calls for
+the same key share loading, while aborting one caller does not cancel another.
+Cache scopes and instance names do not establish permissions. Performance sets
+TTL zero for all paths so it does not compare warmed cache hits with computation.
 
 The single contract is Runtime's `examples/contracts/logs.json`. Integers are
 canonical safe JSON integers, optional differs from null, decimal money/time
@@ -97,7 +112,9 @@ Preparation always rebuilds and preserves the prior ready artifact on build
 failure. The generated output is owned by preparation; do not store user files
 there. Build framework dependencies before
 this package: core, Engine, CLI, Manage (for the optional runtime management entry),
-then `packages/runtime`. Their normal exports resolve to built `dist`.
+then `packages/runtime`, `packages/cache` and `packages/log`. Their normal exports
+resolve to built `dist`. The root `dev:runtime` entry builds these through the
+existing cached dependency graph.
 
 Set `LENSO_RUNTIME_ROOT` to the absolute runtime checkout. Build Rust independently,
 using the runtime repository's documented Cargo commands. By default this example

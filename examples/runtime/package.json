@@ -9,12 +9,15 @@
     "dev:companions": "LENSO_RUNTIME_EXTERNAL=1 bun src/dev.ts",
     "offline": "bun src/offline.ts",
     "start": "bun src/server.ts",
+    "test": "bun test src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "bun build src/server.ts --outdir dist --target bun --packages external"
   },
   "dependencies": {
+    "@lenso/cache": "workspace:^",
     "@lenso/core": "workspace:^",
     "@lenso/engine": "workspace:^",
+    "@lenso/log": "workspace:^",
     "@lenso/runtime": "workspace:^",
     "@lenso/runtime-sdk": "file:../../.runtime-deps/sdk",
     "@standard-schema/spec": "1.1.0"
