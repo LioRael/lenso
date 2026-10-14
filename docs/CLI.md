@@ -30,6 +30,34 @@ choose a trusted application; it grants no authorization and starts no resources
 Programmatic callers need no workspace container: Engine and CLI APIs accept the
 existing root string or shared `ApplicationTarget` (`{root, config?}`).
 
+### Explicit development workspace
+
+`lenso dev --workspace <trusted TS config file>` imports a default
+`defineWorkspace(...)` definition and starts its explicitly declared application
+targets or argv processes. Only this explicit flag bypasses application selection;
+it never discovers or registers business services. Without `--root`, paths in the
+definition resolve from the workspace config's directory. With `--root`, the config
+filename and service paths resolve from that explicit root. Callback code's own
+relative filesystem reads still follow normal process cwd semantics; use
+`import.meta.dir` or explicit absolute paths when needed.
+
+`--workspace` is dev-only and cannot combine with `--app`, `--config`, `--entry` or
+`--json`. It is trusted executable configuration, not a sandbox or authorization
+boundary. Imports must not acquire resources. Optional `prepare({signal})` performs
+bounded local preparation and owns its cleanup. See the
+[Engine workspace API](../packages/engine/README.md#explicit-development-workspaces)
+for readiness, compatible activation, explicit watches and lifecycle ownership.
+
+Workspace service events are emitted on stderr as `[lenso:workspace] { ... }`
+JSON lines alongside the human ready presentation. They include status, service ID,
+candidate instance/version, actual PID, elapsed milliseconds, confirmed URLs and
+retained instance/version after a failed replacement. Errors use the same safe
+diagnostic projection as other CLI commands; unknown callback errors remain opaque.
+These are lifecycle logs, not the finite `--json` result envelope. SIGINT/SIGTERM
+cancel startup/rebuilds and stop owned builds, runtimes and Engine workers. An initial
+partial failure rolls back and exits with failure; an unexpected active exit also
+closes the workspace instead of leaving dependents dangling.
+
 ## Declare existing service operations
 
 The trusted `lenso.config.ts` default export is `defineApp({plugins})`. An optional named export `operations` is the CLI allowlist; the default export must not contain `operations`. Reuse the application's existing schema and service; do not implement another business handler. For example:

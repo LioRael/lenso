@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import {
   cp,
@@ -19,7 +19,7 @@ const owner = "lenso-runtime-sdk-preparation-v1\n";
 const maxArchiveBytes = 20 * 1024 * 1024;
 const downloadTimeoutMs = 60_000;
 type Pin = typeof pinnedSnapshot;
-type Run = (args: string[], cwd: string) => Promise<void>;
+type Run = (args: string[], cwd: string, signal?: AbortSignal) => Promise<void>;
 export type ArchiveFetcher = (url: string, options?: RequestInit) => Promise<Response>;
 
 async function exists(path: string) {
@@ -76,15 +76,41 @@ async function download(pin: Pin, fetcher: ArchiveFetcher) {
   }
 }
 
-const run: Run = async (args, cwd) => {
-  const child = Bun.spawn([process.execPath, ...args], {
+const run: Run = async (args, cwd, signal) => {
+  signal?.throwIfAborted();
+  const child = spawn(process.execPath, args, {
     cwd,
-    stdin: "ignore",
-    stdout: "ignore",
-    stderr: "ignore",
+    stdio: "ignore",
+    detached: process.platform !== "win32",
   });
-  if ((await child.exited) !== 0) {
-    throw new Error(`Runtime SDK command failed: bun ${args.join(" ")}`);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const kill = (value: NodeJS.Signals) => {
+    try {
+      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, value);
+      else child.kill(value);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    }
+  };
+  const cancel = () => {
+    kill("SIGTERM");
+    timer ??= setTimeout(() => kill("SIGKILL"), 5000);
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
+  if (signal?.aborted) cancel();
+  try {
+    const code = await new Promise<number | null>((accept, reject) => {
+      child.once("error", reject);
+      child.once("close", accept);
+    });
+    signal?.throwIfAborted();
+    if (code !== 0) throw new Error(`Runtime SDK command failed: bun ${args.join(" ")}`);
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+    if (timer) {
+      kill("SIGKILL");
+      clearTimeout(timer);
+    }
   }
 };
 
@@ -161,8 +187,9 @@ async function copyLocalRuntime(directory: string, destination: string) {
 export async function prepareRuntime(
   root = resolve(import.meta.dir, ".."),
   dependencies: { fetch?: ArchiveFetcher; run?: Run; pin?: Pin } = {},
-  options: { runtimeRoot?: string } = {},
+  options: { runtimeRoot?: string; signal?: AbortSignal } = {},
 ) {
+  options.signal?.throwIfAborted();
   root = resolve(root);
   const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   if (manifest.name !== "lenso-workspace" || manifest.private !== true) {
@@ -231,8 +258,10 @@ export async function prepareRuntime(
       }
     }
     const execute = dependencies.run ?? run;
-    await execute(["install", "--frozen-lockfile", "--ignore-scripts"], source);
-    await execute(["run", "build:sdk"], source);
+    options.signal?.throwIfAborted();
+    await execute(["install", "--frozen-lockfile", "--ignore-scripts"], source, options.signal);
+    await execute(["run", "build:sdk"], source, options.signal);
+    options.signal?.throwIfAborted();
     const sdkSource = join(source, "sdk/typescript");
     const sdkManifest = JSON.parse(await readFile(join(sdkSource, "package.json"), "utf8"));
     if (
@@ -256,6 +285,7 @@ export async function prepareRuntime(
       `${JSON.stringify({ ...(local ? { source: local, version: pin.version } : pin), bun: Bun.version, files: hashes }, null, 2)}\n`,
     );
     // Stage both source and package before replacing any previous ready state.
+    options.signal?.throwIfAborted();
     const moved: string[] = [];
     const installed: string[] = [];
     try {

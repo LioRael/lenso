@@ -20,6 +20,7 @@ export {
 } from "./operations";
 export { EngineError, diagnostic, type EngineDiagnostic, type SourceLocation } from "./diagnostics";
 export { startEngineDevCycle, type EngineDevCycle } from "./engine-dev";
+export * from "./workspace";
 export {
   createDevSupervisor,
   type DevSupervisor,

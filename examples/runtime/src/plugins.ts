@@ -9,6 +9,7 @@ export const runtime: Plugin<RuntimeService<LogsClient>> = createRuntimePlugin({
   connection: {
     namespace: "demo",
     service: "frontend",
+    instance: process.env.LENSO_WORKSPACE_INSTANCE,
     port: Number(process.env.LENSO_RUNTIME_PORT ?? 7331),
     contract: logsContract,
   },
@@ -42,6 +43,7 @@ export const runtime: Plugin<RuntimeService<LogsClient>> = createRuntimePlugin({
 export const local = definePlugin({
   id: "local",
   setup() {
+    console.error(JSON.stringify({ event: "plugin_initialized", plugin: "local", count: 1 }));
     let batches = 0;
     return {
       async record() {
@@ -55,6 +57,7 @@ export const logs = definePlugin({
   id: "logs",
   requires: [runtime, local],
   setup(context) {
+    console.error(JSON.stringify({ event: "plugin_initialized", plugin: "logs", count: 1 }));
     const batch = context.get(runtime).clients;
     const journal = context.get(local);
     return {
