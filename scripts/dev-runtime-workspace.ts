@@ -60,6 +60,8 @@ try {
     "build",
     "--filter=@lenso/cli...",
     "--filter=@lenso/runtime...",
+    "--filter=@lenso/cache...",
+    "--filter=@lenso/log...",
   ]);
   await run([
     "packages/cli/src/bin.ts",
