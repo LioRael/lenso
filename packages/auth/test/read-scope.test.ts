@@ -82,7 +82,7 @@ test("finite read reuses entry identity, checks each policy and refreshes once b
 
 test("finish rejects authoritative revocation, identity/kind changes, policy and membership changes", async () => {
   for (const change of ["rejected", "subject", "kind", "membership", "policy"] as const) {
-    const { auth, access, state, begin, signal } = fixture();
+    const { auth, access, state, begin } = fixture();
     const scoped = access.memberships(async () => (state.allowed ? true : null));
     let policyAllowed = true;
     try {
