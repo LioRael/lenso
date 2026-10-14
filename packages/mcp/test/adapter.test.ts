@@ -1,8 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { definePlugin, startApp } from "@lenso/core";
 import { defineOperation, type Operation } from "@lenso/engine/operations";
 import { z } from "zod";
-import { createMcpAdapter } from "../src/adapter";
+import { createMcpAdapter, operationToolName } from "../src/adapter";
 import type { McpAdapterOptions, McpRequestContext } from "../src/adapter";
 
 const input = z.strictObject({ value: z.string() });
@@ -65,15 +65,205 @@ function text(result: { content: { type: string; text?: string }[] }) {
   return result.content[0]?.text ?? "";
 }
 
+test("tool names survive catalog reordering/redaction and distinguish exact identity tuples", async () => {
+  const f = await harness();
+  const reordered = await (async () => {
+    const previous = process.env.MCP_TOOL_NAME_TEST_SECRET;
+    process.env.MCP_TOOL_NAME_TEST_SECRET = f.plugin.id;
+    try {
+      return await createMcpAdapter({
+        running: f.running,
+        plugins: [f.plugin],
+        operations: [...f.operations].reverse(),
+        canList: () => true,
+        authorize: () => true,
+        binding: () => ({}),
+      });
+    } finally {
+      if (previous === undefined) delete process.env.MCP_TOOL_NAME_TEST_SECRET;
+      else process.env.MCP_TOOL_NAME_TEST_SECRET = previous;
+    }
+  })();
+  try {
+    const first = (await f.adapter.listTools(request())).tools;
+    const second = (await reordered.listTools(request())).tools;
+    expect(second.map((tool) => tool.name)).toEqual(first.map((tool) => tool.name).reverse());
+    expect(await reordered.callTool(first[0]!.name, { value: "same" }, request())).toMatchObject({
+      structuredContent: { value: "same" },
+    });
+    const names = [
+      operationToolName("a.b", "c"),
+      operationToolName("a", "b.c"),
+      operationToolName("a-b", "c"),
+      operationToolName("a_b", "c"),
+      operationToolName("長".repeat(1000), "é/".repeat(1000)),
+    ];
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of [...names, ...first.map((tool) => tool.name)])
+      expect(name).toMatch(/^[A-Za-z0-9_.-]{1,128}$/);
+    await expect(f.adapter.callTool("operation_0", {}, request())).rejects.toThrow("Unknown tool");
+  } finally {
+    await reordered.close();
+    await f.adapter.close();
+    await f.running.stop();
+  }
+});
+
+test("pagination filters first and binds forward cursors to identity, adapter and fresh visibility", async () => {
+  let visible = new Set(["read", "write"]);
+  let checks = 0;
+  const f = await harness(
+    undefined,
+    {
+      canList: (operation) => {
+        checks++;
+        return visible.has(operation.method);
+      },
+    },
+    { listPageSize: 1, identityKey: (identity) => identity.user },
+  );
+  const other = await harness(
+    undefined,
+    {},
+    { listPageSize: 1, identityKey: (identity) => identity.user },
+  );
+  try {
+    const first = await f.adapter.listTools(request());
+    expect(first.tools.map((tool) => tool.title)).toEqual(["adapter-test.read"]);
+    expect(first.nextCursor).toBeTruthy();
+    await expect(
+      f.adapter.listTools({ ...request(), identity: { user: "other" } }, first.nextCursor),
+    ).rejects.toThrow("Invalid or stale");
+    await expect(other.adapter.listTools(request(), first.nextCursor)).rejects.toThrow(
+      "Invalid or stale",
+    );
+    const second = await f.adapter.listTools(request(), first.nextCursor);
+    expect(second.tools.map((tool) => tool.title)).toEqual(["adapter-test.write"]);
+    expect(second.nextCursor).toBeUndefined();
+    expect(checks).toBe(6);
+    await expect(f.adapter.listTools(request(), first.nextCursor)).rejects.toThrow(
+      "Invalid or stale",
+    );
+    const expiring = await f.adapter.listTools(request());
+    const clock = spyOn(Date, "now").mockReturnValue(Date.now() + 5 * 60_000 + 1);
+    try {
+      await expect(f.adapter.listTools(request(), expiring.nextCursor)).rejects.toThrow(
+        "Invalid or stale",
+      );
+    } finally {
+      clock.mockRestore();
+    }
+    const stale = await f.adapter.listTools(request());
+    visible = new Set(["read"]);
+    await expect(f.adapter.listTools(request(), stale.nextCursor)).rejects.toThrow(
+      "Invalid or stale",
+    );
+    expect(
+      text(await f.adapter.callTool(second.tools[0]!.name, { value: "denied" }, request())),
+    ).toContain("forbidden-operation");
+    visible = new Set(["write"]);
+    const filtered = await f.adapter.listTools(request());
+    expect(filtered.tools.map((tool) => tool.title)).toEqual(["adapter-test.write"]);
+    expect(filtered.nextCursor).toBeUndefined();
+  } finally {
+    await Promise.all([f.adapter.close(), other.adapter.close()]);
+    await Promise.all([f.running.stop(), other.running.stop()]);
+  }
+});
+
+test("a cursor can be consumed by only one simultaneous listing", async () => {
+  const f = await harness(undefined, {}, { listPageSize: 1 });
+  try {
+    const context = request();
+    const first = await f.adapter.listTools(context);
+    const results = await Promise.allSettled([
+      f.adapter.listTools(context, first.nextCursor),
+      f.adapter.listTools(context, first.nextCursor),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.filter((result) => result.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    const error = rejected[0]!.reason as { code: number; message: string };
+    expect(error.code).toBe(-32602);
+    expect(error.message).toContain("Invalid or stale tool cursor.");
+  } finally {
+    await f.adapter.close();
+    await f.running.stop();
+  }
+});
+
+test("cursor capacity rejects issuance without eviction and consuming releases a slot", async () => {
+  const f = await harness(undefined, {}, { listPageSize: 1 });
+  try {
+    const context = request();
+    const retained = await f.adapter.listTools(context);
+    for (let i = 1; i < 1024; i++) {
+      expect((await f.adapter.listTools(context)).nextCursor).toBeTruthy();
+    }
+    await expect(f.adapter.listTools(context)).rejects.toThrow("Tool cursor capacity reached.");
+    expect(
+      (await f.adapter.listTools(context, retained.nextCursor)).tools.map((tool) => tool.title),
+    ).toEqual(["adapter-test.write"]);
+    expect((await f.adapter.listTools(context)).nextCursor).toBeTruthy();
+  } finally {
+    await f.adapter.close();
+    await f.running.stop();
+  }
+});
+
+test("structured content uses bounded redacted finite output and wraps non-objects", async () => {
+  const outputs: Record<string, unknown> = {
+    object: { password: "private", value: "safe" },
+    array: [1, "two"],
+    null: null,
+    boolean: true,
+    string: "hello",
+    wrapperLimit: "x".repeat(244),
+  };
+  const f = await harness(
+    () => {
+      const plugin = definePlugin({
+        id: "structured",
+        setup: () => ({ run: ({ value }: z.infer<typeof input>) => outputs[value] }),
+      });
+      return {
+        plugin,
+        operations: [defineOperation({ plugin, method: "run", input, description: "Output" })],
+      };
+    },
+    {},
+    { maxOutputBytes: 256 },
+  );
+  try {
+    const name = (await f.adapter.listTools(request())).tools[0]!.name;
+    for (const value of ["object", "array", "null", "boolean", "string"]) {
+      const result = await f.adapter.callTool(name, { value }, request());
+      expect(result.isError).not.toBe(true);
+      const finite: unknown = JSON.parse(text(result));
+      expect(result.structuredContent).toEqual(
+        value === "object" ? (finite as Record<string, unknown>) : { result: finite },
+      );
+      expect(JSON.stringify(result)).not.toContain("private");
+    }
+    const oversized = await f.adapter.callTool(name, { value: "wrapperLimit" }, request());
+    expect(text(oversized)).toContain("output-too-large");
+    expect(oversized.structuredContent).toBeUndefined();
+  } finally {
+    await f.adapter.close();
+    await f.running.stop();
+  }
+});
+
 test("starts the app once and invokes real read and write services", async () => {
   const { calls, adapter, running } = await harness();
   try {
     const listed = await adapter.listTools(request());
     expect(listed.tools).toHaveLength(2);
-    expect(await adapter.callTool("operation_0", { value: "a" }, request())).toMatchObject({
+    expect(await adapter.callTool(listed.tools[0]!.name, { value: "a" }, request())).toMatchObject({
       content: [{ text: '{"value":"a"}' }],
+      structuredContent: { value: "a" },
     });
-    expect(await adapter.callTool("operation_1", { value: "b" }, request())).toMatchObject({
+    expect(await adapter.callTool(listed.tools[1]!.name, { value: "b" }, request())).toMatchObject({
       content: [{ text: '{"value":"b"}' }],
     });
     expect(calls).toEqual({ read: 1, write: 1 });
@@ -87,9 +277,15 @@ test("validates schema input and keeps listing and invocation policy separate", 
   const denied = await harness(undefined, { canList: () => false });
   try {
     expect((await denied.adapter.listTools(request())).tools).toHaveLength(0);
-    expect(text(await denied.adapter.callTool("operation_0", { value: "x" }, request()))).toContain(
-      '"code":"forbidden-operation"',
-    );
+    expect(
+      text(
+        await denied.adapter.callTool(
+          operationToolName("adapter-test", "read"),
+          { value: "x" },
+          request(),
+        ),
+      ),
+    ).toContain('"code":"forbidden-operation"');
   } finally {
     await denied.adapter.close();
     await denied.running.stop();
@@ -98,9 +294,15 @@ test("validates schema input and keeps listing and invocation policy separate", 
   const hidden = await harness(undefined, { authorize: () => false });
   try {
     expect((await hidden.adapter.listTools(request())).tools).toHaveLength(2);
-    expect(text(await hidden.adapter.callTool("operation_0", { value: "x" }, request()))).toContain(
-      '"code":"forbidden-operation"',
-    );
+    expect(
+      text(
+        await hidden.adapter.callTool(
+          operationToolName("adapter-test", "read"),
+          { value: "x" },
+          request(),
+        ),
+      ),
+    ).toContain('"code":"forbidden-operation"');
     expect(hidden.calls.read).toBe(0);
   } finally {
     await hidden.adapter.close();
@@ -117,9 +319,15 @@ test("rechecks visibility and authorization after discovery", async () => {
   try {
     expect((await adapter.listTools(request())).tools).toHaveLength(2);
     permitted = false;
-    expect(text(await adapter.callTool("operation_0", { value: "x" }, request()))).toContain(
-      '"code":"forbidden-operation"',
-    );
+    expect(
+      text(
+        await adapter.callTool(
+          operationToolName("adapter-test", "read"),
+          { value: "x" },
+          request(),
+        ),
+      ),
+    ).toContain('"code":"forbidden-operation"');
     expect(calls.read).toBe(0);
   } finally {
     await adapter.close();
@@ -179,22 +387,32 @@ test("bounds input and output and redacts arbitrary service errors", async () =>
     { maxInputBytes: 64, maxOutputBytes: 256 },
   );
   try {
-    expect(text(await adapter.callTool("operation_0", { value: 123 }, request()))).toContain(
-      '"code":"invalid-input"',
-    );
+    expect(
+      text(await adapter.callTool(operationToolName("limits", "run"), { value: 123 }, request())),
+    ).toContain('"code":"invalid-input"');
     const oversized = text(
-      await adapter.callTool("operation_0", { value: "x".repeat(100) }, request()),
+      await adapter.callTool(
+        operationToolName("limits", "run"),
+        { value: "x".repeat(100) },
+        request(),
+      ),
     );
     expect(oversized).toContain('"code":"input-too-large"');
     const output = text(
-      await adapter.callTool("operation_0", { value: "secret-error" }, request()),
+      await adapter.callTool(
+        operationToolName("limits", "run"),
+        { value: "secret-error" },
+        request(),
+      ),
     );
     expect(output).toContain('"code":"invocation-failed"');
     expect(output).not.toContain("private arbitrary failure");
     expect(calls.read).toBe(1);
-    expect(text(await adapter.callTool("operation_0", { value: "normal" }, request()))).toContain(
-      '"code":"output-too-large"',
-    );
+    expect(
+      text(
+        await adapter.callTool(operationToolName("limits", "run"), { value: "normal" }, request()),
+      ),
+    ).toContain('"code":"output-too-large"');
   } finally {
     await adapter.close();
     await running.stop();
@@ -259,7 +477,11 @@ test("passes identity, request ID and cooperative signal to the binding context"
   try {
     const controller = new AbortController();
     const supplied = request(controller.signal);
-    const result = await adapter.callTool("operation_0", { value: "x" }, supplied);
+    const result = await adapter.callTool(
+      operationToolName("adapter-test", "read"),
+      { value: "x" },
+      supplied,
+    );
     expect(result.isError).not.toBe(true);
     expect(observed).toMatchObject({ identity: supplied.identity, requestId: supplied.requestId });
     controller.abort();
@@ -296,17 +518,25 @@ test("timeout keeps the execution slot until noncooperative work settles", async
     requestTimeoutMs: 10,
   });
   try {
-    const slow = adapter.callTool("operation_0", { value: "x" }, request());
+    const slow = adapter.callTool(
+      operationToolName("timeout-test", "run"),
+      { value: "x" },
+      request(),
+    );
     while (!finish) await Bun.sleep(1);
     expect(text(await slow)).toContain('"code":"request-timeout"');
-    expect(text(await adapter.callTool("operation_0", { value: "x" }, request()))).toContain(
-      '"code":"adapter-busy"',
-    );
+    expect(
+      text(
+        await adapter.callTool(operationToolName("timeout-test", "run"), { value: "x" }, request()),
+      ),
+    ).toContain('"code":"adapter-busy"');
     finish();
     await Bun.sleep(0);
-    expect(text(await adapter.callTool("operation_0", { value: "x" }, request()))).toContain(
-      '"code":"request-timeout"',
-    );
+    expect(
+      text(
+        await adapter.callTool(operationToolName("timeout-test", "run"), { value: "x" }, request()),
+      ),
+    ).toContain('"code":"request-timeout"');
     finish();
   } finally {
     await adapter.close();
@@ -347,7 +577,11 @@ test("close aborts and drains admitted work and returns the same promise", async
     { requestTimeoutMs: 5_000 },
   );
   try {
-    const call = adapter.callTool("operation_0", { value: "x" }, request());
+    const call = adapter.callTool(
+      operationToolName("close-test", "run"),
+      { value: "x" },
+      request(),
+    );
     while (!seenSignal) await Bun.sleep(1);
     const first = adapter.close();
     const second = adapter.close();

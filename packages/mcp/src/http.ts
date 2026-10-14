@@ -26,7 +26,11 @@ export interface HttpMcpOptions<
 > extends McpAdapterOptions<I, O> {
   /** Canonical public MCP resource URL. Never inferred from forwarded headers. */
   readonly resource: string;
-  readonly authorizationServers: readonly string[];
+  /** OAuth is the default. Personal-token mode exposes no OAuth discovery. */
+  readonly authenticationMode?: "oauth" | "personal-token";
+  readonly authorizationServers?: readonly string[];
+  /** Exact trusted issuer for custom personal tokens, not an OAuth server URL. */
+  readonly personalTokenIssuer?: string;
   readonly requiredScopes: readonly string[];
   readonly allowedOrigins: readonly string[];
   /** Must cryptographically verify or introspect the token, including current validity/revocation. */
@@ -182,12 +186,32 @@ export async function createHttpMcp<I extends McpIdentity, O extends Operation>(
   options: HttpMcpOptions<I, O>,
 ): Promise<{ fetch(request: Request): Promise<Response>; close(): Promise<void> }> {
   const resource = trustedUrl(options.resource);
-  if (!options.authorizationServers.length)
+  const personalToken = options.authenticationMode === "personal-token";
+  if (
+    options.authenticationMode !== undefined &&
+    options.authenticationMode !== "oauth" &&
+    !personalToken
+  )
+    throw new TypeError("Invalid MCP authentication mode.");
+  if (
+    personalToken &&
+    (typeof options.personalTokenIssuer !== "string" ||
+      !options.personalTokenIssuer ||
+      options.personalTokenIssuer.length > 512 ||
+      options.authorizationServers !== undefined)
+  )
+    throw new TypeError("Personal-token mode requires only a trusted personal token issuer.");
+  if (
+    !personalToken &&
+    (!options.authorizationServers?.length || options.personalTokenIssuer !== undefined)
+  )
     throw new TypeError("An authorization server is required.");
-  const issuers = options.authorizationServers.map((value) => {
-    trustedUrl(value);
-    return value;
-  });
+  const issuers = personalToken
+    ? [options.personalTokenIssuer!]
+    : options.authorizationServers!.map((value) => {
+        trustedUrl(value);
+        return value;
+      });
   const origins = new Set(
     options.allowedOrigins.map((value) => {
       const url = trustedUrl(value);
@@ -224,7 +248,17 @@ export async function createHttpMcp<I extends McpIdentity, O extends Operation>(
     windowMs: positive(options.rateLimit?.windowMs, 60_000),
     maxIdentities: positive(options.rateLimit?.maxIdentities, 1024),
   };
-  const adapter = await createMcpAdapter(options);
+  const adapter = await createMcpAdapter({
+    ...options,
+    identityKey: (identity) =>
+      JSON.stringify([
+        identity.issuer,
+        identity.subject,
+        identity.tenant,
+        resource.href,
+        [...identity.scopes].sort(),
+      ]),
+  });
   const sessions = new Map<string, Session>();
   const buckets = new Map<string, { reset: number; count: number }>();
   const active = new Set<Promise<Response>>();
@@ -233,7 +267,9 @@ export async function createHttpMcp<I extends McpIdentity, O extends Operation>(
   let reservations = 0;
   let closePromise: Promise<void> | undefined;
   const challenge = (error?: "invalid_token" | "insufficient_scope") => ({
-    "www-authenticate": `Bearer resource_metadata="${metadataUrl.href}", scope="${scopes.join(" ")}"${error ? `, error="${error}"` : ""}`,
+    "www-authenticate": personalToken
+      ? `Bearer${error ? ` error="${error}"` : ""}`
+      : `Bearer resource_metadata="${metadataUrl.href}", scope="${scopes.join(" ")}"${error ? `, error="${error}"` : ""}`,
   });
   const retire = async (session: Session) => {
     if (session.transport.sessionId) sessions.delete(session.transport.sessionId);
@@ -291,7 +327,7 @@ export async function createHttpMcp<I extends McpIdentity, O extends Operation>(
     if (host && host !== resource.host) return reply(403, "invalid-host");
     const origin = request.headers.get("origin");
     if (origin && !origins.has(origin)) return reply(403, "invalid-origin");
-    if (url.pathname === metadataUrl.pathname && request.method === "GET")
+    if (!personalToken && url.pathname === metadataUrl.pathname && request.method === "GET")
       return Response.json(metadata, { headers: { "cache-control": "no-store" } });
     if (url.pathname !== resource.pathname || url.search) return reply(404, "not-found");
     const credential = request.headers.get("authorization");

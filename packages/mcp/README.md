@@ -42,10 +42,22 @@ Discovery, invocation policies and bindings receive the same frozen declaration
 snapshots, retaining exact plugin/schema/function identities. Do not key policies
 by the original declaration object's identity; use the exact plugin and declared
 method. Original declaration edits do not change admission or dispatch. Replace
-the adapter when changing its selection. Existing `operation_N` tool names remain
-entry-local, translated internally to Manage's selection-scoped opaque keys.
+the adapter when changing its selection. Borrowed/HTTP tool names use
+`operation_` followed by a full SHA-256 base64url digest of the exact plugin/method
+tuple. Catalog reordering does not change names; clients should still discover
+descriptions and schemas. Names map internally to Manage's selection-scoped keys.
 Close revokes admission, waits for actual work to drain, then releases the
 selection's runtime references; policy closures retain any resources they capture.
+
+`listTools(context, cursor?)` returns at most `listPageSize` visible tools
+(default 100), with an opaque `nextCursor` when needed. Each page rechecks listing
+permission. Cursors are adapter/identity-bound, single-use, expire after five
+minutes, and reject changed visibility. Restart discovery after a stale cursor.
+Non-HTTP callers can supply `identityKey`; otherwise use the same trusted identity
+reference on subsequent pages. HTTP binds identity to issuer, subject, tenant,
+resource and scopes. Successful calls include redacted `structuredContent` as
+well as the JSON text block; non-object results use `{result: value}`. No output
+schema is inferred.
 
 For a **dedicated local process**, replace the adapter creation above with:
 
@@ -103,6 +115,28 @@ metadata advertises the configured resource and authorization servers. Tokens
 are neither forwarded to services nor to a different resource. Session IDs never
 authenticate. Sessions and rate buckets bind issuer/subject/tenant/resource;
 foreign owners receive 404 and grants are not cached in sessions.
+
+For a host-owned personal access token rather than OAuth, explicitly select:
+
+```ts
+const mcp = await createHttpMcp({
+  ...shared,
+  authenticationMode: "personal-token",
+  personalTokenIssuer: "example.console.tokens",
+  resource: "https://api.example.com/mcp",
+  requiredScopes: ["mcp:use"],
+  allowedOrigins: [],
+  verifyToken: hostPersonalTokenService.verifyCurrentToken,
+});
+// Mount only the MCP resource path. No OAuth authorization server is advertised.
+```
+
+Do not supply `authorizationServers` in this mode. The verifier must still return
+the exact configured issuer, resource audience, current scopes and expiry, and
+reject revoked credentials on every request. OAuth discovery returns 404 and
+challenges are plain Bearer without `resource_metadata`. This custom mode supports
+clients that can supply an explicit Bearer header; it is not an OAuth login flow
+or a claim that all MCP clients support personal tokens.
 
 Only canonical configured Host/Origin values are accepted. HTTPS is required
 except on loopback; forwarded headers are not trusted. A proxy host must present
