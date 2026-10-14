@@ -13,8 +13,8 @@
     "build": "bun build src/server.ts --outdir dist --target bun --packages external"
   },
   "dependencies": {
-    "@lenso/core": "workspace:^",
     "@lenso/cache": "workspace:^",
+    "@lenso/core": "workspace:^",
     "@lenso/engine": "workspace:^",
     "@lenso/log": "workspace:^",
     "@lenso/runtime": "workspace:^",
