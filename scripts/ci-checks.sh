@@ -28,7 +28,10 @@ bun run lint
 bun run fmt:check
 bun run build
 bun run typecheck
-LENSO_REQUIRE_POSTGRES=1 bun run test
+# Real workerd and TLS fixtures have wall-clock deadlines. Keep every workspace
+# assertion, but avoid competing fixture processes on the shared CI runner.
+LENSO_REQUIRE_POSTGRES=1 bun node_modules/turbo/bin/turbo run test --concurrency=1
+bun run release:test
 LENSO_TEST_DATABASE_URL="postgres://lenso_ci@127.0.0.1:$port/notes_ci" \
   bun test examples/notes/test/postgres.test.ts
 TASK_TEST_DATABASE_URL="postgres://lenso_ci@127.0.0.1:$port/tasks_package_ci" \
