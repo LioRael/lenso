@@ -1,0 +1,16 @@
+packages/engine/src/input-watches.ts
+  h_9d56aba080c170 16,38,52-134,187,192,197-200,205-213,217-218
+packages/engine/test/watch-inputs.test.ts
+  h_9d56aba080c170 118-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "67b3c1b601840941649dba5afc001af97869a275",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

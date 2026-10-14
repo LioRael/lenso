@@ -1,0 +1,76 @@
+bun.lock
+  h_9d56aba080c170 45-58,111-120,123-140,143-144,148,150,152,154,156,158,160,162,164,166,168,170,172,174,176,178,180,182,184,186,188,190,192,194,196,200-260,271-272,371-380,439-440,447-448,452,454,457-458,461-462,467-470,477-480,487-490,495-496,501-502,511-512,515-526
+examples/workers/.dev.vars.example
+  h_9d56aba080c170 1-2
+examples/workers/.gitignore
+  h_9d56aba080c170 1-4
+examples/workers/package.json
+  h_9d56aba080c170 1-22
+examples/workers/src/index.ts
+  h_9d56aba080c170 1-35
+examples/workers/tsconfig.json
+  h_9d56aba080c170 1-5
+examples/workers/worker-configuration.d.ts
+  h_9d56aba080c170 1-42
+examples/workers/wrangler.jsonc
+  h_9d56aba080c170 1-9
+packages/workers/README.md
+  h_9d56aba080c170 1-9
+packages/workers/package.json
+  h_9d56aba080c170 1-26
+packages/workers/src/index.ts
+  h_9d56aba080c170 1-106
+packages/workers/test/fetch.test.ts
+  h_9d56aba080c170 1-99
+packages/workers/tsconfig.build.json
+  h_9d56aba080c170 1-11
+packages/workers/tsconfig.json
+  h_9d56aba080c170 1
+templates/README.md
+  h_9d56aba080c170 1-22
+templates/bun-web/.env.example
+  h_9d56aba080c170 1-2
+templates/bun-web/.gitignore
+  h_9d56aba080c170 1-5
+templates/bun-web/lenso.config.ts
+  h_9d56aba080c170 1-3
+templates/bun-web/package.json
+  h_9d56aba080c170 1-27
+templates/bun-web/src/server.ts
+  h_9d56aba080c170 1-55
+templates/bun-web/tsconfig.json
+  h_9d56aba080c170 1-12
+templates/cli/.env.example
+  h_9d56aba080c170 1
+templates/cli/.gitignore
+  h_9d56aba080c170 1-5
+templates/cli/lenso.config.ts
+  h_9d56aba080c170 1-14
+templates/cli/package.json
+  h_9d56aba080c170 1-25
+templates/cli/tsconfig.json
+  h_9d56aba080c170 1-12
+templates/workers/.dev.vars.example
+  h_9d56aba080c170 1
+templates/workers/.gitignore
+  h_9d56aba080c170 1-7
+templates/workers/package.json
+  h_9d56aba080c170 1-29
+templates/workers/src/index.ts
+  h_9d56aba080c170 1-35
+templates/workers/tsconfig.json
+  h_9d56aba080c170 1-13
+templates/workers/wrangler.jsonc
+  h_9d56aba080c170 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "40c35d93b9a8855d32d28efcbf297adc2f446e4b",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
