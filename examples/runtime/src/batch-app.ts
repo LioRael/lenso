@@ -77,7 +77,7 @@ export const batch = definePlugin({
         const business_ms = performance.now() - started;
         if (process.env.LENSO_PERF_TIMING === "1")
           console.error(JSON.stringify({ event: "aggregate_completed", business_ms }));
-        logger.debug({ event: "batch_completed", cache_hit: !loaded });
+        logger.debug({ event: "batch_completed", loader_started: loaded });
         return output;
       },
     };
