@@ -1,6 +1,6 @@
 {
   "name": "@lenso/auth",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -69,10 +69,18 @@
       "types": "./dist/drizzle/schema-sqlite.d.ts",
       "default": "./dist/drizzle/schema-sqlite.js"
     },
-    "./migrations/*": "./migrations/*"
+    "./migrations/*": "./migrations/*",
+    "./oauth": {
+      "types": "./dist/oauth.d.ts",
+      "default": "./dist/oauth.js"
+    },
+    "./oauth-http": {
+      "types": "./dist/oauth-http.d.ts",
+      "default": "./dist/oauth-http.js"
+    }
   },
   "scripts": {
-    "build": "bun -e \"await import('node:fs/promises').then(({rm}) => rm('dist', {recursive: true, force: true}))\" && tsc -p tsconfig.build.json && bun build src/index.ts src/plugin.ts src/fetch.ts src/browser.ts src/interactive.ts src/http.ts src/orpc.ts src/session-source.ts src/sessions.ts src/drizzle/pg.ts src/drizzle/sqlite.ts src/drizzle/d1.ts src/drizzle/schema-pg.ts src/drizzle/schema-sqlite.ts --root src --outdir dist --target browser --packages external --splitting",
+    "build": "bun -e \"await import('node:fs/promises').then(({rm}) => rm('dist', {recursive: true, force: true}))\" && tsc -p tsconfig.build.json && bun build src/index.ts src/plugin.ts src/fetch.ts src/browser.ts src/interactive.ts src/http.ts src/orpc.ts src/session-source.ts src/sessions.ts src/oauth.ts src/oauth-http.ts src/drizzle/pg.ts src/drizzle/sqlite.ts src/drizzle/d1.ts src/drizzle/schema-pg.ts src/drizzle/schema-sqlite.ts --root src --outdir dist --target browser --packages external --splitting",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },
