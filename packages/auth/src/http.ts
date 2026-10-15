@@ -196,9 +196,20 @@ export function createAuthHttpBinding<
     readonly source: { readonly realmId?: string };
     renew(credential: string, options: { signal: AbortSignal }): Promise<ManagedSession>;
     revoke(credential: string, options: { signal: AbortSignal }): Promise<void>;
+    status?(
+      credential: string,
+      options: { signal: AbortSignal },
+    ): Promise<{
+      subjectId: string;
+      serverNow: number;
+      expiresAt: number;
+      absoluteExpiresAt: number;
+      renewAfterAt: number;
+    }>;
   };
   readonly logoutPath?: string;
   readonly renewPath?: string;
+  readonly sessionStatusPath?: string;
   readonly externalSession?: ExternalSessionActions;
 }): AuthHttpBinding<R, E, A> {
   const policy = Object.freeze({ ...options.requestPolicy });
@@ -259,6 +270,9 @@ export function createAuthHttpBinding<
     throw new AuthConfigurationError("Select one session owner");
   const logoutPath = localOptional(options.externalSession?.logout?.path ?? options.logoutPath);
   const renewPath = localOptional(options.externalSession?.renew?.path ?? options.renewPath);
+  const statusPath = localOptional(options.sessionStatusPath);
+  if (statusPath && (!options.sessions?.status || policy.credentialMode !== "cookie"))
+    throw new AuthConfigurationError("Session status requires its managed cookie owner");
   if (
     (options.logoutPath || options.renewPath) &&
     (!options.sessions || policy.credentialMode !== "cookie")
@@ -282,16 +296,18 @@ export function createAuthHttpBinding<
       ),
       ...(logoutPath ? [{ path: logoutPath, method: "POST" }] : []),
       ...(renewPath ? [{ path: renewPath, method: "POST" }] : []),
+      ...(statusPath ? [{ path: statusPath, method: "GET" }] : []),
     ].map((route) => Object.freeze(route)),
   );
   assertAuthHttpBindings([{ routes, requestPolicy: policy }]);
   const discovery: AuthDiscovery = {
     methods: logins.map((login) => login.descriptor),
-    ...(logoutPath || renewPath
+    ...(logoutPath || renewPath || statusPath
       ? {
           session: {
             ...(logoutPath ? { logout: logoutPath } : {}),
             ...(renewPath ? { renew: renewPath } : {}),
+            ...(statusPath ? { status: statusPath } : {}),
           },
         }
       : {}),
@@ -367,6 +383,17 @@ export function createAuthHttpBinding<
             headers.append("set-cookie", cookie(names.csrf, secret, false));
           }
           return Response.json(discovery, { headers });
+        }
+        if (path === statusPath) {
+          const credential = authCookie(request, names.session);
+          if (!credential) throw new AuthError("UNAUTHORIZED");
+          const status = await options.sessions!.status!(credential, { signal: request.signal });
+          if (
+            expectedAuthSubject(request) !== null &&
+            expectedAuthSubject(request) !== status.subjectId
+          )
+            throw new AuthHttpError(412, "session_changed");
+          return Response.json(status, { headers: { "cache-control": "no-store" } });
         }
         // Every auth mutation needs Origin, even a bearer-configured external entry.
         if (request.method === "POST") requireSameOrigin(request, policy.origin);

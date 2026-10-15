@@ -87,6 +87,7 @@ test("password HTTP uses persistent SQLite sessions, CAS rotation and isolated l
         sessions,
         logoutPath: "/auth/logout",
         renewPath: "/auth/renew",
+        sessionStatusPath: "/auth/status",
         login: [
           passwordLogin({
             id: "password",
@@ -103,7 +104,7 @@ test("password HTTP uses persistent SQLite sessions, CAS rotation and isolated l
     expect(discovery!.headers.get("set-cookie")).toContain(`${csrfName}=`);
     expect(await discovery!.json()).toEqual({
       methods: [{ id: "password", kind: "password", label: "Account", action: "/auth/login" }],
-      session: { logout: "/auth/logout", renew: "/auth/renew" },
+      session: { logout: "/auth/logout", renew: "/auth/renew", status: "/auth/status" },
       csrf: { cookie_name: csrfName, header_name: "x-csrf-token" },
     });
     const input = { identifier: "alice", password: "test-password" };
@@ -142,6 +143,23 @@ test("password HTTP uses persistent SQLite sessions, CAS rotation and isolated l
     ))!;
     expect(login.status).toBe(204);
     const original = sessionCredential(login);
+    const status = (await consoleAuth.binding.fetch(request("/auth/status", original)))!;
+    expect(status.status).toBe(200);
+    const deadlines = await status.json();
+    expect(deadlines.subjectId).toBe("alice");
+    expect(deadlines.expiresAt).toBeLessThanOrEqual(deadlines.absoluteExpiresAt);
+    expect(JSON.stringify(deadlines)).not.toContain(original);
+    expect(
+      (await consoleAuth.binding.fetch(
+        request("/auth/status", original, "GET", undefined, { "x-lenso-expected-subject": "bob" }),
+      ))!.status,
+    ).toBe(412);
+    expect(
+      (await consoleAuth.binding.fetch(
+        request("/auth/status", original, "GET", undefined, { origin: "https://foreign.test" }),
+      ))!.status,
+    ).toBe(403);
+
     const business = assemble("business");
     const businessSession = await business.sessions.issue(input);
     await consoleAuth.auth.close();

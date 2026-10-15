@@ -22,6 +22,10 @@ export type LoginMethod =
 
 export interface AuthDiscovery {
   readonly methods: readonly LoginMethod[];
-  readonly session?: { readonly logout?: string; readonly renew?: string };
+  readonly session?: {
+    readonly logout?: string;
+    readonly renew?: string;
+    readonly status?: string;
+  };
   readonly csrf?: { readonly cookie_name: string; readonly header_name: "x-csrf-token" };
 }

@@ -1,5 +1,11 @@
 # @lenso/auth
 
+## 0.5.3
+
+### Patch Changes
+
+- Expose managed session deadline status for coordinated browser renewal and preserve stable administration cursors on stateless hosts.
+
 ## 0.5.2
 
 ### Patch Changes
