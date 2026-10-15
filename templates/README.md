@@ -33,7 +33,13 @@ or no sources for schema defaults.
 
 ## Install real artifacts
 
-Build the framework first (`bun install`, `bun run build`). Create the copied
+For an end-to-end copy/pack/install/dev workflow, use the
+[Bun Web quickstart](../docs/BUN_WEB_QUICKSTART.md).
+
+Prepare and build the framework first (`bun run prepare:runtime`,
+`bun install --frozen-lockfile`, `bun run build`). SDK preparation is required by
+the source workspace, even when the copied consumer does not use Runtime.
+Create the copied
 application's `vendor` directory. From each required framework package directory,
 run `bun pm pack --filename /absolute/path/to/application/vendor/<filename>`:
 

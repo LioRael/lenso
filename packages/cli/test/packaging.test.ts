@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir as createDirectory, realpath as canonicalPath, rm } from "node:fs/promises";
+import {
+  cp,
+  mkdtemp,
+  mkdir as createDirectory,
+  realpath as canonicalPath,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join as joinPath, resolve } from "node:path";
 
@@ -158,6 +164,14 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       expect(await canonicalPath(installed)).toBe(installed);
       const manifest = await Bun.file(joinPath(installed, "package.json")).json();
       expect(manifest.name).toBe(name);
+      if (name.startsWith("lenso-example-")) {
+        const engine = await Bun.file(
+          joinPath(consumer, "node_modules/@lenso/engine/package.json"),
+        ).json();
+        expect(
+          Bun.semver.satisfies(engine.version, manifest.peerDependencies["@lenso/engine"]),
+        ).toBe(true);
+      }
       for (const group of ["dependencies", "peerDependencies"]) {
         for (const version of Object.values(manifest[group] ?? {})) {
           expect(String(version)).not.toMatch(/workspace:|link:|file:/);
@@ -297,6 +311,22 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
         }
       }`,
     ]);
+    // Exercise the shipped template itself, with its own manifest and real archives.
+    const template = joinPath(temporary, "bun-web-template");
+    await cp(joinPath(repository, "templates/bun-web"), template, { recursive: true });
+    await createDirectory(joinPath(template, "vendor"));
+    for (const name of ["core", "engine", "cli", "web"]) {
+      await cp(
+        dependencies[`@lenso/${name}`]!.slice("file:".length),
+        joinPath(template, `vendor/lenso-${name}.tgz`),
+      );
+    }
+    await run(template, ["install", "--ignore-scripts"]);
+    await run(template, ["run", "typecheck"]);
+    await run(template, ["run", "test"]);
+    await run(template, ["run", "build"]);
+    const inspected = JSON.parse(await run(template, ["run", "inspect"]));
+    expect(inspected.data.operations[0].pluginId).toBe("greeting");
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }

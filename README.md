@@ -9,6 +9,10 @@ the [server/Web workspace template](templates/workspace/package.json) when the
 applications have independent build or runtime boundaries. Templates recommend
 organization; they are not a list of supported layouts.
 
+The [Bun Web quickstart](docs/BUN_WEB_QUICKSTART.md) walks through a new external
+app, real package archives, CLI/Web calls, Engine dev/build and an optional packaged
+Engine extension, with configuration failure diagnostics.
+
 A plugin can be one ordinary TS module, a workspace dependency or an npm package.
 Keep business functions callable and testable without Core or Engine; setup only
 connects capabilities and their owned lifetimes. Move a module by changing its

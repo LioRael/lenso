@@ -1,6 +1,6 @@
 ---
 name: lenso-diagnose
-description: Troubleshoot existing Lenso assembly, configuration, build/dev, Auth and durable tasks; inspect authorized runtime status and plan or perform explicitly authorized recovery. Not for adding business interfaces, SQL/migrations, secret inspection, bulk retries or release approval.
+description: Troubleshoot existing TypeScript Lenso assembly, configuration, build/dev, Auth and durable tasks; inspect authorized runtime status and plan or perform explicitly authorized recovery. Not for adding business interfaces, SQL/migrations, secret inspection, bulk retries or release approval.
 ---
 
 # Diagnose existing Lenso applications
@@ -27,6 +27,8 @@ Finite CLI commands return one `schemaVersion: 1` JSON envelope on stdout; logs 
 - Close only resources/processes/ports owned by this task. Cleanup is not compensation for external side effects.
 
 ## Load only the relevant branch
+
+- Cross-language calls, registered-but-unready hosts or transport loss: [Runtime boundaries](references/runtime.md).
 
 - Missing/duplicate/cyclic instances, config preflight, Manage admission/binding, generated-file protection or dev readiness/restarts: [Engine, config and dev](references/engine-config-dev.md).
 - Authentication rejection, audience/instance mismatch, membership or object ownership: [Auth](references/auth.md).

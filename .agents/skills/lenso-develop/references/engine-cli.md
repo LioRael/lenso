@@ -36,4 +36,4 @@ Use [Engine authoring](https://github.com/LioRael/lenso/blob/main/packages/engin
 
 - check/generate/build run trusted **Engine** setup, not application setup; inspect/call use canonical `lenso.config.ts`, never Engine config. Preserve that config or a re-export even with a custom convention.
 - Register named capabilities; replacement names the exact current owner and requires appropriate ordering. Return generated paths relative to `.lenso`, respecting `.engine-files.json` ownership, edited-output and path/symlink protections.
-- Register dynamic reads with `context.watch`; explicit watches must exist. Dev convention entry differs from build: use `--entry` or `src/server.ts`, and report actual startup via `@lenso/engine/dev-ready`. Runtime stops before Engine cleanup.
+- Register dynamic reads with `context.watch`; explicit watches must exist. For dev, an explicit `--entry` overrides the selected Engine convention entry; the default convention uses `src/server.ts`. Keep entries relative to the selected app root, and report actual startup via `@lenso/engine/dev-ready`. Runtime stops before Engine cleanup.

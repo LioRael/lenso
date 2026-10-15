@@ -15,7 +15,10 @@
     "migrate:pg": "bun src/migrate-pg.ts",
     "migrate:sqlite": "bun src/migrate-sqlite.ts",
     "generate:pg": "drizzle-kit generate --config drizzle.pg.config.ts",
-    "generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts"
+    "generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",
+    "recipes:demo": "bun src/recipes/demo.ts",
+    "recipes:inspect": "bun src/recipes/inspect.ts",
+    "recipes:serve": "bun src/recipes/server.ts"
   },
   "dependencies": {
     "@lenso/auth": "workspace:^",

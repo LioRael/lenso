@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "recipe": "bun src/recipe-demo.ts",
+    "recipe:migrate": "bun src/recipe-demo.ts --migrate",
     "migrate": "bun src/migrate.ts",
     "producer": "bun src/producer.ts",
     "worker": "bun src/worker.ts",

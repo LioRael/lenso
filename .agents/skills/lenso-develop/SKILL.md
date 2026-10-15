@@ -1,6 +1,6 @@
 ---
 name: lenso-develop
-description: Add or modify consumer Lenso plugins and services, Web/Auth integration, explicit CLI/MCP/Manage exposure, or application Engine extensions. Not for merely invoking existing operations, generic TypeScript/Bun work, delivery, or framework core maintenance.
+description: Add or modify consumer TypeScript Lenso plugins and services, Web/Auth integration, explicit CLI/MCP/Manage exposure, or application Engine extensions. Not for merely invoking existing operations, generic TypeScript/Bun work, delivery, or framework core maintenance.
 ---
 
 # Develop a Lenso application
@@ -15,13 +15,17 @@ description: Add or modify consumer Lenso plugins and services, Web/Auth integra
 ## Preserve the application contracts
 
 - Bind `requires`, `context.get`, `app.get` and Operation declarations to the **exact installed Plugin object**. A new object with the same ID or type is not that dependency. Give distinct instances distinct IDs.
-- Keep business services ordinary async functions. Plugin setup wires dependencies and lifetime; entry adapters reuse shared schemas/services rather than introduce another business implementation.
+- Keep business services ordinary functions, async when their work requires it. Local methods need neither a JSON contract nor Runtime. Plugin setup wires dependencies and lifetime; entry adapters reuse shared schemas/services rather than introduce another business implementation.
 - Acquire resources during setup and register owned cleanup immediately, before the next fallible step. Borrowed clients and platform bindings stay with their owner. Config module top-level code declares assembly without acquiring resources.
 - Authenticate at each trusted entry and enforce the same audience/object/owner/tenant policies in the shared service. Business JSON is never a trusted actor, owner assignment or permission grant.
 - Use exported package entries only. Source/config is application-owned; `.lenso` and `dist` are reproducible output. Edit source and regenerate rather than patch generated files.
 - In a framework workspace, build affected framework packages and dependencies before consumers: exports resolve to `dist`. Avoid consumer typecheck while a build clears that output. External apps use installed artifacts and their own focused scripts; local checks grant no publication, deployment or production authority.
 
 ## Route by the changed boundary
+
+- Login/private-file/durable-task recipe adaptation: [Delivered DX recipes and availability](references/recipes.md).
+- First native plugin/app or size/layout choice: [Native starting point](references/native-start.md).
+- Explicit cross-language clients/exports: [Runtime adapter](references/runtime.md).
 
 - Plugin dependencies, setup/cleanup or typed instance config: [Lifecycle and configuration](references/lifecycle.md).
 - CLI operations, MCP tools, requested Manage exposure or generation/build/dev extensions: [Engine and explicit exposure](references/engine-cli.md).
