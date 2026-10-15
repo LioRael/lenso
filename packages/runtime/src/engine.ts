@@ -1,7 +1,72 @@
 import { createServer, connect } from "node:net";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { defineEnginePlugin } from "@lenso/engine/authoring";
+import { EngineError } from "@lenso/engine/diagnostics";
 import { RuntimeHost } from "@lenso/runtime-sdk";
+import { exportRuntimeContract, RuntimeSchemaError } from "./authoring";
+
+export interface RuntimeContractOptions {
+  /** Trusted TypeScript source inside the application, outside generated directories. */
+  readonly source: string;
+  /** Named raw v1 contract export. Defaults to v1Contract. */
+  readonly export?: string;
+  /** Relative to .lenso; defaults to runtime/v1.contract.json. */
+  readonly output?: string;
+  readonly name?: string;
+  /** Extra inputs read dynamically; static imports are traced by Engine discovery. */
+  readonly watch?: readonly string[];
+}
+
+/** Generate only the existing v1 wire contract, using Engine ownership and invalidation. */
+export function runtimeContractPlugin(options: RuntimeContractOptions) {
+  const name = options.name ?? "lenso/runtime-contract";
+  const exported = options.export ?? "v1Contract";
+  return defineEnginePlugin({
+    name,
+    setup(context) {
+      const readContract = async () => {
+        try {
+          const module = await import(pathToFileURL(resolve(context.root, options.source)).href);
+          if (!Object.hasOwn(module, exported))
+            throw new RuntimeSchemaError(
+              [],
+              `missing named contract export ${JSON.stringify(exported)}`,
+            );
+          const contract = exportRuntimeContract(module[exported]);
+          return contract;
+        } catch (error) {
+          if (!(error instanceof RuntimeSchemaError)) throw error;
+          throw new EngineError(
+            {
+              code: "invalid-runtime-contract",
+              phase: "engine-generate",
+              pluginId: name,
+              source: { file: options.source, export: exported },
+              message: error.message,
+            },
+            { cause: error },
+          );
+        }
+      };
+      context.discover(`${name}/source`, () => [options.source]);
+      // A second discovery hook runs after Engine validates and traces the source.
+      // Validate before default generation imports application assembly so a known
+      // schema failure retains its path rather than becoming a config import error.
+      context.discover(`${name}/validate`, async () => {
+        await readContract();
+        return [];
+      });
+      for (const path of options.watch ?? []) context.watch(path);
+      context.generate(`${name}/contract`, async () => [
+        {
+          path: options.output ?? "runtime/v1.contract.json",
+          content: `${JSON.stringify(await readContract(), null, 2)}\n`,
+        },
+      ]);
+    },
+  });
+}
 
 export interface RuntimeExecutable {
   readonly binary: string;

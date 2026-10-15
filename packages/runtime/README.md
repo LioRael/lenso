@@ -69,6 +69,128 @@ outgoing CLI calls that must not publish server exports.
 
 ## Engine authoring
 
+Declare a Runtime boundary in TypeScript with `@lenso/runtime/authoring`. Types
+come from the schemas; ordinary business functions remain independent of Runtime.
+Only the selected methods enter `v1Contract` and its handler binding:
+
+```ts
+// src/runtime-contract.ts — declarations only, no setup or resource acquisition
+import { defineRuntimeService, runtimeSchema } from "@lenso/runtime/authoring";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+export const greetingInput = runtimeSchema({
+  type: "object",
+  properties: { name: { type: "string", minLength: 1, maxLength: 80 } },
+  required: ["name"],
+  additionalProperties: false,
+});
+export type GreetingInput = StandardSchemaV1.InferOutput<typeof greetingInput>;
+
+export const greetingService = defineRuntimeService({
+  version: "1",
+  methods: {
+    greet: {
+      mode: "unary",
+      input: greetingInput,
+      output: runtimeSchema({ type: "string" }),
+      error: runtimeSchema({
+        type: "object",
+        properties: { code: { type: "string", enum: ["unavailable"] } },
+        required: ["code"],
+        additionalProperties: false,
+      }),
+    },
+  },
+});
+export const v1Contract = greetingService.v1Contract;
+```
+
+Use `GreetingInput` in the existing ordinary service. The same `greetingInput`
+implements Standard Schema v1 and Standard JSON Schema (draft-2020-12/draft-07),
+so native CLI/Web validation can use it too. Keep shared schema literals inline,
+or use `as const` when extracting them. Widened `required: string[]` cannot retain
+which fields are required and deliberately infers `unknown`, requiring explicit
+narrowing in business code. Keep `mode` literal as well. Numeric/length bounds
+remain runtime checks. Standard JSON Schema conversion makes Runtime's implicit
+safe-integer bounds explicit; the v1 wire contract remains unchanged.
+
+Bind exact installed native instances in application assembly:
+
+```ts
+import { createRuntimePlugin } from "@lenso/runtime";
+import { greetingService, v1Contract } from "./src/runtime-contract";
+import { greeting } from "./src/greeting"; // existing native plugin
+
+export const runtime = createRuntimePlugin({
+  id: "runtime",
+  connection: { namespace: "demo", service: "greeting", contract: v1Contract },
+  clients: () => undefined,
+  exports: greetingService.bind((running) => {
+    const native = running.get(greeting);
+    return { greet: native.greet.bind(native) };
+  }),
+});
+```
+
+Install `runtime` and `greeting` in the application and start with
+`startRuntimeApp`. The binding callback runs after **every** plugin has completed
+setup. Methods that do not use `this` can be selected directly, preserving the
+original function identity. Missing or extra handler keys are rejected, including
+extras admitted by TypeScript structural typing. Nothing discovers native methods.
+
+Unary handlers return the inferred output or a promise. A `mode: "stream"` handler
+returns an async iterable (or a promise of one), and its output schema describes
+each item. The optional second argument is the SDK's existing `HandlerContext`;
+signals, deadlines and stream credit remain SDK responsibilities. For typed
+business error details, throw `greetingService.businessError("greet", {code:
+"unavailable"})`. This creates the SDK's `BusinessError`; TypeScript cannot enforce
+the type of arbitrary thrown values.
+
+`runtimeSchema` accepts precisely the current v1 schema subset and delegates
+validation to the SDK. Closed objects, required fields, scalar enums, arrays,
+number/length/item bounds and required nullable values retain their constraints.
+Optional nullable fields and unsupported keywords such as `pattern`, `format`,
+`default`, `$ref`, `oneOf` or arbitrary transformations are rejected with path
+segments in `RuntimeSchemaError.path` and a JSON Pointer in its message. Arbitrary Standard Schema validators
+are not accepted for contract authoring: their converters can omit refinements.
+No conversion silently drops a constraint. The input declaration is copied into
+the authoring schema; `v1Contract` itself is ordinary live mutable SDK data, with
+no freeze or identity-based validation cache. Changing raw schema types manually
+does not change TypeScript's inferred types; edit the declaration for type changes.
+
+Generate the JSON artifact using the existing Engine pipeline:
+
+```ts
+// lenso.engine.ts
+import { defineEngineConfig } from "@lenso/engine/authoring";
+import { runtimeContractPlugin } from "@lenso/runtime/engine";
+
+export default defineEngineConfig({
+  plugins: [runtimeContractPlugin({ source: "src/runtime-contract.ts" })],
+});
+```
+
+`lenso generate --root <app>` writes `.lenso/runtime/v1.contract.json`, containing
+the current `{version, methods}` contract with no new envelope or wire format.
+JSON is a build artifact; TypeScript declarations are the source. The plugin
+imports the named `v1Contract` export, validates it before application assembly,
+and revalidates it at generation. It never calls `startApp`, native setup, binding
+factories or `RuntimeHost.connect`. Trusted source top-level imports still execute
+and must remain resource-free, just like other Engine configuration.
+
+Options `export` and `output` select another named contract and a path relative to
+`.lenso`; `name` distinguishes multiple registrations. Engine tracks the source
+and its static imports. Declare dynamically read inputs in `watch`. Existing
+`lenso dev` workers reload them, regenerate and restart through the same supervisor.
+Engine retains generated-file ownership, unchanged-file timestamps, stale-output
+cleanup and protection against overwriting edited artifacts. A known invalid
+schema reports `invalid-runtime-contract` with its source file and schema path.
+
+Feed this JSON into the existing Runtime repository generator when cross-language
+clients are needed: `bun tools/generate.ts <app>/.lenso/runtime/v1.contract.json
+<output-dir> greeting`. That generator retains its own identifier/type-name
+restrictions; this package does not replace it or launch Rust builds.
+
 `@lenso/runtime/engine` imports the optional Engine peer, never the runtime entry.
 `runtimeEnginePlugin` registers a `beforeStart` hook in `lenso.engine.ts`.
 Its `kernelBinary` and `services` are prebuilt executables; it never invokes Cargo.

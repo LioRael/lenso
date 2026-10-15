@@ -2,10 +2,9 @@ import { migratePostgresTaskQueue } from "@lenso/tasks/postgres";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { readConfig, reportFailure } from "./config";
+import { readConfig, reportFailure, type TasksConfig } from "./config";
 
-async function main() {
-  const config = await readConfig();
+export async function migrateTaskExample(config: TasksConfig) {
   await migratePostgresTaskQueue(config);
   const pool = new pg.Pool({ connectionString: config.connectionString });
   pool.on("error", () => reportFailure("Migration database connection"));
@@ -33,12 +32,14 @@ async function main() {
         PRIMARY KEY (queue_name, job_id)
       )
     `);
-    console.log("Queue, report and ownership tables migrated.");
   } finally {
     await pool.end();
   }
 }
 
 if (import.meta.main) {
-  await main().catch(() => reportFailure("Migration"));
+  await (async () => {
+    await migrateTaskExample(await readConfig());
+    console.log("Queue, report and ownership tables migrated.");
+  })().catch(() => reportFailure("Migration"));
 }

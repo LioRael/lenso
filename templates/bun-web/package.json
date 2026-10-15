@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "lenso dev",
     "build": "lenso build",
+    "inspect": "lenso inspect greeting greet --json",
+    "call": "lenso call greeting greet --stdin --json",
+    "test": "bun test src",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "fmt": "oxfmt ."

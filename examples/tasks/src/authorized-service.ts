@@ -1,4 +1,11 @@
-import { audience, createAuth, realm, type AuthSource, type SubjectRef } from "@lenso/auth";
+import {
+  audience,
+  createAuth,
+  realm,
+  type Auth,
+  type AuthSource,
+  type SubjectRef,
+} from "@lenso/auth";
 import type { TaskQueue } from "@lenso/tasks";
 import { z } from "zod";
 import { jobInput, reportQueryInput, submitInput } from "./contracts";
@@ -6,16 +13,29 @@ import type { OwnershipStore } from "./ownership";
 import type { createReportService } from "./report-service";
 import type { createReportTask } from "./task";
 
-export function createAuthorizedTaskService(options: {
-  source: AuthSource<string | null>;
-  evidence: () => string | null;
+export interface TaskServiceResources {
   queue: Pick<TaskQueue, "enqueue" | "get" | "cancel" | "retry">;
   task: ReturnType<typeof createReportTask>;
   ownership: OwnershipStore;
   reports: Pick<ReturnType<typeof createReportService>, "get">;
-}) {
+}
+
+// The standalone entry owns its Auth. Compositions with an existing Auth use
+// createTaskService and retain cleanup in that Auth's plugin owner.
+export function createAuthorizedTaskService(
+  options: TaskServiceResources & {
+    source: AuthSource<string | null>;
+    evidence: () => string | null;
+  },
+) {
   const auth = createAuth(realm("task-example", options.source));
-  const access = auth.for(audience("task-example.operations"));
+  return { ...createTaskService({ ...options, auth }), close: () => auth.close() };
+}
+
+export function createTaskService<R extends string, E, S extends string>(
+  options: TaskServiceResources & { auth: Auth<R, E, S>; evidence: () => E },
+) {
+  const access = options.auth.for(audience("task-example.operations"));
   const ownerPolicy = ({
     principal,
     resource,
@@ -32,7 +52,6 @@ export function createAuthorizedTaskService(options: {
     await access.enforce(principal, await options.ownership.job(jobId), ownerPolicy);
   }
   return {
-    close: () => auth.close(),
     async submit(input: z.input<typeof submitInput>) {
       const { runAt, deduplicationKey, ...payload } = submitInput.parse(input);
       const principal = await actor();

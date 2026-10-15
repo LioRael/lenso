@@ -4,6 +4,7 @@ Read [Core API and instance configuration](https://github.com/LioRael/lenso/blob
 
 - Declare mandatory edges only for supplied providers. An optional provider needs an explicit absent branch, not an undeclared `get` or implicit provider selection. Preserve exact instances through factories and assembly.
 - Setup is serial; registered cleanup is sequential global LIFO, including startup rollback. Every finalizer is attempted and failures aggregate. `onCleanup` returns an async disposer: use that for early release so explicit release and shutdown share one completion. Repeated `stop()` shares one Promise, including failures.
+- `startApp`'s optional signal governs config preflight and the pre-setup cancellation check; `PluginContext` has no universal business AbortSignal. Pass cancellation explicitly through the service/entry that owns it. Abandoning a Promise does not stop work or call `stop`. Core has no automatic admission counter or request drain.
 - Registration is setup-only. A finalizer must not await its own disposer or its application's `stop()`. Core does not infer ownership of listeners, detached work, request drain or cancellation from a returned service.
 - For lifecycle changes, exercise failed setup and cleanup as well as normal stop, checking that owned resources release once and borrowed resources remain usable.
 

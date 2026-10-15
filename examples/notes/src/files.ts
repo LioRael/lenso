@@ -1,35 +1,20 @@
 import { Database } from "bun:sqlite";
 import { join, resolve } from "node:path";
 import { createBunSqlitePlugin } from "@lenso/db/bun-sqlite";
-import {
-  createFilesPlugin,
-  type Files,
-  type FileAction,
-  type FileRecord,
-} from "@lenso/storage/files";
 import { createLocalStoragePlugin } from "@lenso/storage/local";
 import { createSqliteFileQueries, fileSchema } from "@lenso/storage/sqlite";
 import { sqliteSessionStore } from "@lenso/auth/drizzle/sqlite";
-import { definePlugin, startApp } from "@lenso/core";
+import { startApp } from "@lenso/core";
 import type { NotesPrincipalsInput } from "./auth";
 import { createNotesApplication } from "./application";
 import { migrateSqlite } from "./migrate-sqlite";
-import { notesAudiences, type NotesActor } from "./notes";
+import { notesAudiences } from "./notes";
+import { createPrivateNotesFiles, notesFileTenant } from "./private-files";
+export { createPrivateNotesFiles, notesFileTenant, type NotesFileAccess } from "./private-files";
 import { createSqliteNotesQueries } from "./queries-sqlite";
 import * as notesSchema from "./schema-sqlite";
 
-export type NotesFileAccess = NotesActor<"create" | "read" | "fileMetadata" | "fileDelete">;
-export const notesFileTenant = "local-notes";
-const fileAudience = {
-  upload: notesAudiences.create,
-  completeUpload: notesAudiences.create,
-  metadata: notesAudiences.fileMetadata,
-  read: notesAudiences.read,
-  delete: notesAudiences.fileDelete,
-  signDownload: notesAudiences.read,
-} satisfies Record<FileAction, (typeof notesAudiences)[keyof typeof notesAudiences]>;
-
-/** Callers authenticate first; neither fileId nor a storage instance grants access. */
+/** Standalone owner; callers with existing resources use createPrivateNotesFiles instead. */
 export function createNotesFiles(options: {
   filename: string;
   root: string;
@@ -56,39 +41,11 @@ export function createNotesFiles(options: {
     id: "privateFiles",
     root: join(options.root, "private"),
   });
-  const files = definePlugin<Files<NotesFileAccess>>({
-    id: "note-files",
-    requires: [database, authentication, publicAssets, privateFiles],
-    setup(context) {
-      const auth = context.get(authentication);
-      return createFilesPlugin({
-        id: "note-files",
-        storages: [publicAssets, privateFiles],
-        database,
-        queries: createSqliteFileQueries,
-        async authorize({
-          access,
-          action,
-          file,
-        }: {
-          access: NotesFileAccess;
-          action: FileAction;
-          file: Readonly<FileRecord>;
-        }) {
-          await auth
-            .for(fileAudience[action])
-            .enforce(
-              access,
-              file,
-              ({ principal, resource }) =>
-                principal.kind === "user" &&
-                principal.subjectId === resource.ownerId &&
-                resource.tenantId === notesFileTenant,
-            );
-          return true;
-        },
-      }).setup(context);
-    },
+  const files = createPrivateNotesFiles({
+    database,
+    authentication,
+    storages: [publicAssets, privateFiles],
+    queries: createSqliteFileQueries,
   });
   return {
     database,
