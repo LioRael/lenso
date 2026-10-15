@@ -124,6 +124,8 @@ export interface SessionAdministrationOptions<
 > {
   /** Target realm is installed code, independent of the caller's authentication realm. */
   readonly realmId: string;
+  /** Existing Relay stateless-host cursor contract; omission remains instance-local. */
+  readonly cursorNamespace?: string;
   readonly store: SessionAdminStore;
   readonly access: Access<R, E, S, A, SessionAdministrationResource, M>;
   readonly policy: Policy<PolicyContext<Actor<R, S, A>, SessionAdministrationResource, M>>;
@@ -209,7 +211,10 @@ export function createSessionAdministration<
     tenantId: options.auditScope.tenantId,
     scopeId: options.auditScope.scopeId,
   });
-  const namespace = crypto.randomUUID();
+  if (options.cursorNamespace !== undefined && !identifier(options.cursorNamespace)) {
+    throw new AuthConfigurationError("Session cursor namespace must be a nonempty identifier");
+  }
+  const namespace = options.cursorNamespace ?? crypto.randomUUID();
   const listScope = Object.freeze({
     operation: "scope" as const,
     action: "list" as const,

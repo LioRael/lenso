@@ -455,3 +455,38 @@ test("session owner drains login work, stops retained references and snapshots l
   expect(store.records.size).toBe(0);
   await owner.close();
 });
+
+// Status must use the authoritative owner once and reject old/revoked credentials just like renew.
+test("renewal scheduling status exposes deadlines without credentials and never revives expiry", async () => {
+  const f = setup();
+  try {
+    let issued = await f.sessions.issue({ proof: "valid" });
+    const value = await f.sessions.status(issued.credential);
+    expect(value).toEqual({
+      subjectId: "custom:subject",
+      serverNow: 1000,
+      expiresAt: 1100,
+      absoluteExpiresAt: 1500,
+      renewAfterAt: 1020,
+    });
+    expect(JSON.stringify(value)).not.toContain(issued.credential);
+    f.setTime(1080);
+    const previous = issued;
+    issued = await f.sessions.renew(issued.credential);
+    expect((await f.sessions.status(issued.credential)).expiresAt).toBe(1180);
+    await expect(f.sessions.status(previous.credential)).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    await f.sessions.revoke(issued.credential);
+    await expect(f.sessions.status(issued.credential)).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    const next = await f.sessions.issue({ proof: "valid" });
+    f.setTime(1180);
+    await expect(f.sessions.status(next.credential)).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+  } finally {
+    await f.sessions.close();
+  }
+});

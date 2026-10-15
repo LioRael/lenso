@@ -420,6 +420,19 @@ export function createManagedSessions<E, S extends string>(options: ManagedSessi
     }),
     issue: (evidence: E, opts: { signal?: AbortSignal } = {}) =>
       run((signal) => issue(evidence, { signal }), opts.signal),
+    /** Scheduling hints from the same authoritative lookup; not an authorization grant. */
+    async status(credential: string, opts?: { signal?: AbortSignal }) {
+      return run(async (signal) => {
+        const { record, expiry, time } = await lookup(credential, signal);
+        return Object.freeze({
+          subjectId: record.subjectId,
+          serverNow: time,
+          expiresAt: expiry,
+          absoluteExpiresAt: Math.min(record.expiresAt, record.issuedAt + lifetime.absolute),
+          renewAfterAt: record.renewedAt + Math.max(record.renewAfterMs, lifetime.renewAfter),
+        });
+      }, opts?.signal);
+    },
     async renew(credential: string, opts?: { signal?: AbortSignal }) {
       return run((signal) => mutate("renew", credential, { signal }), opts?.signal);
     },
