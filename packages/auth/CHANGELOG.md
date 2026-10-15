@@ -1,5 +1,11 @@
 # @lenso/auth
 
+## 0.5.4
+
+### Patch Changes
+
+- Add an optional native-client OAuth authorization server with S256 PKCE, one-use codes, SQL compare-and-swap storage, rotating refresh families, current-permission checks and explicit revocation. Keep human authentication and HTTP admission owned by the host.
+
 ## 0.5.3
 
 ### Patch Changes
