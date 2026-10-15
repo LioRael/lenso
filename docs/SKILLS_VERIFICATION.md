@@ -4,12 +4,12 @@ Date: 2026-10-15 UTC. Local documentation/skill delivery only. No core/SDK/gener
 
 ## Ownership and triggers
 
-| Skill | When it applies |
-| --- | --- |
-| lenso-develop (updated) | Consumer TS plugin/service, explicit adapters/exposure and Engine authoring |
-| lenso-diagnose (updated) | Existing TS assembly/config/lifecycle/Runtime symptoms |
-| lenso-migrate (new) | Actual TS↔Rust feature port and semantic parity assessment |
-| lenso-best-practices (new) | Repository/application structure and cross-repo ownership decisions |
+| Skill                      | When it applies                                                             |
+| -------------------------- | --------------------------------------------------------------------------- |
+| lenso-develop (updated)    | Consumer TS plugin/service, explicit adapters/exposure and Engine authoring |
+| lenso-diagnose (updated)   | Existing TS assembly/config/lifecycle/Runtime symptoms                      |
+| lenso-migrate (new)        | Actual TS↔Rust feature port and semantic parity assessment                  |
+| lenso-best-practices (new) | Repository/application structure and cross-repo ownership decisions         |
 
 All files are under `.agents/skills` plus this evidence document. Existing platform.md from DX commit 74139b0 is unchanged. No source recipe is duplicated. Delivered follow-up b79aa1e was read in the DX owner's checkout; source signatures and its verification report informed the gated recipe reference. Those integration tests are attributed to that delivery, not rerun here.
 
@@ -28,51 +28,24 @@ The first run exposed an incorrect example assertion equating independent-node t
 {
   "normal": {
     "typescript": {
-      "values": [
-        "North Ada",
-        "South Grace"
-      ],
-      "closed": [
-        "query-south",
-        "south",
-        "query-north",
-        "north"
-      ]
+      "values": ["North Ada", "South Grace"],
+      "closed": ["query-south", "south", "query-north", "north"]
     },
     "rust": {
-      "closed": [
-        "query-south",
-        "query-north",
-        "south",
-        "north"
-      ],
-      "values": [
-        "North Ada",
-        "South Grace"
-      ]
+      "closed": ["query-south", "query-north", "south", "north"],
+      "values": ["North Ada", "South Grace"]
     }
   },
   "rollback": {
     "typescript": {
-      "rollback": [
-        "query-south",
-        "south",
-        "query-north",
-        "north"
-      ]
+      "rollback": ["query-south", "south", "query-north", "north"]
     },
     "rust": {
-      "rollback": [
-        "query-south",
-        "query-north",
-        "south",
-        "north"
-      ]
+      "rollback": ["query-south", "query-north", "south", "north"]
     }
   },
   "scope": "Native exact instances, successful calls, retained-service close, partial-setup rollback; no network/persistence proof."
 }
-
 ```
 
 Runtime candidate 765db7a adds SDK dependencies absent from this TS root lock. Preparing that candidate made frozen install reject, as expected; the root lock was preserved and pinned preparation restored for the native example. This is a source-integration gap, not a Core example failure. The Runtime reference documents it.

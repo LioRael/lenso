@@ -2,26 +2,26 @@
 
 ## Exact dependencies and configuration
 
-| TS source | Rust target | Reverse-port consequence |
-| --- | --- | --- |
-| Factory returns `Plugin<Service>` object | `Instance::new(name, plugin)` owns one definition; `.handle()` gives `Handle<Service>` | Preserve one plugin object through composition, not reconstructed equal IDs |
-| `requires: [provider]` | `dependencies() -> vec![provider.key()]` | Declare the original provider object before `context.get` |
-| `context.get(provider)` / `app.get(provider)` | `setup.get(&handle)` / `running.get(&handle)` returns `Arc<Service>` | Sharing a TS object is not Rust Arc ownership or Send/Sync safety |
-| Distinct object for each provider | Distinct Instance, even with same plugin/service type | Use distinct diagnostic IDs/names; never resolve by type or string |
-| Optional factory argument | Explicit `Option<Handle<_>>` plus matching declared edge | An absent branch must not call undeclared get |
+| TS source                                     | Rust target                                                                            | Reverse-port consequence                                                    |
+| --------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Factory returns `Plugin<Service>` object      | `Instance::new(name, plugin)` owns one definition; `.handle()` gives `Handle<Service>` | Preserve one plugin object through composition, not reconstructed equal IDs |
+| `requires: [provider]`                        | `dependencies() -> vec![provider.key()]`                                               | Declare the original provider object before `context.get`                   |
+| `context.get(provider)` / `app.get(provider)` | `setup.get(&handle)` / `running.get(&handle)` returns `Arc<Service>`                   | Sharing a TS object is not Rust Arc ownership or Send/Sync safety           |
+| Distinct object for each provider             | Distinct Instance, even with same plugin/service type                                  | Use distinct diagnostic IDs/names; never resolve by type or string          |
+| Optional factory argument                     | Explicit `Option<Handle<_>>` plus matching declared edge                               | An absent branch must not call undeclared get                               |
 
 Rust plugins move into App and consume `self` at setup. Clone handles before moves; do not clone the owning Instance. Plain Rust data/factory arguments need no JSON. TS ordered sources replace whole top-level fields; Rust Config selects explicit JSON and JSON-valued env pointers over serde defaults. Neither rule is a deep merge. Config values are not connections; validate before acquisition and mark sensitive diagnostics deliberately.
 
 ## Setup, rollback and cleanup
 
-| Boundary | TS Core | Rust Core `e5dfafb` | Go local core |
-| --- | --- | --- | --- |
-| Start | Validate graph/config, serial setup | Validate graph/config, serial setup in owned Tokio task | Plan/Validate then serial Setup(ctx, setup) |
-| Register | `context.onCleanup(fn)` returns async disposer | `setup.on_cleanup(phase, fn)` returns CleanupHandle | `setup.OnCleanup(fn)` returns error; no disposer API |
-| Stop | Global sequential LIFO, attempts all | Seal → all Entrances → drain admitted work → Resources; reverse order within phases | Global sequential LIFO, attempts all |
-| Repeat stop | Shared Promise, including failure | Shared owned completion/result | Once/shared result; ctx controls each wait |
-| Failed partial setup | Its registered callbacks included | Its callbacks included, also unwind panics | Its callbacks included, synchronous callback panic recovered |
-| Retained service | Core get rejects after stop; service must define its own state/drain | Gate at outer method entry rejects new work; keep WorkGuard through awaits | Get rejects after Close starts; retained object enforces its own state |
+| Boundary             | TS Core                                                              | Rust Core `e5dfafb`                                                                 | Go local core                                                          |
+| -------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Start                | Validate graph/config, serial setup                                  | Validate graph/config, serial setup in owned Tokio task                             | Plan/Validate then serial Setup(ctx, setup)                            |
+| Register             | `context.onCleanup(fn)` returns async disposer                       | `setup.on_cleanup(phase, fn)` returns CleanupHandle                                 | `setup.OnCleanup(fn)` returns error; no disposer API                   |
+| Stop                 | Global sequential LIFO, attempts all                                 | Seal → all Entrances → drain admitted work → Resources; reverse order within phases | Global sequential LIFO, attempts all                                   |
+| Repeat stop          | Shared Promise, including failure                                    | Shared owned completion/result                                                      | Once/shared result; ctx controls each wait                             |
+| Failed partial setup | Its registered callbacks included                                    | Its callbacks included, also unwind panics                                          | Its callbacks included, synchronous callback panic recovered           |
+| Retained service     | Core get rejects after stop; service must define its own state/drain | Gate at outer method entry rejects new work; keep WorkGuard through awaits          | Get rejects after Close starts; retained object enforces its own state |
 
 Independent nodes can have different valid topological orders in each implementation. Preserve dependency order and phase/resource invariants rather than comparing complete traces. A TS cleanup registration has no Rust phase argument. Port by identifying entrances and resources; don't flatten Rust's phased order without an explicit TS host pre-drain. Runtime's TS starter already provides its own pre-drain. A registered finalizer releases owned resources; it does not compensate external writes. Never close borrowed clients/bindings automatically.
 
