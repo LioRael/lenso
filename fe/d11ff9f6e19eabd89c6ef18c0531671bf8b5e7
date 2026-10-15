@@ -1,0 +1,30 @@
+.changeset/stable-mcp-operation-names.md
+  h_9d56aba080c170 1-13
+packages/mcp/README.md
+  h_9d56aba080c170 45-48,52-61,119-140
+packages/mcp/src/adapter.ts
+  h_9d56aba080c170 1,41-52,137,140,142-145,155,159,182-192,241-244,264-287,289-298,300-301,310-311,346,350-357,365
+packages/mcp/src/http.ts
+  h_9d56aba080c170 29-33,189-207,209-214,251-261,270-272,330
+packages/mcp/src/protocol.ts
+  h_9d56aba080c170 52-53
+packages/mcp/test/adapter.test.ts
+  h_9d56aba080c170 1,5,68-258,264,266,268,282-290,299-307,324-332,392-394,396-400,404-408,413-417,482-486,523-527,530-534,537-541,582-586
+packages/mcp/test/cancellation.test.ts
+  h_9d56aba080c170 5,67,116,124-126,184-188,192-194
+packages/mcp/test/http.test.ts
+  h_9d56aba080c170 10,14-18,289,310-312,315,360-431,437-438,440,463,478,486,512,525,550,578,645,677,683-684,697,701,711,713,715
+packages/mcp/test/selection.test.ts
+  h_9d56aba080c170 4,61-62,65,67,71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fed11ff9f6e19eabd89c6ef18c0531671bf8b5e7",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

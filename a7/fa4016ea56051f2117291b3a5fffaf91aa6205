@@ -1,0 +1,64 @@
+.changeset/organization-membership.md
+  h_9d56aba080c170 1-5
+packages/organization/README.md
+  h_9d56aba080c170 1-185
+packages/organization/migrations/pg/0000_organizations.sql
+  h_9d56aba080c170 1-5
+packages/organization/migrations/sqlite/0000_organizations.sql
+  h_9d56aba080c170 1-5
+packages/organization/package.json
+  h_9d56aba080c170 1-75
+packages/organization/src/auth.ts
+  h_9d56aba080c170 1-50
+packages/organization/src/capacity.ts
+  h_9d56aba080c170 1-18
+packages/organization/src/contracts.ts
+  h_9d56aba080c170 1-143
+packages/organization/src/drizzle/d1.ts
+  h_9d56aba080c170 1-59
+packages/organization/src/drizzle/pg.ts
+  h_9d56aba080c170 1-67
+packages/organization/src/drizzle/schema-pg.ts
+  h_9d56aba080c170 1-7
+packages/organization/src/drizzle/schema-sqlite.ts
+  h_9d56aba080c170 1-7
+packages/organization/src/drizzle/shared.ts
+  h_9d56aba080c170 1-106
+packages/organization/src/index.ts
+  h_9d56aba080c170 1-4
+packages/organization/src/plugin.ts
+  h_9d56aba080c170 1-24
+packages/organization/src/policy.ts
+  h_9d56aba080c170 1-38
+packages/organization/src/service.ts
+  h_9d56aba080c170 1-548
+packages/organization/test/access-policy.test.ts
+  h_9d56aba080c170 1-144
+packages/organization/test/auth.test.ts
+  h_9d56aba080c170 1-348
+packages/organization/test/backend-contract.ts
+  h_9d56aba080c170 1-262
+packages/organization/test/d1-fixture.ts
+  h_9d56aba080c170 1-45
+packages/organization/test/d1.test.ts
+  h_9d56aba080c170 1-41
+packages/organization/test/package.test.ts
+  h_9d56aba080c170 1-56
+packages/organization/test/postgres.test.ts
+  h_9d56aba080c170 1-250
+packages/organization/tsconfig.build.json
+  h_9d56aba080c170 1-11
+packages/organization/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a7fa4016ea56051f2117291b3a5fffaf91aa6205",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

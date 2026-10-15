@@ -1,0 +1,22 @@
+bun.lock
+  h_9d56aba080c170 348
+packages/manage/CHANGELOG.md
+  h_9d56aba080c170 3-8
+packages/manage/package.json
+  h_9d56aba080c170 3
+packages/manage/src/adapter.ts
+  h_9d56aba080c170 252-255
+packages/manage/test/selection.test.ts
+  h_9d56aba080c170 10-14,16-22,25-27,30-36,39-40,48-49,57-65,68-74,79-81,88-94,99-100,102-110,113-115,121-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a0678977a657ebf39354509e1cd18431354267d",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
