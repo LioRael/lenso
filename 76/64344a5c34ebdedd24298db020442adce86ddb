@@ -1,0 +1,58 @@
+.changeset/deferred-dependencies-8839862402d5.md
+  h_9d56aba080c170 2-4,7-8
+.changeset/engine-optional-peer-compatibility.md
+  h_9d56aba080c170 2-8,11
+README.md
+  h_9d56aba080c170 67-72
+bun.lock
+  h_9d56aba080c170 282,308
+docs/RELEASING.md
+  h_9d56aba080c170 295-307
+docs/TS-ADAPTER-RELEASE.md
+  h_9d56aba080c170 1-130
+packages/api-keys/package.json
+  h_9d56aba080c170 74
+packages/audit/package.json
+  h_9d56aba080c170 73
+packages/authorization/package.json
+  h_9d56aba080c170 76
+packages/cli/CHANGELOG.md
+  h_9d56aba080c170 3-19
+packages/cli/examples/content-plugin/package.json
+  h_9d56aba080c170 15
+packages/cli/examples/module-target-plugin/package.json
+  h_9d56aba080c170 15
+packages/cli/package.json
+  h_9d56aba080c170 3
+packages/engine/CHANGELOG.md
+  h_9d56aba080c170 3-12
+packages/engine/package.json
+  h_9d56aba080c170 3
+packages/notifications/package.json
+  h_9d56aba080c170 76
+packages/payments/package.json
+  h_9d56aba080c170 89
+packages/runtime/package.json
+  h_9d56aba080c170 43
+packages/webhooks/package.json
+  h_9d56aba080c170 59
+scripts/release-version.ts
+  h_9d56aba080c170 6-7,14,55-93,96-100,104,112,118,124
+scripts/release.test.ts
+  h_9d56aba080c170 185-201,203-218,221-240,242-252,254-292,294-310,312-384,386-406
+scripts/tsconfig.json
+  h_9d56aba080c170 4-10
+scripts/verify-adapter-consumer.ts
+  h_9d56aba080c170 1-431
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7664344a5c34ebdedd24298db020442adce86ddb",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
