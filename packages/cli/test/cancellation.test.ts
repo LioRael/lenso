@@ -188,7 +188,7 @@ test("JSON CLI stdin maps a real preaborted signal to aborted, exit 1 and zero b
     const child = Bun.spawn(
       [
         process.execPath,
-        join(import.meta.dir, "../src/bin.ts"),
+        join(import.meta.dir, "./run-adapter.ts"),
         "call",
         "cancelled",
         "run",

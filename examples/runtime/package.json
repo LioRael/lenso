@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "generate": "bun ../../.runtime-deps/source/tools/generate.ts ../../.runtime-deps/source/examples/contracts/logs.json src/generated logs && oxfmt src/generated/logs.ts",
-    "dev": "bun ../../packages/cli/src/bin.ts dev --workspace lenso.workspace.ts",
+    "dev": "lenso dev --workspace lenso.workspace.ts",
     "dev:companions": "LENSO_RUNTIME_EXTERNAL=1 bun src/dev.ts",
     "offline": "bun src/offline.ts",
     "start": "bun src/server.ts",

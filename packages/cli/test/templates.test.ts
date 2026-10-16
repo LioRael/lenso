@@ -9,6 +9,7 @@ async function run(cwd: string, args: string[], extraEnv: Record<string, string>
   const env = { ...process.env, ...extraEnv };
   delete env.NODE_PATH;
   delete env.BUN_OPTIONS;
+  if (args[0] === "run" && args[1] === "lenso") args = ["invoke-adapter.ts", ...args.slice(2)];
   const child = Bun.spawn([process.execPath, ...args], {
     cwd,
     env,
@@ -55,6 +56,20 @@ test("templates install externally, retain client types and own their listener l
       const consumer = join(temporary, template);
       await cp(join(repository, "templates", template), consumer, { recursive: true });
       await cp(vendor, join(consumer, "vendor"), { recursive: true });
+      // TS-only tests invoke the installed module. The Rust repository verifies the real lenso binary.
+      await Bun.write(
+        join(consumer, "invoke-adapter.ts"),
+        'import {runAdapter} from "@lenso/cli/adapter"; await runAdapter(process.argv.slice(2));',
+      );
+      const fixtureManifestPath = join(consumer, "package.json");
+      const fixtureManifest = await Bun.file(fixtureManifestPath).json();
+      for (const name of Object.keys(fixtureManifest.scripts)) {
+        fixtureManifest.scripts[name] = fixtureManifest.scripts[name].replace(
+          /\blenso (?=[a-z])/g,
+          "bun invoke-adapter.ts ",
+        );
+      }
+      await Bun.write(fixtureManifestPath, JSON.stringify(fixtureManifest));
       await run(consumer, ["install", "--ignore-scripts"]);
       expect(await Bun.file(join(consumer, "bun.lock")).exists()).toBe(true);
       await run(consumer, ["run", "typecheck"]);

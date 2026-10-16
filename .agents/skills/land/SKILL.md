@@ -214,11 +214,11 @@ For service input, CLI exposure, diagnostics or generated-output changes, follow
 `docs/CLI.md`. When greeting's declared operation is affected, run:
 
 ```sh
-bun run cli inspect greeting greet --root examples/greeting --json
-printf '{"name":"Ada"}\n' | bun run cli call greeting greet --root examples/greeting --stdin --json
+lenso inspect greeting greet --root examples/greeting --json
+printf '{"name":"Ada"}\n' | lenso call greeting greet --root examples/greeting --stdin --json
 ```
 
-Sources: root `package.json` (`cli` script); `packages/cli/src/bin.ts`
+Sources: `LioRael/lenso-cli` (Rust `lenso` command); `packages/cli/src/adapter.ts`
 (`inspect`, `call`, `--root`, `--stdin`, `--json` handling);
 `examples/greeting/lenso.config.ts` (declared operation);
 `examples/greeting/src/contracts.ts` (shared input schema).

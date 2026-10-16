@@ -16,7 +16,7 @@ async function fixture() {
   return root;
 }
 async function run(root: string, args: string[], built = false) {
-  const bin = resolve(import.meta.dir, built ? "../dist/bin.js" : "../src/bin.ts");
+  const bin = resolve(import.meta.dir, built ? "./run-built-adapter.ts" : "./run-adapter.ts");
   const child = Bun.spawn([process.execPath, bin, ...args, "--root", root, "--json"], {
     stdout: "pipe",
     stderr: "pipe",
@@ -220,7 +220,7 @@ test("CLI dev passes selected root/config and entry through the built Engine wor
     [false, undefined],
     [true, "runtime/override.ts"],
   ] as const) {
-    const bin = resolve(import.meta.dir, built ? "../dist/bin.js" : "../src/bin.ts");
+    const bin = resolve(import.meta.dir, built ? "./run-built-adapter.ts" : "./run-adapter.ts");
     const child = Bun.spawn(
       [
         process.execPath,

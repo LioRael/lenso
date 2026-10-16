@@ -280,9 +280,6 @@
     "packages/cli": {
       "name": "@lenso/cli",
       "version": "0.20.1",
-      "bin": {
-        "lenso": "./dist/bin.js",
-      },
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",

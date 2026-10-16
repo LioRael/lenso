@@ -43,7 +43,7 @@ bun run --cwd examples/notes recipes:serve
 supervisor instead, from the repository root:
 
 ```sh
-bun packages/cli/src/bin.ts dev --root examples/notes \
+lenso dev --root examples/notes \
   --config recipes.config.ts --entry src/recipes/server.ts
 ```
 

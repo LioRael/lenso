@@ -31,7 +31,7 @@ test("JSON CLI: inspect without setup, shared Zod validation, stdout/stderr, inp
     export default {plugins:[plugin]};
   `,
   );
-  const bin = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
+  const bin = fileURLToPath(new URL("./run-adapter.ts", import.meta.url));
   async function run(args: string[], stdin?: string) {
     const child = Bun.spawn([process.execPath, bin, ...args, "--root", root, "--json"], {
       stdout: "pipe",
@@ -161,7 +161,7 @@ test("inspect and generated manifest share canonical operation semantics without
      }];
      export default {plugins:[plugin]};`,
   );
-  const bin = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
+  const bin = fileURLToPath(new URL("./run-adapter.ts", import.meta.url));
   async function run(command: string) {
     const child = Bun.spawn([process.execPath, bin, command, "--root", root, "--json"], {
       stdout: "pipe",
@@ -204,7 +204,7 @@ test("source and built CLI preserve diagnostics from separately bundled applicat
        input:{'~standard':{version:1,vendor:'test',validate:value=>({value})}}}];
      export default {plugins:[plugin]};`,
   );
-  for (const bin of ["../src/bin.ts", "../dist/bin.js"]) {
+  for (const bin of ["./run-adapter.ts", "./run-built-adapter.ts"]) {
     const child = Bun.spawn(
       [
         process.execPath,
@@ -237,7 +237,7 @@ test("Engine diagnostics retain CLI JSON codes and exit-code policy after extrac
   const root = await mkdtemp(join(tmpdir(), "lenso-bin-engine-"));
   directories.push(root);
   await Bun.write(join(root, "lenso.config.ts"), "export default {plugins:[]};");
-  const bin = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
+  const bin = fileURLToPath(new URL("./run-adapter.ts", import.meta.url));
   for (const [command, config, code, exit] of [
     ["check", "{target:'missing'}", "unknown-engine-target", 3],
     [

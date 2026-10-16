@@ -26,9 +26,9 @@ const shutdown = () => {
 };
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
-async function run(args: string[]) {
+async function run(args: string[], program = process.execPath) {
   if (stopping) throw new Error("Workspace startup cancelled.");
-  child = spawn(process.execPath, args, {
+  child = spawn(program, args, {
     cwd: root,
     stdio: "inherit",
     detached: process.platform !== "win32",
@@ -63,12 +63,7 @@ try {
     "--filter=@lenso/cache...",
     "--filter=@lenso/log...",
   ]);
-  await run([
-    "packages/cli/src/bin.ts",
-    "dev",
-    "--workspace",
-    "examples/runtime/lenso.workspace.ts",
-  ]);
+  await run(["dev", "--workspace", "examples/runtime/lenso.workspace.ts"], "lenso");
 } finally {
   clearTimeout(timer);
   process.removeListener("SIGINT", shutdown);

@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const cli = resolve(import.meta.dir, "../src/bin.ts");
+const cli = resolve(import.meta.dir, "./run-adapter.ts");
 async function until(check: () => boolean | Promise<boolean>) {
   const deadline = Date.now() + 8000;
   while (!(await check())) {

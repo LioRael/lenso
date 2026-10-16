@@ -24,7 +24,7 @@ test("existing greeting CLI operation exports standard OTLP only to the local re
         process.execPath,
         "--preload",
         new URL("./telemetry.ts", import.meta.url).pathname,
-        new URL("../../../packages/cli/dist/bin.js", import.meta.url).pathname,
+        new URL("../../../packages/cli/test/run-built-adapter.ts", import.meta.url).pathname,
         "call",
         "greeting",
         "greet",
