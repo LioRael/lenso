@@ -29,7 +29,7 @@ fails without borrowing or stopping the existing listener.
 Once prepared, the direct entry is:
 
 ```sh
-bun packages/cli/src/bin.ts dev --workspace examples/runtime/lenso.workspace.ts
+lenso dev --workspace examples/runtime/lenso.workspace.ts
 ```
 
 `lenso.workspace.ts` declares process boundaries only; `lenso.config.ts` still owns
@@ -163,14 +163,14 @@ its owned kernel on TypeScript edits. Use the outer launcher for selective reloa
 Inspection imports assembly declarations only, without starting Rust:
 
 ```sh
-bun packages/cli/src/bin.ts inspect logs aggregate --root examples/runtime --json
+lenso inspect logs aggregate --root examples/runtime --json
 ```
 
 With an already running kernel and batch, call the declared business operation:
 
 ```sh
 printf '%s\n' '{"logs":[{"level":"info","message":"synthetic request","duration_ms":12}]}' |
-  bun packages/cli/src/bin.ts call logs aggregate --root examples/runtime --stdin --json
+  lenso call logs aggregate --root examples/runtime --stdin --json
 ```
 
 CLI `call` does not load Engine config or start companions. Each call owns a fresh

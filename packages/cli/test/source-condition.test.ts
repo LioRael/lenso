@@ -66,7 +66,11 @@ test("lenso-source runs CLI, types, browser clients and both dev children withou
       join(root, "node_modules/zod"),
     );
     await Bun.write(join(root, "package.json"), '{"type":"module","private":true}');
-    const bin = join(root, "node_modules/@lenso/cli/src/bin.ts");
+    const bin = join(root, "run-adapter.ts");
+    await Bun.write(
+      bin,
+      "import {runAdapter} from '@lenso/cli/adapter'; await runAdapter(process.argv.slice(2));",
+    );
     await Bun.write(
       join(root, "lenso.config.ts"),
       `import { defineApp, definePlugin } from "@lenso/core";

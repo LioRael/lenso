@@ -40,7 +40,7 @@ test.skipIf(!process.env.TASK_TEST_DATABASE_URL)(
         const child = Bun.spawn(
           [
             process.execPath,
-            fileURLToPath(new URL("../../../packages/cli/dist/bin.js", import.meta.url)),
+            fileURLToPath(new URL("../../../packages/cli/test/run-built-adapter.ts", import.meta.url)),
             ...args,
             "--root",
             root,

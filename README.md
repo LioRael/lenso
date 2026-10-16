@@ -64,11 +64,16 @@ Local preparation retains frozen installs, ownership checks and rollback.
 Omit `--runtime-root` to return to the checksum-pinned default. No global link,
 pin change or root lockfile change is needed.
 
+Install the matching Rust `lenso` CLI separately from `LioRael/lenso-cli`; this
+TypeScript package no longer installs an executable. The single-command CLI
+0.2.0 and this adapter change are local candidates awaiting their separate
+release approvals. Historical CLI 0.1.0 does not provide the new module bridge.
+
 The included greeting starts on loopback and reports its actual URL, enabled plugins and readiness. In another terminal:
 
 ```sh
-bun run cli inspect greeting greet --root examples/greeting --json
-bun run cli call greeting greet '{"name":"Ada"}' --root examples/greeting --json
+lenso inspect greeting greet --root examples/greeting --json
+lenso call greeting greet '{"name":"Ada"}' --root examples/greeting --json
 bun run client Ada
 ```
 
@@ -105,7 +110,7 @@ existing greeting preload (SDK initialization happens before the CLI/config):
 
 ```sh
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
-  bun --preload ./examples/greeting/src/telemetry.ts packages/cli/dist/bin.js \
+  BUN_OPTIONS="--preload $(pwd)/examples/greeting/src/telemetry.ts" lenso \
   call greeting greet '{"name":"Ada"}' --root examples/greeting --json
 ```
 
@@ -354,9 +359,9 @@ Use package.json for the pinned tools and scripts. The workspace has one Bun loc
 For same-repository Bun development, explicitly opt in to the `lenso-source` export condition for `@lenso/core`, `@lenso/engine`, `@lenso/cli` and `@lenso/web`:
 
 ```sh
-bun --conditions=lenso-source packages/cli/src/bin.ts inspect greeting greet --root examples/greeting --json
-bun --conditions=lenso-source packages/cli/src/bin.ts call greeting greet --root examples/greeting --stdin --json
-bun --conditions=lenso-source packages/cli/src/bin.ts dev --root examples/greeting
+BUN_OPTIONS=--conditions=lenso-source lenso inspect greeting greet --root examples/greeting --json
+BUN_OPTIONS=--conditions=lenso-source lenso call greeting greet --root examples/greeting --stdin --json
+BUN_OPTIONS=--conditions=lenso-source lenso dev --root examples/greeting
 ```
 
 Supply JSON on stdin for `call`. This path runs current framework source without rebuilding those four packages; other packages still use `dist`. For matching types, add `"customConditions": ["lenso-source"]` to the consumer tsconfig with `moduleResolution: "Bundler"` or `"NodeNext"` (and a compatible `module`). Bun dev forwards custom conditions to both the Engine worker and application process. Browser consumers must use browser-safe entries such as `@lenso/core/browser`, `@lenso/web/client` and `@lenso/web/openapi-client`; enabling this condition does not make server entries browser-safe.

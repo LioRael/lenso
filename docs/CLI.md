@@ -1,6 +1,12 @@
 # CLI and local agent development
 
-Use `lenso help --json` for current commands, flags, side effects and exit codes. Finite commands support one `schemaVersion: 1` envelope on stdout: `{ok:true,data}` or `{ok:false,error}`. Logs use stderr. Exit 0 means success, 2 arguments/input failure, 3 discovery/assembly failure, 1 runtime/build/output failure. `dev --json` is unsupported; its human lifecycle is managed separately. For custom entry readiness, use `reportDevReady` from `@lenso/engine/dev-ready` after successful startup.
+Use the Rust `lenso` executable from `LioRael/lenso-cli`. The TypeScript
+`@lenso/cli` package is an operation library with no executable or npm bin.
+Rust starts Bun and imports `@lenso/cli/adapter` from the selected project;
+this preserves Engine build/watch/setup/cleanup logic without a second CLI.
+For explicit native Go/Python/Rust commands, use `--project lenso.project.json`.
+
+Use `lenso help --json` for current commands, flags, side effects and exit codes. Finite commands support one `schemaVersion: 1` envelope on stdout: `{ok:true,data}` or `{ok:false,error}`. Logs use stderr. Exit 0 means success, 2 arguments/input failure, 3 discovery/assembly failure, 1 runtime/build/output failure. `dev --json` emits lifecycle JSONL through the Rust supervisor; ordinary dev output uses stderr. For custom entry readiness, use `reportDevReady` from `@lenso/engine/dev-ready` after successful startup.
 
 ## Select an application
 
@@ -163,12 +169,12 @@ No listener, scope/audience credential issuance or authorization shortcut is sup
 
 ## Short feedback path
 
-1. Choose one consistent resolution path. Default consumers require rebuilt framework `dist`; use package.json for scripts. Same-repository Bun development can instead run `bun --conditions=lenso-source packages/cli/src/bin.ts ...` to use current core/Engine/CLI/Web source without rebuilding those packages. Add `"customConditions": ["lenso-source"]` to the consumer tsconfig (`moduleResolution: "Bundler"` or `"NodeNext"` with a compatible `module`) for matching types. Other packages still require built `dist`; this does not change default published JS/declaration exports.
+1. Choose one consistent resolution path. Default consumers require rebuilt framework `dist`; use package.json for scripts. Same-repository Bun development can instead run `BUN_OPTIONS=--conditions=lenso-source lenso ...` to use current core/Engine/CLI/Web source without rebuilding those packages. Add `"customConditions": ["lenso-source"]` to the consumer tsconfig (`moduleResolution: "Bundler"` or `"NodeNext"` with a compatible `module`) for matching types. Other packages still require built `dist`; this does not change default published JS/declaration exports.
 2. Inspect the operation, then change its shared schema or service source.
 3. Run the app's typecheck and a focused test. Invoke with `--input-file <path>` or `--stdin` to avoid secrets in shell history; inline JSON remains available for nonsensitive input.
 4. If an already owned HTTP server is relevant, verify its typed client too. Use only owned ports/processes.
 
-For example, run `bun --conditions=lenso-source packages/cli/src/bin.ts inspect greeting greet --root examples/greeting --json`, then pipe nonsensitive input to `bun --conditions=lenso-source packages/cli/src/bin.ts call greeting greet --root examples/greeting --stdin --json`. The same flag works with `dev` and is forwarded to Engine/application subprocesses. Source exports are shipped, but require a TypeScript-capable runtime or bundler; browser clients must still select browser-safe subexports (`@lenso/core/browser`, `@lenso/web/client`, `@lenso/web/openapi-client`).
+For example, run `BUN_OPTIONS=--conditions=lenso-source lenso inspect greeting greet --root examples/greeting --json`, then pipe nonsensitive input to `BUN_OPTIONS=--conditions=lenso-source lenso call greeting greet --root examples/greeting --stdin --json`. The same flag works with `dev` and is forwarded to Engine/application subprocesses. Source exports are shipped, but require a TypeScript-capable runtime or bundler; browser clients must still select browser-safe subexports (`@lenso/core/browser`, `@lenso/web/client`, `@lenso/web/openapi-client`).
 
 Engine's bundle helper also inherits the process's custom conditions, including
 `lenso-source` when explicitly enabled. A target's `bundle({conditions: [...]})`

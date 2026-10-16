@@ -29,7 +29,7 @@
   - Standalone root bundled without optional framework/provider imports.
 - `bun test examples/notes/test/notes.test.ts examples/notes/test/operations.test.ts examples/notes/test/manage.test.ts`:
   **7 passed, 0 failed**, including real CLI inspect/call subprocesses.
-- `bun packages/cli/src/bin.ts inspect notes-operations remove --root examples/notes --json`:
+- `lenso inspect notes-operations remove --root examples/notes --json`:
   existing strict business input and unchanged opt-out assembly.
 - Focused `oxlint --deny-warnings`: **0 warnings, 0 errors**.
 - Focused `oxfmt --check` and `git diff --check`: passed.

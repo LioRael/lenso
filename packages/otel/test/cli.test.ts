@@ -16,7 +16,7 @@ test("actual Bun CLI preload flushes finite command spans without losing JSON/ex
           process.execPath,
           "--preload",
           new URL("./fixtures/cli-preload.ts", import.meta.url).pathname,
-          new URL("../../cli/dist/bin.js", import.meta.url).pathname,
+          new URL("../../cli/test/run-built-adapter.ts", import.meta.url).pathname,
           command,
           "--json",
         ],

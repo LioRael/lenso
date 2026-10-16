@@ -82,12 +82,12 @@ real source is configured, discover and call the shared schema:
 
 ```sh
 # Run from the repository root. Inspect needs no DB or authentication connection.
-bun packages/cli/src/bin.ts inspect tasks submit --root examples/tasks --json
+lenso inspect tasks submit --root examples/tasks --json
 printf '%s\n' '{"reportId":"authorized-daily","rows":[1,2]}' |
-  bun packages/cli/src/bin.ts call tasks submit --root examples/tasks --stdin --json
+  lenso call tasks submit --root examples/tasks --stdin --json
 # Supply the returned jobId as business input, without an actor:
 printf '%s\n' '{"jobId":"<returned-job-id>"}' |
-  bun packages/cli/src/bin.ts call tasks query --root examples/tasks --stdin --json
+  lenso call tasks query --root examples/tasks --stdin --json
 ```
 
 An MCP host can launch `bun /absolute/path/to/examples/tasks/src/mcp.ts` with
