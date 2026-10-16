@@ -1,0 +1,74 @@
+.agents/skills/land/SKILL.md
+  h_9d56aba080c170 217-218,221
+.changeset/single-lenso-command.md
+  h_9d56aba080c170 1-5
+README.md
+  h_9d56aba080c170 67-71,75-76,113,362-364
+docs/CLI.md
+  h_9d56aba080c170 3-9,172,177
+docs/DATABASE.md
+  h_9d56aba080c170 90,92,94,115
+examples/greeting/package.json
+  h_9d56aba080c170 10
+examples/greeting/src/telemetry.test.ts
+  h_9d56aba080c170 27
+examples/notes/RECIPES.md
+  h_9d56aba080c170 46
+examples/notes/test/operations.test.ts
+  h_9d56aba080c170 233
+examples/runtime/README.md
+  h_9d56aba080c170 32,166,173
+examples/runtime/package.json
+  h_9d56aba080c170 8
+examples/tasks/README.md
+  h_9d56aba080c170 85,87,90
+examples/tasks/src/entry.test.ts
+  h_9d56aba080c170 43-45
+package.json
+  h_9d56aba080c170 16-17
+packages/audit/CHECKS.md
+  h_9d56aba080c170 32
+packages/cli/README.md
+  h_9d56aba080c170 1-11
+packages/cli/package.json
+  h_9d56aba080c170 5,24-28,32
+packages/cli/src/adapter.ts
+  h_9d56aba080c170 2,17-82,84-165,167-187,189-283,285-337,339-341,343-366,368-381
+packages/cli/test/application-target.test.ts
+  h_9d56aba080c170 19,223
+packages/cli/test/bin.test.ts
+  h_9d56aba080c170 34,164,207,240
+packages/cli/test/cancellation.test.ts
+  h_9d56aba080c170 191
+packages/cli/test/dev.test.ts
+  h_9d56aba080c170 6
+packages/cli/test/packaging.test.ts
+  h_9d56aba080c170 327-336,758-772
+packages/cli/test/run-adapter.ts
+  h_9d56aba080c170 1-2
+packages/cli/test/run-built-adapter.ts
+  h_9d56aba080c170 1-2
+packages/cli/test/source-condition.test.ts
+  h_9d56aba080c170 69-73
+packages/cli/test/templates.test.ts
+  h_9d56aba080c170 12,59-72
+packages/cli/test/workspace.test.ts
+  h_9d56aba080c170 6-7
+packages/otel/README.md
+  h_9d56aba080c170 45
+packages/otel/test/cli.test.ts
+  h_9d56aba080c170 19
+scripts/dev-runtime-workspace.ts
+  h_9d56aba080c170 29,31,66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5958333953b4d5f550892cbc2c73d835108f2d99",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
