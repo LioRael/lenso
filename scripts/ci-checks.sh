@@ -4,6 +4,11 @@ set -euo pipefail
 unset LENSO_TEST_DATABASE_URL TASK_TEST_DATABASE_URL SCHEDULER_TEST_DATABASE_URL DATABASE_URL
 unset WEBHOOK_TEST_DATABASE_URL
 unset AUTHORIZATION_TEST_PG_URL AUTHORIZATION_TEST_PG_OWNED
+# Fail cheap tooling checks before starting the owned integration services.
+bun run lint
+bun run fmt:check
+bun run scripts:test
+
 # These checks create and stop only their own cluster, never a shared service.
 for binary in initdb pg_ctl postgres createdb; do
   command -v "$binary" >/dev/null || { echo "Required PostgreSQL binary missing: $binary" >&2; exit 1; }
@@ -24,14 +29,11 @@ for database in notes_ci tasks_package_ci tasks_example_ci scheduler_ci authoriz
   createdb -h 127.0.0.1 -p "$port" -U lenso_ci "$database"
 done
 
-bun run lint
-bun run fmt:check
 bun run build
 bun run typecheck
 # Real workerd and TLS fixtures have wall-clock deadlines. Keep every workspace
 # assertion, but avoid competing fixture processes on the shared CI runner.
 LENSO_REQUIRE_POSTGRES=1 bun node_modules/turbo/bin/turbo run test --concurrency=1
-bun run release:test
 LENSO_TEST_DATABASE_URL="postgres://lenso_ci@127.0.0.1:$port/notes_ci" \
   bun test examples/notes/test/postgres.test.ts
 TASK_TEST_DATABASE_URL="postgres://lenso_ci@127.0.0.1:$port/tasks_package_ci" \

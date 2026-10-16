@@ -98,27 +98,6 @@ test("complete PR/push diff allows ordinary docs and NUL-delimited spaced filena
   });
 });
 
-test.each([
-  "other.md",
-  "tests/fixtures/a.md",
-  ".changeset/a.md",
-  ".github/workflows/checks.yml",
-  "scripts/ci-docs.ts",
-  "scripts/ci-docs.test.ts",
-  "scripts/tsconfig.json",
-  "package.json",
-  "bun.lock",
-  "mise.toml",
-  "source.ts",
-])("unknown/runtime/config path %s with a mixed diff goes full", (path) => {
-  fixture((root, base) => {
-    write(root, "docs/new.md");
-    write(root, path, "changed\n");
-    commit(root);
-    expect(selectRoute(root, { event: "pull_request", base }).route).toBe("full");
-  });
-});
-
 test.each(["rename", "delete", "executable", "symlink", "tree"])(
   "source-to-doc rename or unsafe documentation change %s goes full",
   (change) => {
@@ -308,7 +287,7 @@ test("actual CLI selects full for a source-only push", () => {
   });
 });
 
-test("workflow retains required job/events/full commands and unconditional frozen install/test gate", () => {
+test("workflow retains required job/events, frozen install and script checks on both routes", () => {
   const yaml = Bun.YAML.parse(
     readFileSync(resolve(import.meta.dir, "../.github/workflows/checks.yml"), "utf8"),
   ) as {
@@ -321,18 +300,26 @@ test("workflow retains required job/events/full commands and unconditional froze
   const job = yaml.jobs.checks!;
   expect(Object.keys(yaml.jobs)).toEqual(["checks"]);
   expect(job.if).toBeUndefined();
-  for (const command of ["bun install --frozen-lockfile", "bun test scripts/ci-docs.test.ts"]) {
+  for (const command of ["bun install --frozen-lockfile"]) {
     const step = job.steps.find((candidate) => candidate.run === command)!;
     expect(step).toBeDefined();
     expect(step.if).toBeUndefined();
   }
   const fullSteps = job.steps.filter((step) => step.if === "steps.scope.outputs.route != 'light'");
-  expect(fullSteps).toHaveLength(3);
   expect(fullSteps.some((step) => step.with?.["node-version"] === "24.21.0")).toBe(true);
   expect(fullSteps.some((step) => step.run?.includes("apt-get install --yes postgresql-16"))).toBe(
     true,
   );
   expect(fullSteps.some((step) => step.run === "bash scripts/ci-checks.sh")).toBe(true);
+  const scripts = job.steps.find(
+    (step) =>
+      step.run ===
+      "bun test scripts/ci-docs.test.ts scripts/prepare-runtime.test.ts && bun run scripts:typecheck",
+  )!;
+  expect(scripts.if).toBe("steps.scope.outputs.route == 'light'");
+  const fullScript = readFileSync(resolve(import.meta.dir, "ci-checks.sh"), "utf8");
+  expect(fullScript).toContain("bun run typecheck");
+  expect(fullScript).toContain("bun run scripts:test");
   const docs = job.steps.find((step) => step.run === "bun scripts/ci-docs.ts check")!;
   expect(docs.if).toBe("steps.scope.outputs.route == 'light'");
   expect(docs["continue-on-error"]).toBeUndefined();

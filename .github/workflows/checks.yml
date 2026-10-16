@@ -33,10 +33,10 @@ jobs:
       - name: Prepare pinned Runtime SDK
         run: bun run prepare:runtime
       - run: bun install --frozen-lockfile
-      - name: Docs routing regression tests
-        run: bun test scripts/ci-docs.test.ts
-      - name: Runtime SDK preparation regression tests
-        run: bun run runtime:test && bun run runtime:typecheck
+      # Full checks run these once through ci-checks.sh.
+      - name: Script regression tests and types
+        if: steps.scope.outputs.route == 'light'
+        run: bun test scripts/ci-docs.test.ts scripts/prepare-runtime.test.ts && bun run scripts:typecheck
       - name: Documentation checks
         if: steps.scope.outputs.route == 'light'
         env:

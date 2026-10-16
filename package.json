@@ -9,12 +9,10 @@
   ],
   "scripts": {
     "prepare:runtime": "bun scripts/prepare-runtime.ts",
-    "runtime:typecheck": "tsc --noEmit -p scripts/tsconfig.json",
-    "runtime:test": "bun test scripts/prepare-runtime.test.ts",
     "dev:runtime": "bun scripts/dev-runtime-workspace.ts",
     "build": "turbo run build",
-    "typecheck": "turbo run typecheck && bun run release:typecheck",
-    "test": "turbo run test && bun run release:test",
+    "typecheck": "turbo run typecheck && bun run scripts:typecheck",
+    "test": "turbo run test && bun run scripts:test",
     "generate": "bun packages/cli/src/bin.ts generate --root examples/greeting",
     "dev": "bun run build && bun packages/cli/src/bin.ts dev --root examples/greeting",
     "cli": "bun packages/cli/src/bin.ts",
@@ -27,9 +25,9 @@
     "release:status": "bun scripts/release-version.ts status",
     "release:version": "bun scripts/release-version.ts version",
     "release:verify": "bun scripts/release-verify.ts",
-    "release:typecheck": "tsc --noEmit -p scripts/tsconfig.json",
-    "release:test": "bun test scripts/release.test.ts scripts/release-ci.test.ts scripts/release-select.test.ts",
-    "release:prepare": "bun scripts/release-ci.ts prepare"
+    "release:prepare": "bun scripts/release-ci.ts prepare",
+    "scripts:typecheck": "tsc --noEmit -p scripts/tsconfig.json",
+    "scripts:test": "bun test scripts/ci-docs.test.ts scripts/prepare-runtime.test.ts scripts/release.test.ts scripts/release-ci.test.ts scripts/release-select.test.ts"
   },
   "devDependencies": {
     "@changesets/apply-release-plan": "8.1.1",

@@ -199,6 +199,16 @@ full scope; their definitions are in root `package.json` and `turbo.json`.
 Do not invent task names or run package publishing/deployment as verification.
 Documentation- or skill-only changes need content/link/frontmatter validation and
 diff checks, not unrelated runtime builds.
+Changes to CI, preparation or release scripts need `bun run scripts:test` and
+`bun run scripts:typecheck`, plus shell syntax/workflow validation for changed
+entrypoints. The root test/typecheck commands already include these script gates;
+do not repeat them after a successful root run on the same candidate.
+
+Reuse successful local evidence only when candidate SHA, worktree content,
+dependency lockfile, toolchain, command and relevant environment still match.
+Record those inputs and the result; a source/base update invalidates affected
+checks. Cached builds do not replace real packaged-consumer or integration tests.
+Required remote checks still must pass on the current PR head.
 
 For service input, CLI exposure, diagnostics or generated-output changes, follow
 `docs/CLI.md`. When greeting's declared operation is affected, run:
