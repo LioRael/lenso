@@ -40,7 +40,7 @@
     "@lenso/runtime-sdk": "workspace:*"
   },
   "peerDependencies": {
-    "@lenso/engine": "^0.6.0",
+    "@lenso/engine": "^0.6.0 || ^0.7.0",
     "@lenso/manage": "^0.5.2",
     "@lenso/runtime-sdk": "0.1.0"
   },

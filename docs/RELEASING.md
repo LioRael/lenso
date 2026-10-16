@@ -292,6 +292,19 @@ approval or package ownership:
    archive file lists/hashes and all preparation checks. Artifacts expire in
    14 days. Do not approve stale or unexplained batches.
 
+For a deliberately scoped candidate, `release:status` and `release:version`
+accept repeated `--package <name>` only with explicit `--changeset <id>` selection.
+All explicit changeset targets must be included. Official Changesets still computes
+versions and changelogs; implicit downstream releases are saved as a pending
+changeset, not versioned or discarded. Review source peer compatibility and the
+whole workspace before approving such a candidate. An omitted package is not an
+approval to publish it. Fixed/linked groups cannot be split by this option.
+
+The self-review/bypass requirements above are written policy. The workflow and
+script do not query or assert those GitHub Environment settings. Resolve any
+policy discrepancy through an explicit owner decision; do not automatically
+change a sole-reviewer Environment and make approval impossible.
+
 The local script guard refuses publication without supported-event/main/protected-job
 markers and OIDC environment, and refuses common token fallback variables.
 These markers are not cryptographic proof of an Environment approval: the real

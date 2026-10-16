@@ -279,7 +279,7 @@
     },
     "packages/cli": {
       "name": "@lenso/cli",
-      "version": "0.20.1",
+      "version": "0.21.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
@@ -305,7 +305,7 @@
     },
     "packages/engine": {
       "name": "@lenso/engine",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@opentelemetry/api": "1.9.1",

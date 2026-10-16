@@ -64,10 +64,12 @@ Local preparation retains frozen installs, ownership checks and rollback.
 Omit `--runtime-root` to return to the checksum-pinned default. No global link,
 pin change or root lockfile change is needed.
 
-Install the matching Rust `lenso` CLI separately from `LioRael/lenso-cli`; this
-TypeScript package no longer installs an executable. The single-command CLI
-0.2.0 and this adapter change are local candidates awaiting their separate
-release approvals. Historical CLI 0.1.0 does not provide the new module bridge.
+Install the [Rust `lenso` CLI v0.2.0](https://github.com/LioRael/lenso-cli/releases/tag/v0.2.0)
+separately; this TypeScript package no longer installs an executable. The matching
+adapter candidates are `@lenso/cli@0.21.0` and `@lenso/engine@0.7.0`; preparation
+has not published them to npm. Registry CLI 0.20.1 lacks the adapter export.
+See the [minimal registry release candidate](docs/TS-ADAPTER-RELEASE.md) for exact
+scope and clean-consumer evidence. Historical Rust CLI 0.1.0 lacks this module bridge.
 
 The included greeting starts on loopback and reports its actual URL, enabled plugins and readiness. In another terminal:
 
