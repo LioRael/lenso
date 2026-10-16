@@ -2,6 +2,7 @@
   "name": "@lenso/cli",
   "version": "0.20.1",
   "private": false,
+  "description": "TypeScript operation APIs and internal Bun adapter for the Rust lenso command",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -44,6 +45,5 @@
     "@lenso/web": "workspace:^",
     "@orpc/server": "2.0.0-beta.42",
     "zod": "4.6.5"
-  },
-  "description": "TypeScript operation APIs and internal Bun adapter for the Rust lenso command"
+  }
 }
