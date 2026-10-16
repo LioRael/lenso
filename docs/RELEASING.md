@@ -126,7 +126,7 @@ From the repository root:
 
 ```sh
 bun install --frozen-lockfile
-bun run release:test
+bun run scripts:test
 bun run typecheck
 bun run lint
 bun run fmt:check
