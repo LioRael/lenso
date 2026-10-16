@@ -1,0 +1,14 @@
+packages/auth/test/read-scope.test.ts
+  h_9d56aba080c170 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bfe2d1d389b1f019c2a30b9f917f015340259d62",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
