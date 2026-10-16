@@ -324,8 +324,16 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
     await run(template, ["install", "--ignore-scripts"]);
     await run(template, ["run", "typecheck"]);
     await run(template, ["run", "test"]);
-    await run(template, ["run", "build"]);
-    const inspected = JSON.parse(await run(template, ["run", "inspect"]));
+    // Framework packaging tests invoke the shipped module; Rust binary acceptance is separate.
+    const templateAdapter = joinPath(template, "invoke-adapter.ts");
+    await Bun.write(
+      templateAdapter,
+      `import {runAdapter} from "@lenso/cli/adapter"; await runAdapter(process.argv.slice(2));`,
+    );
+    await run(template, [templateAdapter, "build"]);
+    const inspected = JSON.parse(
+      await run(template, [templateAdapter, "inspect", "greeting", "greet", "--json"]),
+    );
     expect(inspected.data.operations[0].pluginId).toBe("greeting");
   } finally {
     await rm(temporary, { recursive: true, force: true });
@@ -747,7 +755,21 @@ async function verifyConsumer() {
       clearTimeout(timeout);
     }
   }
-  const installedBin = join(process.cwd(), "node_modules/@lenso/cli/dist/bin.js");
+  const installedManifest = await Bun.file(
+    join(process.cwd(), "node_modules/@lenso/cli/package.json"),
+  ).json();
+  assert.equal(installedManifest.bin, undefined);
+  assert.equal(await Bun.file(join(process.cwd(), "node_modules/.bin/lenso")).exists(), false);
+  assert.equal(
+    await Bun.file(join(process.cwd(), "node_modules/@lenso/cli/dist/bin.js")).exists(),
+    false,
+  );
+  const adapterModule = join(process.cwd(), "node_modules/@lenso/cli/dist/adapter.js");
+  const installedBin = join(process.cwd(), "invoke-adapter.ts");
+  await Bun.write(
+    installedBin,
+    `import {runAdapter} from ${JSON.stringify(adapterModule)}; await runAdapter(process.argv.slice(2));`,
+  );
   const installedInspect = await cli(installedBin, ["inspect", "service", "run"]);
   assert.equal(installedInspect.data.operations[0].method, "run");
   assert.equal(await Bun.file(join(finite, "runtime-events")).exists(), false);

@@ -87,11 +87,11 @@ not exposed business operations.
 From the repository root, use the standard CLI for discovery and invocation:
 
 ```sh
-bun packages/cli/src/bin.ts inspect notes-operations create --root examples/notes --json
+lenso inspect notes-operations create --root examples/notes --json
 printf '%s' '{"title":"From the operation registry"}' |
-  bun packages/cli/src/bin.ts call notes-operations create --root examples/notes --stdin --json
+  lenso call notes-operations create --root examples/notes --stdin --json
 printf '%s' '{}' |
-  bun packages/cli/src/bin.ts call notes-operations list --root examples/notes --stdin --json
+  lenso call notes-operations list --root examples/notes --stdin --json
 ```
 
 Static inspection does not open databases, initialize storage, verify a session
@@ -112,7 +112,7 @@ Local configuration also exposes `notes-file-operations.metadata` and
 
 ```sh
 printf '%s' '{"fileId":"<file UUID>"}' |
-  bun packages/cli/src/bin.ts call notes-file-operations metadata --root examples/notes --stdin --json
+  lenso call notes-file-operations metadata --root examples/notes --stdin --json
 ```
 
 File authorization revalidates the actual Auth actor for the requested

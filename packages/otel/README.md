@@ -42,7 +42,7 @@ caller-supplied exporter: a stuck cleanup keeps ownership reserved.
 
 For a finite CLI command, preload a module that calls
 `bootstrapTelemetry({serviceName:"my-cli", flushOnCliExit:true})`, then run
-`bun --preload ./telemetry.ts ./node_modules/@lenso/cli/dist/bin.js help --json`.
+`BUN_OPTIONS="--preload ./telemetry.ts" lenso help --json`.
 The CLI ends its command span and awaits bounded flush/shutdown without changing
 the command exit code. Do not use the finite-command preload for `dev` child
 process instrumentation.

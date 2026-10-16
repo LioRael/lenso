@@ -1,4 +1,14 @@
-# Development output
+# TypeScript operation API and internal adapter
+
+The only installed command is the Rust `lenso` executable from `LioRael/lenso-cli`.
+This package provides `defineOperation`, inspection/invocation APIs and the explicit
+`@lenso/cli/adapter` module used through Bun. It has no `bin`, executable entry or
+compatibility alias. Importing the adapter does not run a command or modify console.
+
+Install this library in the selected TS project and build framework artifacts before
+source-checkout consumers. `lenso inspect/call/build/dev/check/generate --root DIR`
+loads that project's installed module directly; Rust never invokes a second CLI.
+Keep Bun available. No Rust compiler is needed for ordinary TS application work.
 
 `lenso dev --root <project>` watches the entry and restarts a fresh Bun process.
 The human startup view uses stderr. TTY output has modest colors; `NO_COLOR`,

@@ -230,7 +230,7 @@ test("Notes registry validates before setup and authenticates all business/file 
 test("real inspect/call CLI uses the Notes config without actor input or implicit migration", async () => {
   const directory = await mkdtemp(join(await realpath(tmpdir()), "notes-cli-"));
   const filename = join(directory, "notes.sqlite");
-  const cli = resolve(import.meta.dir, "../../../packages/cli/src/bin.ts");
+  const cli = resolve(import.meta.dir, "../../../packages/cli/test/run-adapter.ts");
   const root = resolve(import.meta.dir, "..");
   const key = "03".repeat(32);
   const env = {
