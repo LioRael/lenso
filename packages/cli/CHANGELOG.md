@@ -1,5 +1,22 @@
 # @lenso/cli
 
+## 0.21.0
+
+### Minor Changes
+
+- b21dc1f: Add explicit development workspaces for native TypeScript applications and
+  separately built services. Start dependencies after readiness, report candidate
+  and retained-instance state, rebuild affected services, and close dependents
+  before their dependencies. Expose the workspace through `lenso dev --workspace`
+  without changing single-application development or business operation allowlists.
+- f38c336: Remove the standalone TypeScript lenso executable. Keep operation APIs and expose an internal adapter module for the sole Rust lenso command; Engine generation and development lifecycles remain shared.
+
+### Patch Changes
+
+- f0cab26: Align the two shipped Engine extension examples with the Engine 0.6 and 0.7 peer contracts and verify compatibility in the packed-consumer test.
+- Updated dependencies [b21dc1f]
+  - @lenso/engine@0.7.0
+
 ## 0.20.1
 
 ### Patch Changes

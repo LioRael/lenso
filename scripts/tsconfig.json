@@ -1,5 +1,11 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": { "noEmit": true },
-  "include": ["release*.ts", "ci-docs*.ts", "prepare-runtime*.ts", "dev-runtime-workspace.ts"]
+  "include": [
+    "release*.ts",
+    "ci-docs*.ts",
+    "prepare-runtime*.ts",
+    "dev-runtime-workspace.ts",
+    "verify-adapter-consumer.ts"
+  ]
 }

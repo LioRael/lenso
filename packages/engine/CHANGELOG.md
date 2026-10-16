@@ -1,5 +1,15 @@
 # @lenso/engine
 
+## 0.7.0
+
+### Minor Changes
+
+- b21dc1f: Add explicit development workspaces for native TypeScript applications and
+  separately built services. Start dependencies after readiness, report candidate
+  and retained-instance state, rebuild affected services, and close dependents
+  before their dependencies. Expose the workspace through `lenso dev --workspace`
+  without changing single-application development or business operation allowlists.
+
 ## 0.6.0
 
 ### Minor Changes
