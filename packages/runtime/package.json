@@ -1,6 +1,6 @@
 {
   "name": "@lenso/runtime",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "files": [
     "dist",
@@ -40,8 +40,8 @@
     "@lenso/runtime-sdk": "workspace:*"
   },
   "peerDependencies": {
-    "@lenso/engine": "^0.6.0 || ^0.7.0",
-    "@lenso/manage": "^0.5.2",
+    "@lenso/engine": "^0.7.1",
+    "@lenso/manage": "^0.5.4",
     "@lenso/runtime-sdk": "0.1.0"
   },
   "peerDependenciesMeta": {

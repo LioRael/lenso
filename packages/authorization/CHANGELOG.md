@@ -1,5 +1,18 @@
 # @lenso/authorization
 
+## 0.3.4
+
+### Patch Changes
+
+- 7664344: Accept Engine 0.6 and 0.7 in optional integrations after whole-workspace compatibility verification. Keep these packages pending for a separately reviewed release.
+- Updated dependencies [4323bcd]
+- Updated dependencies [7664344]
+- Updated dependencies [bfd8133]
+  - @lenso/auth@0.6.0
+  - @lenso/manage@0.5.4
+  - @lenso/core@0.4.0
+  - @lenso/engine@0.7.1
+
 ## 0.3.3
 
 ### Patch Changes

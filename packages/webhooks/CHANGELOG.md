@@ -1,5 +1,27 @@
 # @lenso/webhooks
 
+## 0.3.0
+
+### Minor Changes
+
+- f01f0e0: Add an optional bounded, signed inbound receiver and host-owned PostgreSQL inbox
+  that atomically couples event-ID receipts with business writes. Provide explicit
+  plugin assembly without adding a listener, queue, automatic migration or secret source.
+
+### Patch Changes
+
+- 7664344: Accept Engine 0.6 and 0.7 in optional integrations after whole-workspace compatibility verification. Keep these packages pending for a separately reviewed release.
+- Updated dependencies [f86cfae]
+- Updated dependencies [7664344]
+- Updated dependencies [7664344]
+- Updated dependencies [bfd8133]
+  - @lenso/tasks@0.5.0
+  - @lenso/audit@0.3.4
+  - @lenso/manage@0.5.4
+  - @lenso/core@0.4.0
+  - @lenso/limits@0.2.2
+  - @lenso/engine@0.7.1
+
 ## 0.2.2
 
 ### Patch Changes

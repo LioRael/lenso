@@ -1,5 +1,16 @@
 # @lenso/auth
 
+## 0.6.0
+
+### Minor Changes
+
+- 4323bcd: Add OAuth sources that require configured operation scopes while reusing ordinary Auth membership and policy checks in one verification. Bind OAuth sources to their human realm and recheck access expiry after permission reads. Distinguish malformed OAuth request JSON/UTF-8 (400) from backend failures (503), and document session renewal scheduling and expiry recovery.
+
+### Patch Changes
+
+- Updated dependencies [bfd8133]
+  - @lenso/core@0.4.0
+
 ## 0.5.4
 
 ### Patch Changes

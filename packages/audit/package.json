@@ -1,6 +1,6 @@
 {
   "name": "@lenso/audit",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -68,11 +68,11 @@
     "zod": "4.6.5"
   },
   "peerDependencies": {
-    "@lenso/auth": "^0.5.0",
-    "@lenso/core": "^0.3.1",
-    "@lenso/engine": "^0.6.0 || ^0.7.0",
-    "@lenso/manage": "^0.5.2",
-    "@lenso/tasks": "^0.4.0",
+    "@lenso/auth": "^0.6.0",
+    "@lenso/core": "^0.4.0",
+    "@lenso/engine": "^0.7.1",
+    "@lenso/manage": "^0.5.4",
+    "@lenso/tasks": "^0.5.0",
     "@opentelemetry/api": "1.9.1",
     "drizzle-orm": "0.45.3",
     "zod": "4.6.5"
