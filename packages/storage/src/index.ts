@@ -183,6 +183,7 @@ export function validateKey(key: string): void {
 
 export function validateContentType(contentType: string): void {
   if (
+    typeof contentType !== "string" ||
     !contentType ||
     contentType.length > 1024 ||
     [...contentType].some(

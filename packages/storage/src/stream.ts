@@ -2,6 +2,15 @@ import { StorageError, validateContentType, type PutObjectInput } from "./index"
 
 export function validateUpload(input: PutObjectInput): void {
   if (input.contentType !== undefined) validateContentType(input.contentType);
+  if (
+    input.customMetadata !== undefined &&
+    (input.customMetadata === null ||
+      typeof input.customMetadata !== "object" ||
+      Array.isArray(input.customMetadata) ||
+      Object.values(input.customMetadata).some((value) => typeof value !== "string"))
+  ) {
+    throw new StorageError("invalid-input", "Custom metadata must be a string record");
+  }
   for (const [name, value] of [
     ["size", input.size],
     ["maxBytes", input.maxBytes],
@@ -14,6 +23,64 @@ export function validateUpload(input: PutObjectInput): void {
     throw new StorageError("too-large", "Upload exceeds the size limit");
   }
   input.signal?.throwIfAborted();
+}
+
+/** Keep provider reads pull-based and interrupt pending reads after get() resolves. */
+export function checkedDownload(
+  source: ReadableStream<Uint8Array>,
+  signal: AbortSignal | undefined,
+  mapError: (error: unknown) => StorageError,
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let ended = false;
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  const detach = () => signal?.removeEventListener("abort", abort);
+  async function cancel(reason?: unknown) {
+    if (ended) return;
+    ended = true;
+    detach();
+    try {
+      await reader.cancel(reason);
+    } catch (error) {
+      throw mapError(error);
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  function abort() {
+    const error = new StorageError("aborted", "Download cancelled", { cause: signal?.reason });
+    controller.error(error);
+    void cancel(error).catch(() => {});
+  }
+  return new ReadableStream<Uint8Array>(
+    {
+      start(value) {
+        controller = value;
+        signal?.addEventListener("abort", abort, { once: true });
+        if (signal?.aborted) abort();
+      },
+      async pull(value) {
+        try {
+          const chunk = await reader.read();
+          if (ended) return;
+          if (chunk.done) {
+            ended = true;
+            detach();
+            reader.releaseLock();
+            value.close();
+          } else value.enqueue(chunk.value);
+        } catch (error) {
+          if (ended) return;
+          ended = true;
+          detach();
+          reader.releaseLock();
+          value.error(mapError(error));
+        }
+      },
+      cancel,
+    },
+    { highWaterMark: 0 },
+  );
 }
 
 /** Pull-based counting also interrupts a source blocked in read() on cancellation. */
