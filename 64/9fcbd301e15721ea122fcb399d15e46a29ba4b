@@ -1,0 +1,14 @@
+README.md
+  h_9d56aba080c170 67-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "649fcbd301e15721ea122fcb399d15e46a29ba4b",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

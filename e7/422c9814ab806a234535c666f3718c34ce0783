@@ -1,0 +1,44 @@
+.changeset/auth-interactive-http.md
+  h_9d56aba080c170 1-8
+packages/auth/README.md
+  h_9d56aba080c170 17-19,30-107,275-278
+packages/auth/package.json
+  h_9d56aba080c170 28-39,75
+packages/auth/src/access-owner.ts
+  h_9d56aba080c170 1-2
+packages/auth/src/browser.ts
+  h_9d56aba080c170 1-27
+packages/auth/src/core.ts
+  h_9d56aba080c170 2,169,178-179,305,362-363
+packages/auth/src/errors.ts
+  h_9d56aba080c170 5-6,13
+packages/auth/src/fetch.ts
+  h_9d56aba080c170 67-74
+packages/auth/src/http.ts
+  h_9d56aba080c170 1-484
+packages/auth/src/interactive-owner.ts
+  h_9d56aba080c170 1
+packages/auth/src/interactive.ts
+  h_9d56aba080c170 1-128
+packages/auth/src/orpc.ts
+  h_9d56aba080c170 17-22
+packages/auth/src/sessions.ts
+  h_9d56aba080c170 338,343
+packages/auth/test/auth.test.ts
+  h_9d56aba080c170 449-460
+packages/auth/test/http.test.ts
+  h_9d56aba080c170 1-371
+packages/auth/test/sessions.test.ts
+  h_9d56aba080c170 189,191-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7422c9814ab806a234535c666f3718c34ce0783",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

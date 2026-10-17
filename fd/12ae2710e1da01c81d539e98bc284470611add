@@ -1,0 +1,32 @@
+bun.lock
+  h_9d56aba080c170 8-9,11-14,22-25,93,566,1018
+docs/RELEASING.md
+  h_9d56aba080c170 45-46,49-67,88-97
+examples/runtime/package.json
+  h_9d56aba080c170 22
+package.json
+  h_9d56aba080c170 7-8,27-28,35-36,38-41
+packages/runtime/package.json
+  h_9d56aba080c170 36
+scripts/release-ci.test.ts
+  h_9d56aba080c170 3,379-382,387,391-402,412,420,444-448,459-461
+scripts/release-verify.ts
+  h_9d56aba080c170 47-53
+scripts/release-version.sh
+  h_9d56aba080c170 3
+scripts/release-version.ts
+  h_9d56aba080c170 1-85
+scripts/release.test.ts
+  h_9d56aba080c170 5,65-79,189-191,205-210,237-250,262-265,278-279,282-286,300,327-331,335-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd12ae2710e1da01c81d539e98bc284470611add",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+packages/mcp/test/adapter.test.ts
+  h_9d56aba080c170 203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f8765b8fc6ca543151e3bc52f416ceeb89618525",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

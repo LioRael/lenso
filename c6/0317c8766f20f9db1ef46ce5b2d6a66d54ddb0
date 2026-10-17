@@ -1,0 +1,94 @@
+.agents/skills/land/SKILL.md
+  h_9d56aba080c170 115,120-127
+.changeset/quick-areas-rest.md
+  h_9d56aba080c170 1-7
+.github/workflows/checks.yml
+  h_9d56aba080c170 22,33-34,38-39
+.github/workflows/release.yml
+  h_9d56aba080c170 45,66,70-71,107
+.github/workflows/version.yml
+  h_9d56aba080c170 21,25-26
+.gitignore
+  h_9d56aba080c170 9-11
+README.md
+  h_9d56aba080c170 30,35-39
+bun.lock
+  h_9d56aba080c170 9,75-88,149,152,183,186,240,243,361,420,423,449,506,509-510,545-566,981-982,1005-1008,1679-1682
+docs/RELEASING.md
+  h_9d56aba080c170 6,26,32,277
+examples/runtime/.gitignore
+  h_9d56aba080c170 1
+examples/runtime/README.md
+  h_9d56aba080c170 1-100
+examples/runtime/lenso.config.ts
+  h_9d56aba080c170 1-18
+examples/runtime/lenso.engine.ts
+  h_9d56aba080c170 1-12
+examples/runtime/package.json
+  h_9d56aba080c170 1-23
+examples/runtime/src/companions.ts
+  h_9d56aba080c170 1-30
+examples/runtime/src/contracts.ts
+  h_9d56aba080c170 1-24
+examples/runtime/src/dev.ts
+  h_9d56aba080c170 1-77
+examples/runtime/src/generated/logs.ts
+  h_9d56aba080c170 1-236
+examples/runtime/src/plugins.ts
+  h_9d56aba080c170 1-70
+examples/runtime/src/server.ts
+  h_9d56aba080c170 1-46
+examples/runtime/tsconfig.json
+  h_9d56aba080c170 1-4
+mise.toml
+  h_9d56aba080c170 2
+package.json
+  h_9d56aba080c170 10-12,34,42,44
+packages/runtime/README.md
+  h_9d56aba080c170 1-137
+packages/runtime/package.json
+  h_9d56aba080c170 1-51
+packages/runtime/src/engine.ts
+  h_9d56aba080c170 1-189
+packages/runtime/src/index.ts
+  h_9d56aba080c170 1-129
+packages/runtime/src/manage.ts
+  h_9d56aba080c170 1-57
+packages/runtime/test/lifecycle.test.ts
+  h_9d56aba080c170 1-282
+packages/runtime/test/manage.test.ts
+  h_9d56aba080c170 1-55
+packages/runtime/tsconfig.build.json
+  h_9d56aba080c170 1-11
+packages/runtime/tsconfig.json
+  h_9d56aba080c170 1-5
+scripts/prepare-runtime.test.ts
+  h_9d56aba080c170 1-204
+scripts/prepare-runtime.ts
+  h_9d56aba080c170 1-237
+scripts/runtime-sdk.json
+  h_9d56aba080c170 1-6
+scripts/tsconfig.json
+  h_9d56aba080c170 4
+templates/README.md
+  h_9d56aba080c170 4
+templates/bun-web/package.json
+  h_9d56aba080c170 30
+templates/cli/package.json
+  h_9d56aba080c170 29
+templates/workers/package.json
+  h_9d56aba080c170 30
+templates/workspace/package.json
+  h_9d56aba080c170 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c60317c8766f20f9db1ef46ce5b2d6a66d54ddb0",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

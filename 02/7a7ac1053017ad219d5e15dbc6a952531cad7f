@@ -1,0 +1,16 @@
+examples/tasks/src/entry.test.ts
+  h_9d56aba080c170 43-45
+packages/cli/package.json
+  h_9d56aba080c170 5,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "027a7ac1053017ad219d5e15dbc6a952531cad7f",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
