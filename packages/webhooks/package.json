@@ -31,13 +31,21 @@
       "types": "./dist/manage.d.ts",
       "import": "./dist/manage.js"
     },
-    "./migrations/*": "./migrations/*"
+    "./migrations/*": "./migrations/*",
+    "./receiver": {
+      "types": "./dist/receiver.d.ts",
+      "import": "./dist/receiver.js"
+    },
+    "./receiver-postgres": {
+      "types": "./dist/receiver-postgres.d.ts",
+      "import": "./dist/receiver-postgres.js"
+    }
   },
   "scripts": {
     "lint": "oxlint src test examples --deny-warnings",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test test",
-    "build": "rm -rf dist && bun build src/index.ts src/postgres.ts src/plugin.ts src/manage.ts --root src --outdir dist --target node --packages external --splitting && tsc -p tsconfig.build.json"
+    "build": "rm -rf dist && bun build src/index.ts src/postgres.ts src/plugin.ts src/manage.ts src/receiver.ts src/receiver-postgres.ts --root src --outdir dist --target node --packages external --splitting && tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@lenso/tasks": "workspace:^",
