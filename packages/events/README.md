@@ -1,16 +1,16 @@
 # @lenso/events
 
-Explicit, durable event fanout for Bun SQLite and PostgreSQL. This package owns only events and
+Explicit, durable event fanout for Bun SQLite, PostgreSQL and Workers/D1. This package owns only events and
 per-subscription delivery. Notifications and Scheduler keep their specialized
 outboxes; Realtime remains an invalidation signal.
 
-The supplied durable stores are **Native-only (Bun)**. `@lenso/events/sqlite` is a
+The SQLite and PostgreSQL stores are **Native-only (Bun)**. `@lenso/events/sqlite` is a
 Bun-conditional export and is unavailable to Workers, browsers and Node.js. It
 accepts a borrowed `bun:sqlite` connection; it never opens one on import. The root
 and `/plugin` entries contain no SQLite imports. `/postgres` borrows a Bun SQL
 PostgreSQL pool; `/async` and `/async-plugin` contain no database driver imports.
-No Workers/D1 store is supplied;
-using the portable service there requires an application-provided `EventStore`.
+`/d1` accepts a borrowed Cloudflare D1 binding and uses the portable async service;
+see [Workers/D1 semantics and local acceptance](docs/D1.md).
 
 ```ts
 import { Database } from "bun:sqlite";
@@ -88,7 +88,7 @@ For atomic business writes plus publication, use the **same** SQLite connection
 and synchronous `db.transaction(() => { businessWrite(); events.publish(event); })()`.
 Nested store transactions use savepoints. Separate databases cannot provide this
 atomicity. SQLite connection configuration (busy timeout, durability, backup) is
-application-owned. No pruning or D1 adapter is supplied.
+application-owned. No pruning is supplied.
 
 ## PostgreSQL and asynchronous stores
 

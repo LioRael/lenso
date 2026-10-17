@@ -1,4 +1,5 @@
 import { createD1EventStore, initializeD1Events, type D1EventDatabase } from "../src/d1";
+import { createAsyncEvents } from "../src/async";
 import type { Delivery, Json } from "../src/contracts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -234,6 +235,32 @@ export default {
         "production clock recovers",
       );
       checks.push("database-side production clock and expiration");
+      const service = createAsyncEvents({ store, leaseMs: 100, retryDelayMs: 10 });
+      const restarted = createAsyncEvents({ store: peer, leaseMs: 100, retryDelayMs: 10 });
+      const effects = new Set<string>();
+      try {
+        await service.subscribe("async-service", "async-service", (_, context) => {
+          effects.add(context.idempotencyKey);
+          throw new Error("effect happened before failure");
+        });
+        await service.publish(event("async-service", "async-service"));
+        assert((await service.dispatch()).retried === 1, "async service awaits D1 retry");
+        await service.close();
+        await restarted.subscribe("async-service", "async-service", (_, context) => {
+          effects.add(context.idempotencyKey);
+        });
+        time += 10;
+        assert((await restarted.dispatch()).delivered === 1, "async service recovers D1 backlog");
+        assert(effects.size === 1, "async service preserves effect identity across attempts");
+        await restarted.unsubscribe("async-service");
+        await rejects(
+          () => store.register("async-service", "async-service"),
+          "async cancellation awaited",
+        );
+      } finally {
+        await Promise.all([service.close(), restarted.close()]);
+      }
+      checks.push("integrated async service retry, close, recovery and cancellation");
       return Response.json({ checks });
     } catch (error) {
       return Response.json(

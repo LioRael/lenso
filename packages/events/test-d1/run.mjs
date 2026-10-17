@@ -37,6 +37,7 @@ try {
     process.execPath,
     [
       join(dirname(createRequire(import.meta.url).resolve("typescript/package.json")), "bin/tsc"),
+      "--ignoreConfig",
       "--noEmit",
       "--strict",
       "--skipLibCheck",

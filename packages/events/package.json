@@ -10,6 +10,7 @@
   "files": [
     "dist",
     "migrations",
+    "docs",
     "README.md"
   ],
   "type": "module",
@@ -38,10 +39,14 @@
       "types": "./dist/postgres.d.ts",
       "bun": "./dist/postgres.js"
     },
+    "./d1": {
+      "types": "./dist/d1.d.ts",
+      "import": "./dist/d1.js"
+    },
     "./migrations/*": "./migrations/*"
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/index.ts src/sqlite.ts src/plugin.ts src/async.ts src/async-plugin.ts src/postgres.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && bun build src/index.ts src/sqlite.ts src/plugin.ts src/async.ts src/async-plugin.ts src/postgres.ts src/d1.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test test",
     "example:recovery": "bun examples/recovery.ts"

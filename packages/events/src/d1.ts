@@ -3,16 +3,12 @@ import {
   name,
   type Delivery,
   type DeliveryStatus,
-  type EventStore,
+  type AsyncEventStore,
   type Json,
 } from "./contracts";
 
 /** The existing Store contract, with asynchronous D1 results. */
-export type D1EventStore = {
-  [K in keyof EventStore]: (
-    ...args: Parameters<EventStore[K]>
-  ) => Promise<Awaited<ReturnType<EventStore[K]>>>;
-};
+export type D1EventStore = AsyncEventStore;
 
 /** Structural binding types keep Cloudflare globals out of portable consumers. */
 export interface D1EventResult<T = unknown> {
