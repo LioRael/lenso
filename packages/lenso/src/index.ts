@@ -1,4 +1,5 @@
 export { defineApp, definePlugin } from "./plugin";
+export { collectPlugins } from "./assembly";
 export type {
   Cleanup,
   ConfiguredPluginContext,
@@ -10,7 +11,7 @@ export type {
 } from "./plugin";
 export { DiagnosticError, validatePlugins, validatePluginSelection } from "./diagnostics";
 export type { Diagnostic } from "./diagnostics";
-export { startApp, lifecycleFailure } from "./lifecycle";
+export { startApp, withApp, lifecycleFailure } from "./lifecycle";
 export type { RunningApp, LifecycleFailure } from "./lifecycle";
 export {
   definePluginConfig,
