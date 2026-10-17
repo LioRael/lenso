@@ -125,7 +125,11 @@ removed immediately; only one settlement subscription is retained per load.
 The host remains responsible for bounding concurrent live requests/waiters.
 
 Within the family, set/delete/exact invalidation detach and suppress earlier
-load writes. Namespace generation checks suppress late load writes across
+load writes. They also wait for already dispatched load writes (including
+zero-TTL deletions) before issuing their mutation, so a delayed load command
+cannot overwrite that mutation afterward. Waiting is limited to matching active
+loads; adapter timeouts remain the driver's responsibility. Failed prior writes
+do not prevent the mutation. Namespace generation checks suppress late load writes across
 instances too. These are not distributed locks. An already dispatched backend
 command cannot be recalled by cancellation/close; writes that raced an operation
 may complete. A caller already loading may receive its earlier result after
@@ -194,6 +198,21 @@ change, using existing Tasks if retry/outbox delivery is needed. No implicit
 transaction coupling, task registration or exactly-once invalidation is added.
 
 ## Existing application and checks
+
+`packages/cache/examples/catalog.ts` provides a Fetch-based public product query
+with HTTP status and response validation, per-product request merging, and
+invalidation after a successful authoritative update. Inject the existing
+`Cache<Product>` from the Native or Workers assembly; it creates no driver or
+connection. For an API whose response includes numeric `id` and string `title`:
+
+```ts
+const catalog = catalogQueries(productCache, "https://dummyjson.com/");
+const product = await catalog.product(42, request.signal);
+// After a successful source update: await catalog.changed(42);
+```
+
+The companion test injects a local fake Fetch implementation, makes no external
+request, and verifies concurrent queries, HTTP 503 retry, hits and invalidation.
 
 `examples/greeting/src/cached.ts` is an opt-in assembly using a bounded memory
 adapter. It caches only the pure formatted text, not input validation or the
