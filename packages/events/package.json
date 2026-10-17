@@ -1,0 +1,46 @@
+{
+  "name": "@lenso/events",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/events"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/sqlite.ts src/plugin.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test",
+    "example:recovery": "bun examples/recovery.ts"
+  },
+  "devDependencies": {
+    "@lenso/core": "workspace:^"
+  },
+  "peerDependencies": {
+    "@lenso/core": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/core": {
+      "optional": true
+    }
+  }
+}
