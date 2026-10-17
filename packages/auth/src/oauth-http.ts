@@ -14,18 +14,34 @@ async function body(request: Request, type: string) {
   let size = 0,
     text = "";
   const decoder = new TextDecoder("utf-8", { fatal: true });
+  const decode = (bytes?: Uint8Array, stream = false) => {
+    try {
+      return decoder.decode(bytes, { stream });
+    } catch {
+      throw new OAuthError("invalid_request");
+    }
+  };
   try {
     for (;;) {
       const part = await reader.read();
       if (part.done) break;
       size += part.value.byteLength;
       if (size > 8192) throw new OAuthError("invalid_request");
-      text += decoder.decode(part.value, { stream: true });
+      text += decode(part.value, true);
     }
-    return text + decoder.decode();
+    return text + decode();
   } finally {
     await reader.cancel().catch(() => {});
     reader.releaseLock();
+  }
+}
+
+async function jsonBody(request: Request): Promise<unknown> {
+  const text = await body(request, "application/json");
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new OAuthError("invalid_request");
   }
 }
 
@@ -90,13 +106,7 @@ export function createOAuthHttpBinding<E>(options: {
             request.headers.has("cookie")
           )
             throw new OAuthError("invalid_request");
-          return json(
-            await server.register(
-              JSON.parse(await body(request, "application/json")),
-              request.signal,
-            ),
-            201,
-          );
+          return json(await server.register(await jsonBody(request), request.signal), 201);
         }
         if (path === base + "/token" || path === base + "/revoke") {
           if (
@@ -139,9 +149,16 @@ export function createOAuthHttpBinding<E>(options: {
           await options.admitHuman(request);
           return json(result);
         }
-        const value = JSON.parse(await body(request, "application/json"));
+        const value = await jsonBody(request);
         if (path.endsWith("/decision")) {
-          if (!value || typeof value.requestId !== "string" || typeof value.approve !== "boolean")
+          if (
+            !value ||
+            typeof value !== "object" ||
+            !("requestId" in value) ||
+            !("approve" in value) ||
+            typeof value.requestId !== "string" ||
+            typeof value.approve !== "boolean"
+          )
             throw new OAuthError("invalid_request");
           const result = await server.decide(
             value.requestId,
@@ -152,7 +169,8 @@ export function createOAuthHttpBinding<E>(options: {
           await options.admitHuman(request);
           return json(result);
         }
-        if (!value || typeof value.id !== "string") throw new OAuthError("invalid_request");
+        if (!value || typeof value !== "object" || !("id" in value) || typeof value.id !== "string")
+          throw new OAuthError("invalid_request");
         await server.revokeGrant(value.id, evidence, request.signal);
         await options.admitHuman(request);
         return json({ revoked: true });
