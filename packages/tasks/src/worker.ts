@@ -86,6 +86,8 @@ export function createTaskWorker(
     let heartbeat: Promise<void> | undefined;
     try {
       await pulse();
+      // stop() may arrive while the first ownership check is in flight.
+      if (stopping) controller.abort();
       if (options.timeoutMs !== undefined)
         timeout = setTimeout(() => controller.abort(), options.timeoutMs);
       heartbeat = (async () => {

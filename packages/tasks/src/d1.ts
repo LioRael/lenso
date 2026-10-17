@@ -52,6 +52,7 @@ type StatusRow = {
   cancel_requested: number;
   result: string | null;
   error: string | null;
+  run_at: number;
 };
 type ClaimRow = {
   id: string;
@@ -61,7 +62,8 @@ type ClaimRow = {
   attempt: number;
 };
 
-const statusColumns = "id, task, state, attempt, max_attempts, cancel_requested, result, error";
+const statusColumns =
+  "id, task, state, attempt, max_attempts, cancel_requested, result, error, run_at";
 const errors = new Set<ErrorCode>(["handler-failed", "invalid-input", "invalid-result", "aborted"]);
 
 function validateBinding(database: D1Database, queueName: string): void {
@@ -116,6 +118,7 @@ function status(row: StatusRow): JobStatus {
     attempt: row.attempt,
     maxAttempts: row.max_attempts,
     cancelRequested: row.cancel_requested === 1,
+    nextAttemptAt: row.state === "pending" ? row.run_at : null,
     result,
     error:
       row.state === "cancelled"
@@ -404,7 +407,8 @@ export async function createD1TaskProvider(options: D1TaskProviderOptions): Prom
       return safely(async () => {
         const jobs = rows(
           await statement(
-            `SELECT id, task, state, attempt, max_attempts, cancel_requested
+            `SELECT id, task, state, attempt, max_attempts, cancel_requested, error, run_at,
+              NULL AS result
             FROM lenso_d1_task_job WHERE queue_name = ?
             AND task IN (${tasks.map(() => "?").join(",")})
             ${after === undefined ? "" : "AND id > ?"}
@@ -413,19 +417,9 @@ export async function createD1TaskProvider(options: D1TaskProviderOptions): Prom
             ...tasks,
             ...(after === undefined ? [] : [after]),
             limit + 1,
-          ).all<Omit<StatusRow, "result" | "error">>(),
+          ).all<StatusRow>(),
         );
-        return jobPage(
-          jobs.map((job) => ({
-            jobId: job.id,
-            task: job.task,
-            state: job.state,
-            attempt: job.attempt,
-            maxAttempts: job.max_attempts,
-            cancelRequested: job.cancel_requested === 1,
-          })),
-          limit,
-        );
+        return jobPage(jobs.map(status), limit);
       });
     },
     async lookupDeduplicationKey(key: string) {

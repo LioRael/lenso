@@ -46,6 +46,8 @@ export interface JobStatus {
   readonly cancelRequested: boolean;
   readonly result: JsonValue | null;
   readonly error: ErrorCode | null;
+  /** Unix milliseconds for pending work only; null otherwise. Absent on older custom providers. */
+  readonly nextAttemptAt?: number | null;
 }
 
 export interface EnqueueOptions {
@@ -58,7 +60,8 @@ export interface EnqueueOptions {
 export type JobSummary = Pick<
   JobStatus,
   "jobId" | "task" | "state" | "attempt" | "maxAttempts" | "cancelRequested"
->;
+> &
+  Partial<Pick<JobStatus, "error" | "nextAttemptAt">>;
 
 export interface JobQuery {
   /** Explicit allowlist; an empty list matches nothing. At most 100 names. */

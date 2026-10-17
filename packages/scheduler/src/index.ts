@@ -320,14 +320,26 @@ export function createScheduler<A extends Actor = Actor>(options: SchedulerOptio
       for (const entry of await options.store.occurrences(scope, id, bounded(limit, 1000))) {
         const { input: _input, leaseToken: _token, leaseUntil: _until, ...safe } = entry;
         // A late in-flight enqueue may finish after another dispatcher blocked this entry.
-        const accepted = entry.jobId
-          ? null
-          : await options.queue.lookupDeduplicationKey(`scheduler:${entry.id}`);
-        const jobId = entry.jobId ?? accepted?.jobId ?? null;
+        let jobId = entry.jobId;
+        let job: OccurrenceStatus["job"] = null;
+        let jobRead: OccurrenceStatus["jobRead"];
+        try {
+          if (jobId) job = await options.queue.get(jobId);
+          else {
+            const accepted = await options.queue.lookupDeduplicationKey(`scheduler:${entry.id}`);
+            jobId = accepted?.jobId ?? null;
+            job = accepted?.status ?? null;
+          }
+          jobRead = job ? "available" : jobId ? "not-retained" : "unresolved";
+        } catch {
+          // Keep the durable outbox visible during a queue outage. Never infer success.
+          jobRead = "unavailable";
+        }
         result.push({
           occurrence: { ...safe, jobId },
           acceptance: jobId ? "confirmed" : "unknown",
-          job: entry.jobId ? await options.queue.get(entry.jobId) : (accepted?.status ?? null),
+          job,
+          jobRead,
         });
       }
       return result;

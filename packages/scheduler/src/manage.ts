@@ -117,6 +117,10 @@ export function createSchedulerManage<A extends Actor = Actor>(options: {
                       attempt: entry.job.attempt,
                       maxAttempts: entry.job.maxAttempts,
                       cancelRequested: entry.job.cancelRequested,
+                      error: entry.job.error,
+                      ...(entry.job.nextAttemptAt === undefined
+                        ? {}
+                        : { nextAttemptAt: entry.job.nextAttemptAt }),
                     },
             })),
           ),

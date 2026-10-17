@@ -464,6 +464,11 @@ test(
     );
     await f.queue.runBatch({ maxJobs: 5 });
     assert.equal((await f.queue.get(id)).attempt, 0);
+    assert.equal((await f.queue.get(id)).nextAttemptAt, f.time.now + 1000);
+    assert.equal(
+      (await f.queue.list({ tasks: [f.task.name] })).items[0].nextAttemptAt,
+      f.time.now + 1000,
+    );
     f.time.now += 1001;
     await f.queue.runBatch({ maxJobs: 5 });
     assert.equal((await f.queue.get(id)).attempt, 1);
@@ -471,6 +476,8 @@ test(
     f.time.now += 1001;
     await f.queue.runBatch({ maxJobs: 5 });
     assert.equal((await f.queue.get(id)).state, "failed");
+    assert.equal((await f.queue.list({ tasks: [f.task.name] })).items[0].error, "handler-failed");
+    assert.equal((await f.queue.get(id)).nextAttemptAt, null);
     assert.equal(await f.queue.retry(id), true);
     await f.queue.runBatch({ maxJobs: 5 });
     assert.equal((await f.queue.get(id)).state, "succeeded");
@@ -668,3 +675,50 @@ test(
     );
   },
 );
+
+test("occurrence reads retain durable dispatch state when queue reads fail or history is pruned", async (t) => {
+  const f = await setup(t);
+  const plan = await f.scheduler.create(f.input, f.actor);
+  await f.scheduler.tick();
+  let mode = "unavailable";
+  const observer = createScheduler({
+    ...f.schedulerOptions,
+    queue: {
+      ...f.queue,
+      async get(id) {
+        if (mode === "unavailable") throw new Error("PRIVATE-CONNECTION");
+        if (mode === "pruned") return null;
+        return f.queue.get(id);
+      },
+      async lookupDeduplicationKey(key) {
+        if (mode === "unavailable") throw new Error("PRIVATE-CONNECTION");
+        return f.queue.lookupDeduplicationKey(key);
+      },
+    },
+  });
+  const [outage] = await observer.occurrences(plan.id, f.actor);
+  assert.equal(outage.jobRead, "unavailable");
+  assert.equal(outage.acceptance, "confirmed");
+  assert.equal(outage.occurrence.state, "enqueued");
+  assert.equal(outage.job, null);
+  assert.ok(!JSON.stringify(outage).includes("PRIVATE"));
+  await observer.trigger(plan.id, "not-yet-enqueued", f.actor);
+  const unresolved = await observer.occurrences(plan.id, f.actor);
+  assert.ok(
+    unresolved.some((entry) => entry.acceptance === "unknown" && entry.jobRead === "unavailable"),
+  );
+  mode = "pruned";
+  const pruned = await observer.occurrences(plan.id, f.actor);
+  assert.ok(
+    pruned.some((entry) => entry.jobRead === "not-retained" && entry.acceptance === "confirmed"),
+  );
+  assert.ok(
+    pruned.some((entry) => entry.jobRead === "unresolved" && entry.acceptance === "unknown"),
+  );
+  mode = "available";
+  assert.ok(
+    (await observer.occurrences(plan.id, f.actor)).some((entry) => entry.jobRead === "available"),
+  );
+  await observer.tick();
+  assert.equal((await observer.occurrences(plan.id, f.actor)).length, 2);
+});
