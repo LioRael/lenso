@@ -100,3 +100,47 @@ test("lifecycle attribution preserves the declared source and original errors", 
     source,
   });
 });
+
+test("assembly paths locate duplicate IDs, missing instances and cycle edges before setup", async () => {
+  let starts = 0;
+  const setup = () => {
+    starts++;
+  };
+  const first: Plugin<void> = { id: "same", setup };
+  const second: Plugin<void> = { id: "same", setup };
+  const missing: Plugin<void> = { id: "same", setup };
+  const consumer: Plugin<void> = { id: "consumer", requires: [first, missing], setup };
+  const failure = await startApp({ plugins: [first, second, consumer] }).catch((error) => error);
+  expect(failure).toBeInstanceOf(DiagnosticError);
+  expect(failure.diagnostics).toMatchObject([
+    {
+      code: "duplicate-id",
+      details: {
+        path: ["plugins", 1, "id"],
+        paths: [
+          ["plugins", 0, "id"],
+          ["plugins", 1, "id"],
+        ],
+      },
+    },
+    { code: "missing-dependency", details: { path: ["plugins", 2, "requires", 1] } },
+  ]);
+  const edges: Plugin<void>[] = [];
+  const a: Plugin<void> = { id: "a", requires: edges, setup };
+  const b: Plugin<void> = { id: "b", requires: [first, a], setup };
+  edges.push(b);
+  const cycle = await startApp({ plugins: [first, a, b] }).catch((error) => error);
+  expect(cycle.diagnostics).toMatchObject([
+    {
+      code: "cyclic-dependency",
+      details: {
+        paths: [
+          ["plugins", 1, "requires", 0],
+          ["plugins", 2, "requires", 1],
+        ],
+      },
+    },
+  ]);
+  expect(cycle.diagnostics[0].message).toContain("Remove or invert");
+  expect(starts).toBe(0);
+});
