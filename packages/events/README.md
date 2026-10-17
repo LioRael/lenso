@@ -1,8 +1,14 @@
 # @lenso/events
 
-Explicit, durable event fanout for Bun SQLite. The baseline had no general event
-plugin: Notifications and Scheduler own their specialized outboxes; Realtime is
-an invalidation signal. This package owns only events and per-subscription delivery.
+Explicit, durable event fanout for Bun SQLite. This package owns only events and
+per-subscription delivery. Notifications and Scheduler keep their specialized
+outboxes; Realtime remains an invalidation signal.
+
+The supplied durable store is **Native-only (Bun)**. `@lenso/events/sqlite` is a
+Bun-conditional export and is unavailable to Workers, browsers and Node.js. It
+accepts a borrowed `bun:sqlite` connection; it never opens one on import. The root
+and `/plugin` entries contain no SQLite imports. No Workers/D1 store is supplied;
+using the portable service there requires an application-provided `EventStore`.
 
 ```ts
 import { Database } from "bun:sqlite";
@@ -98,7 +104,3 @@ injects failure after the effect, reopens the event database, expires the lease
 using a fake clock and asserts two attempts but one effect. It makes no network
 calls and removes its temporary files. Tests also cover transaction rollback,
 competing connections, cancellation, shutdown and per-subscription retry isolation.
-
-Integration owner: add the new workspace to the root `bun.lock` using the existing
-repository workflow. This independent change intentionally leaves that lockfile
-and all shared package/CLI/Engine entry points untouched.

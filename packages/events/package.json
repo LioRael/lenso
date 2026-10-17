@@ -19,7 +19,7 @@
     },
     "./sqlite": {
       "types": "./dist/sqlite.d.ts",
-      "import": "./dist/sqlite.js"
+      "bun": "./dist/sqlite.js"
     },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
@@ -36,7 +36,7 @@
     "@lenso/core": "workspace:^"
   },
   "peerDependencies": {
-    "@lenso/core": "workspace:^"
+    "@lenso/core": "^0.3.0"
   },
   "peerDependenciesMeta": {
     "@lenso/core": {
