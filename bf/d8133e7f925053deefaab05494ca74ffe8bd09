@@ -1,0 +1,36 @@
+.changeset/explicit-assembly-lifetime.md
+  h_9d56aba080c170 1-5
+README.md
+  h_9d56aba080c170 239-257
+examples/plugin-assembly/README.md
+  h_9d56aba080c170 1-77
+examples/plugin-assembly/app.ts
+  h_9d56aba080c170 1-58
+examples/plugin-assembly/demo.ts
+  h_9d56aba080c170 1-29
+examples/plugin-assembly/package.json
+  h_9d56aba080c170 1-18
+examples/plugin-assembly/test/app.test.ts
+  h_9d56aba080c170 1-62
+examples/plugin-assembly/tsconfig.json
+  h_9d56aba080c170 1-4
+packages/lenso/src/assembly.ts
+  h_9d56aba080c170 1-18
+packages/lenso/src/index.ts
+  h_9d56aba080c170 2,14
+packages/lenso/src/lifecycle.ts
+  h_9d56aba080c170 274-297
+packages/lenso/test/assembly.test.ts
+  h_9d56aba080c170 1-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bfd8133e7f925053deefaab05494ca74ffe8bd09",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
