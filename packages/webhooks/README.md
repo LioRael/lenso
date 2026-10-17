@@ -1,7 +1,8 @@
 # @lenso/webhooks
 
-Durable outbound events using PostgreSQL and `@lenso/tasks`. No inbound framework,
-listener, automatic migration, production provisioning or global resource lookup.
+Durable outbound events using PostgreSQL and `@lenso/tasks`, with an optional
+signed inbound receiver and transactional PostgreSQL inbox. No owned listener,
+automatic migration, production provisioning or global resource lookup.
 Payments' Stripe inbound handling is unchanged.
 
 ## Assembly and configuration
@@ -9,7 +10,88 @@ Payments' Stripe inbound handling is unchanged.
 Import services from `@lenso/webhooks`, the borrowed `pg.Pool` repository from
 `@lenso/webhooks/postgres`, and optional assembly/Manage helpers from `/plugin`
 and `/manage`. `examples/host.ts` shows the explicit task → queue → service wiring;
-`examples/receiver.ts` verifies raw bytes and deduplicates by **event ID**.
+`examples/receiver.ts` wires the optional receiver with host-supplied keys and inbox.
+
+## Optional signed inbound receiver
+
+`@lenso/webhooks/receiver` exports `createWebhookReceiver` and the `WebhookInbox`
+contract. It verifies this package's v1 HMAC wire format; it is not a verifier for
+Stripe, GitHub, Resend or other providers' signature formats. Existing Notifications
+idempotency, retry and provider-uncertainty handling remain separate.
+
+```ts
+import { createWebhookReceiver } from "@lenso/webhooks/receiver";
+import { createPostgresWebhookInbox } from "@lenso/webhooks/receiver-postgres";
+
+const inbox = createPostgresWebhookInbox({
+  pool: hostPool,
+  schema: "partner_inbox",
+  async apply(transaction, event, receipt) {
+    // Use this same transaction for the host's business write or existing transactional
+    // event mechanism. Do not send notifications or perform external HTTP here.
+    await transaction.query(
+      "INSERT INTO partner_orders (receiver_id, event_id, data) VALUES ($1, $2, $3)",
+      [receipt.receiverId, event.id, event.data],
+    );
+  },
+});
+const receiver = createWebhookReceiver({
+  receiverId: "tenant-a/orders-partner", // Host-assigned durable trust namespace.
+  source: "orders-service",
+  eventTypes: ["order.completed"],
+  maxBodyBytes: 262144,
+  bodyTimeoutMs: 5000,
+  toleranceSeconds: 300,
+  keys: () => hostSecrets.verificationKeys("tenant-a/orders-partner"),
+  inbox,
+});
+// Mount receiver.handle(request) on one route of the existing host Web listener.
+```
+
+Apply `migrations/0002_receiver.sql` explicitly to that schema before mounting the
+route. This migration is independent of the outbound tables. The package does not
+create keys, read environment secrets, choose a tenant from JSON or change ingress
+or outbound network policy. The host selects a distinct `receiverId` and verification
+key authority for each trust/tenant domain, validates Host/route admission, limits
+connections, and provides synchronized clocks. Never reuse a namespace for a
+different sender. Retain old verification keys during rotation for accepted requests;
+never assign different key bytes to an existing key ID.
+
+Verification covers exact raw bytes, signed event ID and timestamp before JSON
+processing or inbox access. The receiver requires POST and uncompressed JSON;
+limits bytes and stream duration; rejects malformed UTF-8, non-finite/deep data,
+unsupported envelope fields, mismatched IDs, sources and event types. A key resolver
+failure fails closed. The resolver and DB/application callbacks are host-owned and
+must have their own bounded I/O deadlines; `bodyTimeoutMs` bounds only body reads.
+
+The PostgreSQL inbox uses a unique `(receiver_id,event_id)` receipt and SHA-256 of
+the raw body. Receipt insertion and `apply` commit together. Concurrent duplicates
+wait for the winning transaction, identical redelivery returns 204 without `apply`,
+and reusing an ID with different bytes returns 409. Timestamp/key refresh does not
+change receipt identity. A failed transaction rolls back both receipt and business
+writes. A lost acknowledgement after commit is safe to retry with identical bytes;
+its receipt survives receiver or database-client restart. `apply` must only perform
+transactional database work through the supplied client, and must not commit,
+release, or change its transaction. External effects are not made exactly-once by
+this API. Reuse the host's existing Events/Tasks handoff and reconciliation semantics
+for asynchronous work; the receiver adds no queue or worker.
+
+Receipts store only namespace, event ID, body digest and receive time, with no body
+or key bytes. There is no automatic pruning: deleting a receipt permits a sender to
+resubmit that ID with a fresh signature. The host must define retention covering
+its business idempotency horizon and outbound/manual replay window, or retain
+receipts indefinitely. Timestamp tolerance alone cannot prevent a freshly signed
+redelivery from repeating a business effect after its receipt was deleted.
+
+Responses are empty: 204 accepted/duplicate, 400 invalid envelope, 401 invalid or
+stale signature, 403 unapproved source/type, 405 method, 408 read deadline/abort,
+409 content conflict, 413 size, 415 encoding/media type, 503 host dependency or
+transaction failure. Do not treat 503 as evidence that nothing committed.
+
+`createWebhookReceiverPlugin` from `/plugin` accepts the exact `Plugin<WebhookInbox>`
+as `inbox`, optional explicit `requires`, and `options(context)` for the receiver
+configuration/keys. Construction acquires no resources; it borrows the host's inbox,
+listener and secret authority. The ordinary receiver has no Core dependency.
 
 The host creates a dedicated PostgreSQL schema, replaces
 `__LENSO_WEBHOOK_SCHEMA__` in `migrations/0001_webhooks.sql` with its reviewed quoted
