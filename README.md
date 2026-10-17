@@ -236,6 +236,25 @@ and lifecycle diagnostics an explicit declaration location; otherwise CLI uses
 the actual app config path. Static inspect describes declarations, not service
 health or methods returned by setup.
 
+For an opt-in dependency closure and a finite application lifetime:
+
+```ts
+import { collectPlugins, withApp } from "@lenso/core";
+
+const result = await withApp(
+  { plugins: collectPlugins([report]) },
+  (app) => app.get(report).run(),
+);
+```
+
+`collectPlugins` includes exact transitive `requires` instances once, rejects
+distinct same-ID instances and cycles, and does not run setup. Explicit
+`defineApp`/`startApp` registration remains strict. `withApp` awaits work and
+cleanup, preserving both errors in an `AggregateError` if both fail. Keep work
+inside the callback; use explicit `startApp`/`stop` for long-running services.
+See the [Auth + Storage + Cache example](examples/plugin-assembly) for typed
+assembly, default configuration, local recovery and platform boundaries.
+
 ## Instance configuration
 
 Ordinary `Plugin` factories can keep accepting ordinary options. Opt in when a
