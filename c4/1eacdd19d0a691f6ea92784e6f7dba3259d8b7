@@ -1,0 +1,20 @@
+README.md
+  h_9d56aba080c170 40-62
+packages/runtime/test/lifecycle.test.ts
+  h_9d56aba080c170 89-96,104-105,150-156,248-315
+scripts/prepare-runtime.test.ts
+  h_9d56aba080c170 3,131-189
+scripts/prepare-runtime.ts
+  h_9d56aba080c170 2-3,104-160,164,177,212-230,256,287-303,307-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c41eacdd19d0a691f6ea92784e6f7dba3259d8b7",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

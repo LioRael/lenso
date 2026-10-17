@@ -1,0 +1,70 @@
+bun.lock
+  h_9d56aba080c170 147,179,238,282,308,356,379,413,498,555,577,707
+docs/TS-ADAPTER-RELEASE.md
+  h_9d56aba080c170 1-101
+packages/api-keys/CHANGELOG.md
+  h_9d56aba080c170 3-10
+packages/api-keys/package.json
+  h_9d56aba080c170 3,74-75
+packages/audit/CHANGELOG.md
+  h_9d56aba080c170 3-10
+packages/audit/package.json
+  h_9d56aba080c170 3,73-74
+packages/authorization/CHANGELOG.md
+  h_9d56aba080c170 3-10
+packages/authorization/package.json
+  h_9d56aba080c170 3,76-77
+packages/cli/CHANGELOG.md
+  h_9d56aba080c170 3-19
+packages/cli/examples/content-plugin/package.json
+  h_9d56aba080c170 15
+packages/cli/examples/module-target-plugin/package.json
+  h_9d56aba080c170 15
+packages/cli/package.json
+  h_9d56aba080c170 3
+packages/engine/CHANGELOG.md
+  h_9d56aba080c170 3-12
+packages/engine/package.json
+  h_9d56aba080c170 3
+packages/manage/CHANGELOG.md
+  h_9d56aba080c170 3-9
+packages/manage/package.json
+  h_9d56aba080c170 3
+packages/mcp/CHANGELOG.md
+  h_9d56aba080c170 3-13
+packages/mcp/package.json
+  h_9d56aba080c170 3
+packages/notifications/CHANGELOG.md
+  h_9d56aba080c170 3-10
+packages/notifications/package.json
+  h_9d56aba080c170 3,76-77
+packages/payments/CHANGELOG.md
+  h_9d56aba080c170 3-11
+packages/payments/package.json
+  h_9d56aba080c170 3,89-91
+packages/runtime/CHANGELOG.md
+  h_9d56aba080c170 1-9
+packages/runtime/package.json
+  h_9d56aba080c170 3,43-44
+packages/scheduler/CHANGELOG.md
+  h_9d56aba080c170 3-10
+packages/scheduler/package.json
+  h_9d56aba080c170 3
+packages/webhooks/CHANGELOG.md
+  h_9d56aba080c170 3-11
+packages/webhooks/package.json
+  h_9d56aba080c170 3,57,59,61
+scripts/verify-adapter-consumer.ts
+  h_9d56aba080c170 1-428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "49253a0782e4f0bf3fb6173c59c43a2e34b29606",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

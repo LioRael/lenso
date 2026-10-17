@@ -1,0 +1,62 @@
+.changeset/scoped-postgres-search.md
+  h_9d56aba080c170 1-5
+packages/search/.gitignore
+  h_9d56aba080c170 1-5
+packages/search/README.md
+  h_9d56aba080c170 1-135
+packages/search/examples/README.md
+  h_9d56aba080c170 1-92
+packages/search/examples/notes.ts
+  h_9d56aba080c170 1-231
+packages/search/migrations/001_search.sql
+  h_9d56aba080c170 1-19
+packages/search/package.json
+  h_9d56aba080c170 1-57
+packages/search/src/bun-sql.ts
+  h_9d56aba080c170 1-13
+packages/search/src/contracts.ts
+  h_9d56aba080c170 1-96
+packages/search/src/errors.ts
+  h_9d56aba080c170 1-35
+packages/search/src/index.ts
+  h_9d56aba080c170 1-145
+packages/search/src/plugin.ts
+  h_9d56aba080c170 1-86
+packages/search/src/postgres.ts
+  h_9d56aba080c170 1-193
+packages/search/src/validation.ts
+  h_9d56aba080c170 1-136
+packages/search/test/consumer/main.ts
+  h_9d56aba080c170 1-61
+packages/search/test/consumer/package.json
+  h_9d56aba080c170 1-5
+packages/search/test/consumer/tsconfig.json
+  h_9d56aba080c170 1-12
+packages/search/test/notes-errors.test.ts
+  h_9d56aba080c170 1-161
+packages/search/test/notes-postgres.test.ts
+  h_9d56aba080c170 1-198
+packages/search/test/notes.test.ts
+  h_9d56aba080c170 1-384
+packages/search/test/pack-consume.sh
+  h_9d56aba080c170 1-13
+packages/search/test/postgres.test.ts
+  h_9d56aba080c170 1-316
+packages/search/test/service.test.ts
+  h_9d56aba080c170 1-233
+packages/search/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/search/tsconfig.json
+  h_9d56aba080c170 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1eec7a573034b3b55f540b2f99ad2e80889457b5",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+packages/auth/README.md
+  h_9d56aba080c170 175-184
+packages/auth/src/core.ts
+  h_9d56aba080c170 102-115,319-364,382-406,413
+packages/auth/test/authorized.test.ts
+  h_9d56aba080c170 1-100
+packages/auth/test/types.ts
+  h_9d56aba080c170 45-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2cd315950a8592e2643d7a25573e42f4e78dcd8a",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

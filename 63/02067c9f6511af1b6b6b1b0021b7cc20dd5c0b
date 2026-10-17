@@ -1,0 +1,41 @@
+.agents/skills/lenso-diagnose/SKILL.md
+  s_e3dbe949a951a5::t_6584c96a63c133 1-40
+.agents/skills/lenso-develop/SKILL.md
+  s_e3dbe949a951a5::t_21ddb075f46a82 1-30
+.agents/skills/lenso-develop/references/data.md
+  s_e3dbe949a951a5::t_6ff0df3f1ba90f 1-25
+.agents/skills/lenso-develop/references/engine-cli.md
+  s_e3dbe949a951a5::t_2cd90e3c88284f 1-39
+.agents/skills/lenso-develop/references/lifecycle.md
+  s_e3dbe949a951a5::t_3f17a1e8c3ef06 1-18
+.agents/skills/lenso-develop/references/platform.md
+  s_e3dbe949a951a5::t_05d6764d07f875 1-21
+.agents/skills/lenso-develop/references/web-auth.md
+  s_e3dbe949a951a5::t_ee209f0eb6c071 1-18
+.agents/skills/lenso-diagnose/references/auth.md
+  s_e3dbe949a951a5::t_62378e99a7bf84 1-13
+.agents/skills/lenso-diagnose/references/engine-config-dev.md
+  s_e3dbe949a951a5::t_66376c8120f3e7 1-28
+.agents/skills/lenso-diagnose/references/observe-platform.md
+  s_e3dbe949a951a5::t_3c70e1c1bc318e 1-24
+.agents/skills/lenso-diagnose/references/tasks.md
+  s_e3dbe949a951a5::t_eb56b222430d6f 1-20
+README.md
+  s_e3dbe949a951a5::t_57d6d003c95a9c 8,31,63-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6302067c9f6511af1b6b6b1b0021b7cc20dd5c0b",
+  "prompts": {},
+  "sessions": {
+    "s_e3dbe949a951a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11a4a-829c-7a91-8ac5-ef4c67bb9d37",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
