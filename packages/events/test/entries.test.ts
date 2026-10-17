@@ -10,13 +10,19 @@ test("published entries isolate the Bun-only SQLite store from portable consumer
     await writeFile(
       portable,
       `export { createEvents } from "@lenso/events";
-export { createEventsPlugin } from "@lenso/events/plugin";`,
+export { createEventsPlugin } from "@lenso/events/plugin";
+export { createAsyncEvents } from "@lenso/events/async";
+export { createAsyncEventsPlugin } from "@lenso/events/async-plugin";`,
     );
     await writeFile(sqlite, `export { createSqliteEventStore } from "@lenso/events/sqlite";`);
     for (const target of ["browser", "node"] as const) {
       const result = await Bun.build({ entrypoints: [portable], target, packages: "bundle" });
       expect(result.success).toBe(true);
-      for (const output of result.outputs) expect(await output.text()).not.toContain("bun:sqlite");
+      for (const output of result.outputs) {
+        const code = await output.text();
+        expect(code).not.toContain("bun:sqlite");
+        expect(code).not.toContain("node:fs");
+      }
       const blocked = await Bun.build({
         entrypoints: [sqlite],
         target,

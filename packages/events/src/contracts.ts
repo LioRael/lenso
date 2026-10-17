@@ -36,6 +36,13 @@ export interface EventStore {
   status(eventId: string): DeliveryStatus[];
 }
 
+/** Network stores preserve the same transitions with asynchronous completion. */
+export type AsyncEventStore = {
+  [K in keyof EventStore]: (
+    ...args: Parameters<EventStore[K]>
+  ) => Promise<ReturnType<EventStore[K]>>;
+};
+
 export type EventHandler = (
   event: Event,
   context: { subscriptionId: string; idempotencyKey: string; attempt: number; signal: AbortSignal },

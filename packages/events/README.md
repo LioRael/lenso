@@ -1,13 +1,15 @@
 # @lenso/events
 
-Explicit, durable event fanout for Bun SQLite. This package owns only events and
+Explicit, durable event fanout for Bun SQLite and PostgreSQL. This package owns only events and
 per-subscription delivery. Notifications and Scheduler keep their specialized
 outboxes; Realtime remains an invalidation signal.
 
-The supplied durable store is **Native-only (Bun)**. `@lenso/events/sqlite` is a
+The supplied durable stores are **Native-only (Bun)**. `@lenso/events/sqlite` is a
 Bun-conditional export and is unavailable to Workers, browsers and Node.js. It
 accepts a borrowed `bun:sqlite` connection; it never opens one on import. The root
-and `/plugin` entries contain no SQLite imports. No Workers/D1 store is supplied;
+and `/plugin` entries contain no SQLite imports. `/postgres` borrows a Bun SQL
+PostgreSQL pool; `/async` and `/async-plugin` contain no database driver imports.
+No Workers/D1 store is supplied;
 using the portable service there requires an application-provided `EventStore`.
 
 ```ts
@@ -86,7 +88,75 @@ For atomic business writes plus publication, use the **same** SQLite connection
 and synchronous `db.transaction(() => { businessWrite(); events.publish(event); })()`.
 Nested store transactions use savepoints. Separate databases cannot provide this
 atomicity. SQLite connection configuration (busy timeout, durability, backup) is
-application-owned. No pruning, PostgreSQL/D1 adapter or cross-host queue is supplied.
+application-owned. No pruning or D1 adapter is supplied.
+
+## PostgreSQL and asynchronous stores
+
+The existing `EventStore`, `createEvents` and SQLite methods remain synchronous.
+Network stores implement `AsyncEventStore`, with the same method names, inputs,
+results and fencing contract, returning Promises. Use `createAsyncEvents` from
+`@lenso/events/async`; await registration before publishing or dispatching.
+This service accepts either store interface. Every service method except `close`
+corresponds to the synchronous service but returns a Promise; `close` also returns
+a Promise and drains all accepted operations, including pending registrations,
+cancellations and claims. A claim that completes after shutdown never starts a
+handler and can be recovered after its lease expires.
+
+```ts
+import { SQL } from "bun";
+import { createAsyncEvents } from "@lenso/events/async";
+import { createPostgresEventStore, initializePostgresEvents } from "@lenso/events/postgres";
+
+const sql = new SQL(connectionString, { adapter: "postgres" });
+try {
+  await initializePostgresEvents(sql); // explicit setup; never a request-path migration
+  const events = createAsyncEvents({ store: createPostgresEventStore(sql) });
+  try {
+    await events.subscribe("receipt-v1", "order.created", async (event, context) => {
+      await destination.send(event.payload, {
+        idempotencyKey: context.idempotencyKey,
+        signal: context.signal,
+      });
+    });
+    await events.publish({
+      id: "order:42:created",
+      topic: "order.created",
+      payload: { orderId: 42 },
+    });
+    await events.dispatch();
+  } finally {
+    await events.close();
+  }
+} finally {
+  await sql.close();
+}
+```
+
+`connectionString` and `destination` belong to the application. The optional
+`createAsyncEventsPlugin` from `/async-plugin` requires the exact store provider,
+registers service drain cleanup, and never closes the borrowed pool.
+
+The PostgreSQL migration is also available at
+`@lenso/events/migrations/pg/0001_events.sql`. The initializer applies it in a
+transaction, serializing concurrent setup. Configure one stable trusted
+`search_path` on **every pool connection** if using a dedicated schema. No schema
+or connection is created by the adapter constructor, import or request operations.
+The connection owner controls TLS, pool limits and connection cleanup.
+
+Publication uses a unique event ID and commits fanout in the same transaction.
+Subscription row locks serialize cancellation with in-flight fanout. Concurrent
+claimers use `FOR UPDATE SKIP LOCKED`; expired or replaced tokens cannot settle a
+later attempt. The database clock governs leases across hosts, and settlement
+checks time after acquiring its row lock. `now` is an optional clock override for
+deterministic tests only. No global delivery ordering is promised.
+
+Driver/connection failures reject the operation; they are not successful delivery.
+A connection loss around COMMIT can leave an unknown outcome: retry publication
+with the **same** event ID/content, or recover unconfirmed delivery after lease
+expiry with the same destination idempotency key. The adapter does not retry
+external effects, reconnect an application-owned pool, or offer exactly-once
+delivery. Separate application transactions are not atomic with publication;
+the SQLite nested-transaction example above does not apply to PostgreSQL.
 
 ## Local verification
 
@@ -104,3 +174,19 @@ injects failure after the effect, reopens the event database, expires the lease
 using a fake clock and asserts two attempts but one effect. It makes no network
 calls and removes its temporary files. Tests also cover transaction rollback,
 competing connections, cancellation, shutdown and per-subscription retry isolation.
+
+For PostgreSQL, explicitly designate a disposable local test database (never a
+user database). The suite creates/removes unique schemas and terminates only one
+of its own connections to verify failure recovery:
+
+```sh
+LENSO_EVENTS_PG_TEST=1 \
+LENSO_EVENTS_TEST_DATABASE_URL=postgres://user@127.0.0.1:55428/postgres \
+bun test test/postgres.test.ts
+```
+
+There is no `DATABASE_URL` fallback. Coverage includes duplicate publishers,
+fanout rollback, concurrent claims, locked-row skipping, expired/stale tokens,
+retry isolation, cancellation racing publication, backend termination and async
+service recovery. Without the two explicit variables these integration tests skip;
+a skipped run is not PostgreSQL validation.

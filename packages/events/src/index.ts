@@ -1,5 +1,13 @@
 import { duration, name, type EventHandler, type EventStore } from "./contracts";
-export type { Json, Event, Delivery, DeliveryStatus, EventHandler, EventStore } from "./contracts";
+export type {
+  Json,
+  Event,
+  Delivery,
+  DeliveryStatus,
+  EventHandler,
+  EventStore,
+  AsyncEventStore,
+} from "./contracts";
 
 export function createEvents(options: {
   store: EventStore;
