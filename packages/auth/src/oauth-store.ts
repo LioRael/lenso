@@ -9,6 +9,7 @@ export interface OAuthRecord {
 }
 export interface OAuthStore {
   insert(record: OAuthRecord): Promise<boolean>;
+  /** Read current durable state, without a cache that can hide revocation or rotation. */
   read(kind: string, id: string): Promise<OAuthRecord | null>;
   replace(record: OAuthRecord, expectedRevision: number): Promise<boolean>;
   list(kind: string, subjectId: string): Promise<readonly OAuthRecord[]>;

@@ -1,24 +1,32 @@
 import { test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
-import { audience, createAuth, defineSource, realm, AuthError } from "../src/index";
-import { createOAuthAuthorizationServer, createSqlOAuthStore } from "../src/oauth";
-import { createOAuthHttpBinding } from "../src/oauth-http";
+import { audience, createAuth, defineSource, realm, AuthError } from "@lenso/auth";
+import { authErrorResponse, bearerEvidence } from "@lenso/auth/fetch";
+import { createOAuthAuthorizationServer, createSqlOAuthStore } from "@lenso/auth/oauth";
+import { createOAuthHttpBinding } from "@lenso/auth/oauth-http";
 
 // Prevent cross-resource redemption, replay and privilege revival on the actual
 // SQL CAS boundary. Existing session tests never exercise OAuth records.
 async function fixture() {
   const db = new Database(":memory:");
+  const io = { grantReads: 0, scopeReads: 0 };
   db.exec(await Bun.file(new URL("../migrations/oauth/0000_oauth.sql", import.meta.url)).text());
   const store = createSqlOAuthStore(
     {
       async query(sql, values) {
+        if (sql.startsWith("SELECT") && values[1] === "grant") io.grantReads++;
         return db.query(sql).all(...(values as any[])) as Record<string, unknown>[];
       },
     },
     "test",
     "sqlite",
   );
-  const state = { now: Date.now(), enabled: true, scopes: ["users.list", "users.read"] };
+  const state = {
+    now: Date.now(),
+    enabled: true,
+    scopes: ["users.list", "users.read"],
+    scopeReadDelay: 0,
+  };
   const auth = createAuth(
     realm(
       "test",
@@ -42,6 +50,8 @@ async function fixture() {
     store,
     humanAccess: auth.for(audience("consent")),
     async allowedScopes() {
+      io.scopeReads++;
+      state.now += state.scopeReadDelay;
       return state.enabled ? state.scopes : null;
     },
     now: () => state.now,
@@ -95,6 +105,7 @@ async function fixture() {
     issue,
     store,
     db,
+    io,
     async close() {
       await auth.close();
       db.close();
@@ -137,6 +148,116 @@ test("DCR, consent, PKCE and resource binding; code and decision are one-shot", 
     );
     const raw = await f.store.read("grant", g.id);
     expect(JSON.stringify(raw)).not.toContain(x.tokens.refresh_token);
+  } finally {
+    await f.close();
+  }
+});
+
+test("public OAuth source composes one verification with current object membership in a Fetch app", async () => {
+  const f = await fixture();
+  const requiredScopes = ["users.read"];
+  const source = f.server.sourceForScopes(requiredScopes);
+  requiredScopes.length = 0; // Assembly captures requirements, not the caller's mutable array.
+  expect(() => realm("another-realm", source)).toThrow("different realm");
+  expect(() => realm("another-realm", f.server.source)).toThrow("different realm");
+  expect(() => f.server.sourceForScopes([])).toThrow();
+  expect(() => f.server.sourceForScopes(["unregistered"])).toThrow();
+  const auth = createAuth(realm("test", source), { now: () => f.state.now });
+  const identityAuth = createAuth(realm("test", f.server.source), { now: () => f.state.now });
+  f.db.exec("CREATE TABLE membership (subject TEXT, tenant TEXT, active INTEGER)");
+  f.db.exec("INSERT INTO membership VALUES ('alice', 'north', 1)");
+  let membershipReads = 0;
+  const access = auth.for(audience("user-details")).memberships(async (subject, tenant: string) => {
+    membershipReads++;
+    return f.db
+      .query("SELECT active FROM membership WHERE subject = ? AND tenant = ?")
+      .get(subject.subjectId, tenant) as { active: number } | null;
+  });
+  const policy = ({ membership }: { membership: { active: number } }) => membership.active === 1;
+  // A complete listener-independent Fetch entry; the same service policy can be used by MCP.
+  const app = {
+    async fetch(request: Request) {
+      try {
+        const { evidence: token } = bearerEvidence({ request });
+        if (!token) throw new AuthError("UNAUTHORIZED");
+        const actor = await access.authorized(
+          token,
+          new URL(request.url).pathname.slice(1),
+          policy,
+          {
+            signal: request.signal,
+          },
+        );
+        return Response.json({ subject: actor.subjectId });
+      } catch (error) {
+        return authErrorResponse(error);
+      }
+    },
+  };
+  try {
+    const { tokens } = await f.issue();
+    const call = (tenant = "north") =>
+      app.fetch(
+        new Request(`https://app.test/${tenant}`, {
+          headers: { authorization: `Bearer ${tokens.access_token}` },
+        }),
+      );
+    f.io.grantReads = f.io.scopeReads = 0;
+    // Relay's old composition verifies once for scopes and again for the Auth actor.
+    await f.server.verify(tokens.access_token, f.signal);
+    await identityAuth.for(audience("user-details")).required(tokens.access_token);
+    expect(f.io).toEqual({ grantReads: 2, scopeReads: 2 });
+    f.io.grantReads = f.io.scopeReads = 0;
+    expect(await (await call()).json()).toEqual({ subject: "alice" });
+    expect(f.io).toEqual({ grantReads: 1, scopeReads: 1 });
+    expect(membershipReads).toBe(1);
+    expect((await call("south")).status).toBe(403);
+    const actor = await access.authorized(tokens.access_token, "north", policy);
+    f.db.exec("UPDATE membership SET active = 0");
+    await expect(access.enforce(actor, "north", policy)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    f.db.exec("UPDATE membership SET active = 1");
+    f.state.scopes = ["users.list"];
+    expect((await call()).status).toBe(403);
+    await expect(access.enforce(actor, "north", policy)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    f.state.scopes = ["users.list", "users.read"];
+    expect((await call()).status).toBe(200);
+    const readActor = await access.required(tokens.access_token, { signal: f.signal });
+    const read = await access.beginRead!(readActor, { signal: f.signal });
+    try {
+      await access.enforceRead!(read, "north", policy, { signal: f.signal });
+      f.state.scopes = ["users.list"];
+      await expect(read.finish()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    } finally {
+      read.close();
+    }
+    const limited = await f.issue();
+    f.state.scopes = ["users.list", "users.read"];
+    // Restoring account permissions cannot add scopes that were never consented.
+    await expect(
+      access.authorized(limited.tokens.access_token, "north", policy),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await f.server.revokeToken(f.client.client_id, tokens.access_token, f.signal);
+    expect((await call()).status).toBe(401);
+    await expect(access.enforce(actor, "north", policy)).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+  } finally {
+    await auth.close();
+    await identityAuth.close();
+    await f.close();
+  }
+});
+
+test("direct OAuth verification cannot return a token that expired while reading permissions", async () => {
+  const f = await fixture();
+  try {
+    const { tokens } = await f.issue();
+    f.state.scopeReadDelay = tokens.expires_in * 1000;
+    await expect(f.server.verify(tokens.access_token, f.signal)).rejects.toThrow("invalid_grant");
   } finally {
     await f.close();
   }
@@ -241,6 +362,54 @@ test("HTTP uses same-origin authenticated consent, rejects cookie/token confusio
     await expect(f.server.exchange(x.exchange, f.signal)).rejects.toThrow("invalid_request");
     await f.server.revokeToken(f.client.client_id, x.tokens.refresh_token, f.signal);
     await expect(f.server.verify(x.tokens.access_token, f.signal)).rejects.toThrow("invalid_grant");
+  } finally {
+    await f.close();
+  }
+});
+
+test("OAuth HTTP separates malformed request bodies from admission and storage failures", async () => {
+  const f = await fixture();
+  let publicError: Error | undefined;
+  const http = createOAuthHttpBinding({
+    server: f.server,
+    consentPage: "/console/oauth",
+    evidence: () => "human",
+    admitHuman() {},
+    admitPublic() {
+      if (publicError) throw publicError;
+    },
+  });
+  const post = (path: string, body: BodyInit, type = "application/json") =>
+    http.fetch(
+      new Request("http://127.0.0.1:31415/oauth/" + path, {
+        method: "POST",
+        headers: { origin: "http://127.0.0.1:31415", "content-type": type },
+        body,
+      }),
+    );
+  try {
+    for (const path of ["register", "decision", "grants/revoke"]) {
+      for (const body of ["{", new Uint8Array([0xff]), new Uint8Array([0xe2, 0x82])]) {
+        const response = (await post(path, body))!;
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({ error: "invalid_request" });
+        expect(response.headers.get("cache-control")).toBe("no-store");
+      }
+    }
+    expect(
+      (await post("token", new Uint8Array([0xff]), "application/x-www-form-urlencoded"))?.status,
+    ).toBe(400);
+    // Only parser failures in the client body are 400. Same error class elsewhere is still 503.
+    publicError = new SyntaxError("private backend detail");
+    const failed = (await post("register", "{}"))!;
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toEqual({ error: "server_error" });
+    publicError = undefined;
+    await f.issue();
+    f.db.exec("UPDATE auth_oauth_records SET document = '{' WHERE kind = 'grant'");
+    const storage = (await http.fetch(new Request("http://127.0.0.1:31415/oauth/grants")))!;
+    expect(storage.status).toBe(503);
+    expect(await storage.json()).toEqual({ error: "server_error" });
   } finally {
     await f.close();
   }

@@ -81,6 +81,16 @@
         "drizzle-kit": "0.31.11",
       },
     },
+    "examples/plugin-assembly": {
+      "name": "@lenso/example-plugin-assembly",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lenso/auth": "workspace:^",
+        "@lenso/cache": "workspace:^",
+        "@lenso/core": "workspace:^",
+        "@lenso/storage": "workspace:^",
+      },
+    },
     "examples/runtime": {
       "name": "@lenso/example-runtime",
       "version": "0.1.0",
@@ -1000,6 +1010,8 @@
     "@lenso/example-mcp-host": ["@lenso/example-mcp-host@workspace:examples/mcp-host"],
 
     "@lenso/example-notes": ["@lenso/example-notes@workspace:examples/notes"],
+
+    "@lenso/example-plugin-assembly": ["@lenso/example-plugin-assembly@workspace:examples/plugin-assembly"],
 
     "@lenso/example-runtime": ["@lenso/example-runtime@workspace:examples/runtime"],
 
