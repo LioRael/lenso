@@ -1,5 +1,12 @@
 # @lenso/engine
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [bfd8133]
+  - @lenso/core@0.4.0
+
 ## 0.7.0
 
 ### Minor Changes

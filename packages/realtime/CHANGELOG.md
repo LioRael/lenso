@@ -1,5 +1,12 @@
 # @lenso/realtime
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [bfd8133]
+  - @lenso/core@0.4.0
+
 ## 0.2.0
 
 ### Minor Changes

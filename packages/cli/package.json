@@ -1,6 +1,6 @@
 {
   "name": "@lenso/cli",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "private": false,
   "description": "TypeScript operation APIs and internal Bun adapter for the Rust lenso command",
   "license": "MIT",
