@@ -181,3 +181,58 @@ test("a config-like custom code cannot opt into configuration details", () => {
   expect(diagnostic(failure).details).toBeUndefined();
   expect(stableJson(diagnostic(failure))).not.toContain("PRIVATE-dynamic");
 });
+
+test("assembly field locations survive safe projection without exposing extra details", async () => {
+  const { DiagnosticError, validatePlugins } = await import("@lenso/core");
+  const first = { id: "same", setup() {} };
+  const second = { id: "same", requires: [{ id: "missing", setup() {} }], setup() {} };
+  let error: unknown;
+  try {
+    validatePlugins([first, second]);
+  } catch (failure) {
+    error = failure;
+  }
+  const projected = diagnostic(error, { source: { file: "lenso.config.ts" } });
+  expect(projected.causes?.[0]).toMatchObject({
+    source: { file: "lenso.config.ts" },
+    details: {
+      path: ["plugins", 1, "id"],
+      paths: [
+        ["plugins", 0, "id"],
+        ["plugins", 1, "id"],
+      ],
+    },
+  });
+  expect(projected.causes?.[1]?.details).toEqual({ path: ["plugins", 1, "requires", 0] });
+  const cyclic = diagnostic(
+    new DiagnosticError([
+      {
+        code: "cyclic-dependency",
+        pluginId: "a",
+        message: "cycle",
+        details: { paths: [["plugins", 0, "requires", 0]], private: "PRIVATE" },
+      },
+    ]),
+  );
+  expect(cyclic.causes?.[0]?.details).toEqual({ paths: [["plugins", 0, "requires", 0]] });
+  expect(JSON.stringify(cyclic)).not.toContain("PRIVATE");
+});
+
+test("configuration failures offer static repairs without schema messages or values", async () => {
+  const { ConfigError } = await import("@lenso/core");
+  const projected = diagnostic(
+    new ConfigError([
+      {
+        code: "config-invalid",
+        pluginId: "configured",
+        path: ["port"],
+        sourceId: "env",
+      },
+    ]),
+  );
+  expect(projected.causes?.[0]).toMatchObject({
+    phase: "config",
+    details: { path: ["port"], sourceId: "env" },
+  });
+  expect(projected.causes?.[0]?.message).toContain("configuration contract");
+});

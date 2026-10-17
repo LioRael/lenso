@@ -50,7 +50,7 @@ function pluginDiagnostics(plugins: readonly Plugin<unknown>[], requireDependenc
   const instances = new Set(plugins);
   const firstById = new Map<string, Plugin<unknown>>();
   const sources = new Map<Plugin<unknown>, PluginSource>();
-  for (const plugin of plugins) {
+  for (const [index, plugin] of plugins.entries()) {
     const source = plugin.source;
     if (
       source !== undefined &&
@@ -65,7 +65,8 @@ function pluginDiagnostics(plugins: readonly Plugin<unknown>[], requireDependenc
       diagnostics.push({
         code: "invalid-source",
         pluginId: plugin.id,
-        message: `Plugin "${plugin.id}" has invalid source metadata.`,
+        message: `Plugin "${plugin.id}" has invalid source metadata. Provide a nonempty file and valid optional export, line and column.`,
+        details: { path: ["plugins", index, "source"] },
       });
     } else if (source) {
       sources.set(plugin, source);
@@ -74,7 +75,8 @@ function pluginDiagnostics(plugins: readonly Plugin<unknown>[], requireDependenc
       diagnostics.push({
         code: "invalid-id",
         pluginId: plugin.id,
-        message: "Plugin IDs must not be empty.",
+        message: "Plugin IDs must not be empty. Assign a nonempty, unique ID to this instance.",
+        details: { path: ["plugins", index, "id"] },
         ...(sources.has(plugin) ? { source: sources.get(plugin)! } : {}),
       });
     }
@@ -83,21 +85,30 @@ function pluginDiagnostics(plugins: readonly Plugin<unknown>[], requireDependenc
       diagnostics.push({
         code: "duplicate-id",
         pluginId: plugin.id,
-        message: `Duplicate plugin ID "${plugin.id}".`,
+        message: `Duplicate plugin ID "${plugin.id}". Remove the repeated instance or assign distinct IDs to separate instances.`,
         ...(sources.has(plugin) ? { source: sources.get(plugin)! } : {}),
         details: {
+          path: ["plugins", index, "id"],
+          paths: [
+            ["plugins", plugins.indexOf(first), "id"],
+            ["plugins", index, "id"],
+          ],
           declaringSources: [sources.get(first), sources.get(plugin)].filter(Boolean),
         },
       });
     }
     if (!firstById.has(plugin.id)) firstById.set(plugin.id, plugin);
-    for (const dependency of requireDependencies ? (plugin.requires ?? []) : []) {
+    for (const [dependencyIndex, dependency] of (requireDependencies
+      ? (plugin.requires ?? [])
+      : []
+    ).entries()) {
       if (!instances.has(dependency)) {
         diagnostics.push({
           code: "missing-dependency",
           pluginId: plugin.id,
           message: `Plugin "${plugin.id}" requires missing instance "${dependency.id}". Include the same plugin object in the app.`,
           dependencyId: dependency.id,
+          details: { path: ["plugins", index, "requires", dependencyIndex] },
           ...(sources.has(plugin) ? { source: sources.get(plugin)! } : {}),
         });
       }
@@ -127,7 +138,17 @@ export function validatePlugins(plugins: readonly Plugin<unknown>[]): readonly P
       diagnostics.push({
         code: "cyclic-dependency",
         pluginId: plugin.id,
-        message: `Cyclic plugin dependency: ${cycle.join(" -> ")}.`,
+        message: `Cyclic plugin dependency: ${cycle.join(" -> ")}. Remove or invert a requires edge in this cycle.`,
+        details: {
+          paths: stack
+            .slice(stack.indexOf(plugin))
+            .map((consumer, index, members) => [
+              "plugins",
+              plugins.indexOf(consumer),
+              "requires",
+              consumer.requires!.indexOf(members[index + 1] ?? plugin),
+            ]),
+        },
         ...(sources.has(plugin) ? { source: sources.get(plugin)! } : {}),
       });
       return;
