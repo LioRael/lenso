@@ -56,6 +56,8 @@ export interface OccurrenceStatus {
   readonly acceptance: "confirmed" | "unknown";
   /** null is unknown/not retained, never evidence of successful execution. */
   readonly job: JobStatus | null;
+  /** Distinguishes a queue outage from unresolved acceptance or pruned history. */
+  readonly jobRead: "available" | "not-retained" | "unresolved" | "unavailable";
 }
 
 /**

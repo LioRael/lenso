@@ -26,6 +26,16 @@ export function normalizeJobQuery(query: JobQuery): JobQuery & { limit: number }
 }
 
 export function jobSummary(job: JobSummary): JobSummary {
+  const error =
+    job.error === null ||
+    ["handler-failed", "invalid-input", "invalid-result", "aborted"].includes(job.error ?? "")
+      ? job.error
+      : undefined;
+  const nextAttemptAt =
+    job.nextAttemptAt === null ||
+    (Number.isSafeInteger(job.nextAttemptAt) && job.nextAttemptAt! >= 0)
+      ? job.nextAttemptAt
+      : undefined;
   return {
     jobId: job.jobId,
     task: job.task,
@@ -33,6 +43,8 @@ export function jobSummary(job: JobSummary): JobSummary {
     attempt: job.attempt,
     maxAttempts: job.maxAttempts,
     cancelRequested: job.cancelRequested,
+    ...(error === undefined ? {} : { error }),
+    ...(nextAttemptAt === undefined ? {} : { nextAttemptAt }),
   };
 }
 

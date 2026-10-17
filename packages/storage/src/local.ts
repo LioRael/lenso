@@ -241,16 +241,6 @@ export function createLocalStoragePlugin(options: { id: string; root: string }) 
       async function put(input: PutObjectInput, signal: AbortSignal): Promise<ObjectMetadata> {
         validateKey(input.key);
         const contentType = input.contentType ?? "application/octet-stream";
-        if (
-          typeof contentType !== "string" ||
-          (input.customMetadata !== undefined &&
-            (input.customMetadata === null ||
-              typeof input.customMetadata !== "object" ||
-              Array.isArray(input.customMetadata) ||
-              Object.values(input.customMetadata).some((value) => typeof value !== "string")))
-        ) {
-          throw new StorageError("invalid-input", "Invalid upload metadata");
-        }
         const upload = checkedUpload({ ...input, signal });
         let temp: string | undefined;
         let failure: unknown;

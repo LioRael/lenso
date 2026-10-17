@@ -182,6 +182,11 @@ test("native D1 Scheduler Manage rechecks actors and revisions and executes only
       expect(handled).toBe(1);
       const occurrences = (await invoke("occurrences", { id: created.id })) as unknown[];
       expect(occurrences).toHaveLength(1);
+      expect(occurrences[0]).toMatchObject({
+        jobRead: "available",
+        acceptance: "confirmed",
+        job: { error: null, nextAttemptAt: null },
+      });
       expect(JSON.stringify(occurrences)).not.toContain("PRIVATE");
       expect(JSON.stringify(occurrences)).not.toContain('"result"');
       actor = bob;
