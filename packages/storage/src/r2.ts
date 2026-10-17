@@ -8,7 +8,7 @@ import {
   type ObjectMetadata,
   type ObjectStorage,
 } from "./index";
-import { checkedUpload, validateUpload } from "./stream";
+import { checkedDownload, checkedUpload, validateUpload } from "./stream";
 
 /** Structural subset of the native binding; no Workers globals are installed by this module. */
 export interface R2StorageObject {
@@ -187,7 +187,9 @@ export function createR2StoragePlugin(options: { id: string; binding: R2StorageB
             if (!object.body) throw new StorageError("conflict", "Object condition failed");
             return {
               metadata: metadata(object),
-              body: object.body,
+              body: checkedDownload(object.body, input.signal, (error) =>
+                failure(error, input.signal),
+              ),
               range: input.range
                 ? {
                     offset: object.range?.offset ?? input.range.offset,

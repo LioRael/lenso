@@ -25,7 +25,7 @@ import {
   type ObjectMetadata,
   type ObjectStorage,
 } from "./index";
-import { checkedUpload, validateUpload } from "./stream";
+import { checkedDownload, checkedUpload, validateUpload } from "./stream";
 
 export interface S3StorageOptions {
   id: string;
@@ -319,7 +319,9 @@ export function createS3StoragePlugin(options: S3StorageOptions) {
                 ...result,
                 ContentLength: matched ? Number(matched[3]) : result.ContentLength,
               }),
-              body: responseBody,
+              body: checkedDownload(responseBody, input.signal, (error) =>
+                failure(error, input.signal),
+              ),
               range: matched
                 ? {
                     offset: Number(matched[1]),

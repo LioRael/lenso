@@ -92,6 +92,8 @@ await app.get(privateFiles).put({
 
 R2 binding has no presigner and no provider request-abort API. Cancellation interrupts the source stream; an already-running platform operation must settle. For R2/local downloads use an application-authorized Fetch endpoint, or separately configure the S3 adapter for R2 presigned URLs. No binding or externally supplied client is closed.
 
+Pass an `AbortSignal` to `get(key, { signal })` (or `files.read(access, fileId, { signal })`) to interrupt body consumption even after the download resolves. Cancelling the returned body also cancels the provider stream. S3/R2 body read failures are classified as `StorageError` with the original cause; reads stay pull-based without buffering the complete object. Upload `customMetadata` must be a record of string values on every adapter and is checked before consuming bytes.
+
 `examples/workers/src/storage.ts` also demonstrates both native binding instances and checks against real Workers `R2Bucket` types. It adds no bucket configuration or routes.
 
 ## Optional file records and authorization
