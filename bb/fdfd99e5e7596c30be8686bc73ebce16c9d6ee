@@ -1,0 +1,24 @@
+.changeset/auth-oauth-scoped-source.md
+  h_9d56aba080c170 1-5
+packages/auth/README.md
+  h_9d56aba080c170 10-26,78,105-114,521-573
+packages/auth/src/oauth-http.ts
+  h_9d56aba080c170 17-23,30,32,39-47,109,152,154-161,172-173
+packages/auth/src/oauth-store.ts
+  h_9d56aba080c170 12
+packages/auth/src/oauth.ts
+  h_9d56aba080c170 2,289,298-325,592-599
+packages/auth/test/oauth.test.ts
+  h_9d56aba080c170 3-6,12,17,24-29,53-54,108,156-265,370-417
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bbfdfd99e5e7596c30be8686bc73ebce16c9d6ee",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
