@@ -20,8 +20,13 @@ response can already have completed.
 `queue.list({ tasks, limit, after })` reads one queue-scoped page, ordered by
 ascending immutable job ID. The task allowlist is required; an empty list returns
 no rows, and the maximum page size is 100. The result is `{ items, nextCursor }`.
-Items contain job ID, task, state, attempts and cancellation-request state only,
-never input, result or raw failure text. A custom provider without `list` fails
+Items contain job ID, task, state, attempts, cancellation-request state and fixed
+error codes, never input, result or raw failure text. Both built-in providers also
+return `nextAttemptAt` (Unix milliseconds) in `get`, deduplication lookup and list
+summaries: pending jobs report their durable eligibility time, other states report
+null. A pending job with `attempt > 0` is awaiting another attempt. This timestamp
+is not a promised start time; a worker must still claim it. Older custom providers
+may omit `error` in list summaries and `nextAttemptAt` entirely. A custom provider without `list` fails
 with `unsupported`; the queue does not substitute an unbounded scan.
 
 This is a queue query, not tenant authorization. An application management service

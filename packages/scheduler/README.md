@@ -201,6 +201,12 @@ become blocked. Keys/tombstones are never erased or replaced to force success.
 `completed` means a plan has no future automatic instant, **not task success**.
 `enqueued` means confirmed queue acceptance, not handler completion.
 `occurrences()` joins the existing Tasks job status, including final failures.
+Each row's `jobRead` distinguishes `available`, `not-retained` (known acceptance,
+missing history), `unresolved` (no confirmed acceptance) and `unavailable` (queue
+read failed). Queue read failures preserve the authorized durable occurrence and
+its recorded acceptance; retry the read after recovery. Store/authorization failures
+still fail the query. The Manage companion includes this read state, fixed job
+error codes and `nextAttemptAt`, while continuing to omit payloads and results.
 `acceptance: "unknown"` with a null job ID means acceptance is unresolved, not
 that no job ran. A known job pruned by Tasks also returns null status, not success.
 

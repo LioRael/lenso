@@ -260,3 +260,38 @@ test("worker failure is observable and stop shares the drained completion", asyn
   expect(worker.stop()).toBe(worker.done);
   await expect(worker.stop()).rejects.toMatchObject({ code: "provider-unavailable" });
 });
+
+test("stop during the initial lease check drains the claim without starting business work", async () => {
+  const checking = Promise.withResolvers<void>();
+  const checked = Promise.withResolvers<{ owned: boolean; cancelRequested: boolean }>();
+  let entered = false;
+  let settled = false;
+  const backend: WorkerBackend = {
+    async fetch() {
+      return claim();
+    },
+    pulse() {
+      checking.resolve();
+      return checked.promise;
+    },
+    async settle(_claim, result) {
+      expect(result).toEqual({ ok: false, error: "aborted" });
+      settled = true;
+    },
+  };
+  const worker = createTaskWorker(
+    backend,
+    async () => {
+      entered = true;
+      return { ok: true, result: null };
+    },
+    {},
+    10,
+  );
+  await checking.promise;
+  const stopped = worker.stop();
+  checked.resolve({ owned: true, cancelRequested: false });
+  await stopped;
+  expect(entered).toBe(false);
+  expect(settled).toBe(true);
+});

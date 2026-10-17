@@ -11,7 +11,7 @@ import {
   type D1PreparedStatement,
 } from "../src/d1";
 
-test("D1 SQL list through an SDK plugin is queue/task scoped, redacted and keyset paginated", async () => {
+async function fixture() {
   const sqlite = new Database(":memory:");
   sqlite.exec(await readFile(new URL("../migrations/d1/0001_tasks.sql", import.meta.url), "utf8"));
   const database: D1Database = {
@@ -44,6 +44,11 @@ test("D1 SQL list through an SDK plugin is queue/task scoped, redacted and keyse
       return database;
     },
   };
+  return { sqlite, database };
+}
+
+test("D1 SQL list through an SDK plugin is queue/task scoped, redacted and keyset paginated", async () => {
+  const { sqlite, database } = await fixture();
   const task = defineTask({
     name: "visible",
     input: z.object({ secret: z.string() }),
@@ -83,8 +88,10 @@ test("D1 SQL list through an SDK plugin is queue/task scoped, redacted and keyse
       expect(Object.keys(item).sort()).toEqual([
         "attempt",
         "cancelRequested",
+        "error",
         "jobId",
         "maxAttempts",
+        "nextAttemptAt",
         "state",
         "task",
       ]);
@@ -94,6 +101,69 @@ test("D1 SQL list through an SDK plugin is queue/task scoped, redacted and keyse
   } finally {
     await app.stop();
     await other.close();
+    sqlite.close();
+  }
+});
+
+test("D1 status and bounded lists expose retry timing and safe failures across provider restart", async () => {
+  const { sqlite, database } = await fixture();
+  let now = 1000;
+  const connect = () => createD1TaskProvider({ database, queueName: "retry", clock: () => now });
+  await provisionD1TaskQueue(database, "retry");
+  let provider = await connect();
+  try {
+    const id = await provider.enqueue({
+      task: "fails",
+      input: "PRIVATE",
+      maxAttempts: 2,
+      deduplicationKey: "stable",
+      retry: { delaySeconds: 2 },
+    });
+    const run = async () => {
+      const worker = await provider.startWorker(
+        async () => ({ ok: false, error: "handler-failed" }),
+        { maxJobs: 1 },
+      );
+      await worker.done;
+    };
+    await run();
+    expect(await provider.get(id)).toMatchObject({
+      state: "pending",
+      attempt: 1,
+      nextAttemptAt: 3000,
+      error: null,
+    });
+    await provider.close();
+    provider = await connect();
+    expect((await provider.lookupDeduplicationKey("stable"))?.jobId).toBe(id);
+    expect((await provider.list!({ tasks: ["fails"] })).items[0]).toMatchObject({
+      nextAttemptAt: 3000,
+    });
+    now = 3000;
+    await run();
+    expect((await provider.list!({ tasks: ["fails"] })).items[0]).toMatchObject({
+      state: "failed",
+      attempt: 2,
+      error: "handler-failed",
+      nextAttemptAt: null,
+    });
+    expect(await provider.retry(id)).toBe(true);
+    expect(await provider.get(id)).toMatchObject({
+      state: "pending",
+      attempt: 2,
+      maxAttempts: 3,
+      nextAttemptAt: 3000,
+    });
+    expect(await provider.cancel(id)).toBe("cancelled");
+    const page = await provider.list!({ tasks: ["fails"] });
+    expect(page.items[0]).toMatchObject({
+      state: "cancelled",
+      nextAttemptAt: null,
+      error: "aborted",
+    });
+    expect(JSON.stringify(page)).not.toContain("PRIVATE");
+  } finally {
+    await provider.close();
     sqlite.close();
   }
 });

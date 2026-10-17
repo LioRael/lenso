@@ -204,6 +204,7 @@ type StoredJob = {
   retry_count: number;
   retry_limit: number;
   started_on: Date | null;
+  start_after: Date;
   output: unknown;
 };
 
@@ -290,7 +291,7 @@ export async function createPostgresTaskProvider(
   async function lockedJob(client: PoolClient, jobId: string): Promise<StoredJob | undefined> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const result = await client.query<StoredJob>(
-        `SELECT id, state, retry_count, retry_limit, started_on, output FROM ${jobTable} WHERE name = $1 AND id = $2 FOR UPDATE`,
+        `SELECT id, state, retry_count, retry_limit, started_on, start_after, output FROM ${jobTable} WHERE name = $1 AND id = $2 FOR UPDATE`,
         [options.queueName, jobId],
       );
       if (result.rows[0]) return result.rows[0];
@@ -467,6 +468,7 @@ export async function createPostgresTaskProvider(
           attempt: job.started_on ? job.retry_count + 1 : 0,
           maxAttempts: job.retry_limit + 1,
           cancelRequested: own.cancelRequested,
+          nextAttemptAt: state === "pending" ? job.start_after.getTime() : null,
           result: state === "succeeded" && output?.ok ? output.result : null,
           error:
             state === "failed"
@@ -491,10 +493,14 @@ export async function createPostgresTaskProvider(
           retry_count: number;
           retry_limit: number;
           started_on: Date | null;
+          start_after: Date;
           cancel_requested: boolean;
+          output: unknown;
         }>(
           `SELECT j.id, r.task, j.state, j.retry_count, j.retry_limit,
-            j.started_on, r.cancel_requested
+            j.started_on, j.start_after,
+            CASE WHEN j.state = 'failed' THEN j.output ELSE NULL END AS output,
+            r.cancel_requested
           FROM ${jobTable} j
           JOIN "${config.schema}".lenso_task_relation r
             ON r.queue_name = j.name AND r.job_id = j.id
@@ -507,6 +513,7 @@ export async function createPostgresTaskProvider(
           response.rows.map((job) => {
             const state = states[job.state];
             if (!state) throw new TaskQueueError("provider-unavailable");
+            const output = safeOutput(job.output);
             return {
               jobId: job.id,
               task: job.task,
@@ -514,6 +521,15 @@ export async function createPostgresTaskProvider(
               attempt: job.started_on ? job.retry_count + 1 : 0,
               maxAttempts: job.retry_limit + 1,
               cancelRequested: job.cancel_requested,
+              nextAttemptAt: state === "pending" ? job.start_after.getTime() : null,
+              error:
+                state === "cancelled"
+                  ? "aborted"
+                  : state === "failed"
+                    ? output && !output.ok
+                      ? output.error
+                      : "handler-failed"
+                    : null,
             };
           }),
           limit,

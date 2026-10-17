@@ -71,6 +71,9 @@ integration("real PostgreSQL durable tasks", () => {
       expect(last.nextCursor).toBeNull();
       expect(JSON.stringify(first)).not.toContain("SECRET");
       expect(first.items.every((item) => item.state === "succeeded")).toBe(true);
+      expect(first.items.every((item) => item.error === null && item.nextAttemptAt === null)).toBe(
+        true,
+      );
     } finally {
       await queue.close();
       await other.close();
@@ -294,6 +297,13 @@ integration("real PostgreSQL durable tasks", () => {
           { deduplicationKey: "report-key" },
         ),
       ).rejects.toBeDefined();
+      const pending = await queue.get(jobId);
+      expect(pending?.state).toBe("pending");
+      expect(pending?.nextAttemptAt).toBeNumber();
+      expect(
+        (await queue.list({ tasks: [task.name] })).items.find((item) => item.jobId === jobId)
+          ?.nextAttemptAt,
+      ).toBe(pending?.nextAttemptAt);
       await queue.startWorker();
       expect((await queue.get(jobId))?.state).toBe("pending");
       const failed = await waitFor(
@@ -302,6 +312,9 @@ integration("real PostgreSQL durable tasks", () => {
       );
       expect(failed).toMatchObject({ jobId, attempt: 3, maxAttempts: 3, error: "handler-failed" });
       expect(JSON.stringify(failed)).not.toContain("secret");
+      expect(
+        (await queue.list({ tasks: [task.name] })).items.find((item) => item.jobId === jobId),
+      ).toMatchObject({ error: "handler-failed", nextAttemptAt: null });
       expect(await queue.retry(jobId)).toBe(true);
       const completed = await waitFor(
         () => queue.get(jobId),

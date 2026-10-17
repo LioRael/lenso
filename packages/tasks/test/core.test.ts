@@ -109,7 +109,8 @@ describe("task contract boundary (not persistence tests)", () => {
       maxAttempts: 3,
       cancelRequested: false,
       result: { secret: "private" },
-      error: "private",
+      error: "private" as never,
+      nextAttemptAt: "private" as never,
     };
     record.provider.list = async () => ({ items: [item], nextCursor: null });
     expect(await queue.list({ tasks: [task.name] })).toEqual({
