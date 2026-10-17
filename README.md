@@ -241,10 +241,7 @@ For an opt-in dependency closure and a finite application lifetime:
 ```ts
 import { collectPlugins, withApp } from "@lenso/core";
 
-const result = await withApp(
-  { plugins: collectPlugins([report]) },
-  (app) => app.get(report).run(),
-);
+const result = await withApp({ plugins: collectPlugins([report]) }, (app) => app.get(report).run());
 ```
 
 `collectPlugins` includes exact transitive `requires` instances once, rejects
