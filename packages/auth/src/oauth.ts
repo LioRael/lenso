@@ -1,5 +1,5 @@
 import type { Access, SubjectRef } from "./core";
-import { AuthError } from "./errors";
+import { AuthConfigurationError, AuthError } from "./errors";
 import { defineSource } from "./source";
 import type { OAuthRecord, OAuthStore } from "./oauth-store";
 export {
@@ -286,6 +286,7 @@ export function createOAuthAuthorizationServer<E>(options: {
     )
       fail("invalid_grant");
     const permissions = await allowed(g.subjectId, signal);
+    if (g.expiresAt <= now() || g.accessExpiresAt <= now()) fail("invalid_grant");
     return {
       ...publicGrant(g),
       scopes: g.scopes.filter((s) => permissions.includes(s)),
@@ -293,6 +294,34 @@ export function createOAuthAuthorizationServer<E>(options: {
       audience: [resource],
       accessExpiresAt: g.accessExpiresAt,
     };
+  }
+  function sourceForScopes(requiredScopes: readonly string[]) {
+    // Capture operation requirements at assembly time, never from request JSON.
+    const required = Object.freeze([...requiredScopes]);
+    if (required.some((scope) => !options.scopes.includes(scope)))
+      throw new AuthConfigurationError("OAuth source requires registered scopes");
+    return Object.freeze(
+      defineSource<string>({
+        realmId: options.humanAccess.realmId,
+        capabilities: Object.freeze({ authoritative: true }),
+        async verify(credential, { signal }) {
+          try {
+            const g = await verify(credential, signal);
+            if (!required.every((scope) => g.scopes.includes(scope)))
+              throw new AuthError("FORBIDDEN");
+            return {
+              status: "verified",
+              subjectId: g.subjectId,
+              kind: "user",
+              session: { expiresAt: g.accessExpiresAt, authoritative: true },
+            };
+          } catch (error) {
+            if (error instanceof OAuthError) return { status: "rejected" };
+            throw error;
+          }
+        },
+      }),
+    );
   }
   return {
     issuer,
@@ -560,22 +589,14 @@ export function createOAuthAuthorizationServer<E>(options: {
       return tokenResponse(next);
     },
     verify,
-    source: defineSource<string>({
-      async verify(credential, { signal }) {
-        try {
-          const g = await verify(credential, signal);
-          return {
-            status: "verified",
-            subjectId: g.subjectId,
-            kind: "user",
-            session: { expiresAt: g.accessExpiresAt },
-          };
-        } catch (error) {
-          if (error instanceof OAuthError) return { status: "rejected" };
-          throw error;
-        }
-      },
-    }),
+    /** Identity only. Select sourceForScopes for an operation's delegated authority. */
+    source: sourceForScopes([]),
+    /** Fresh grant and current scope checks in the same Auth verification. */
+    sourceForScopes(requiredScopes: readonly string[]) {
+      if (!requiredScopes.length)
+        throw new AuthConfigurationError("At least one OAuth scope is required");
+      return sourceForScopes(requiredScopes);
+    },
     async grants(evidence: E, signal: AbortSignal) {
       const actor = await human(evidence, signal);
       await allowed(actor.subjectId, signal);

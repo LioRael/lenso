@@ -271,6 +271,30 @@ export interface LifecycleFailure {
   readonly pluginId?: string;
   readonly source?: PluginSource;
 }
+
+/** Own one finite application lifetime; await work and preserve work plus cleanup failures. */
+export async function withApp<T>(
+  app: Parameters<typeof startApp>[0],
+  work: (app: RunningApp) => T | Promise<T>,
+  options: Parameters<typeof startApp>[1] = {},
+): Promise<T> {
+  const running = await startApp(app, options);
+  let result: T;
+  try {
+    result = await work(running);
+  } catch (error) {
+    try {
+      await running.stop();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Application work and cleanup failed.", {
+        cause: cleanupError,
+      });
+    }
+    throw error;
+  }
+  await running.stop();
+  return result;
+}
 const failures = new WeakMap<object, LifecycleFailure>();
 function recordFailure(error: unknown, failure: LifecycleFailure): void {
   if ((typeof error === "object" && error !== null) || typeof error === "function") {
