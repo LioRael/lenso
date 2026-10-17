@@ -1,0 +1,56 @@
+bun.lock
+  h_9d56aba080c170 162,196,253,315-327,443,529,579,738,996-997
+docs/CLI.md
+  h_9d56aba080c170 200-204
+packages/cache/README.md
+  h_9d56aba080c170 128-132,202-216
+packages/cache/examples/catalog.ts
+  h_9d56aba080c170 1-42
+packages/cache/src/index.ts
+  h_9d56aba080c170 21-22,50-52,55-56,59-60,150,167,179,210,231-232,241-244
+packages/cache/test/catalog.test.ts
+  h_9d56aba080c170 1-33
+packages/cache/test/mutation-race.test.ts
+  h_9d56aba080c170 1-97
+packages/engine/src/diagnostics.ts
+  h_9d56aba080c170 102-104,126-127,132-133,243-252
+packages/engine/test/diagnostics.test.ts
+  h_9d56aba080c170 184-238
+packages/events/README.md
+  h_9d56aba080c170 1-106
+packages/events/examples/recovery.ts
+  h_9d56aba080c170 1-65
+packages/events/package.json
+  h_9d56aba080c170 1-46
+packages/events/src/contracts.ts
+  h_9d56aba080c170 1-52
+packages/events/src/index.ts
+  h_9d56aba080c170 1-115
+packages/events/src/plugin.ts
+  h_9d56aba080c170 1-20
+packages/events/src/sqlite.ts
+  h_9d56aba080c170 1-199
+packages/events/test/entries.test.ts
+  h_9d56aba080c170 1-34
+packages/events/test/events.test.ts
+  h_9d56aba080c170 1-278
+packages/events/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/events/tsconfig.json
+  h_9d56aba080c170 1-4
+packages/lenso/src/diagnostics.ts
+  h_9d56aba080c170 53,68-69,78-79,88,91-95,101-104,111,141-151
+packages/lenso/test/diagnostics.test.ts
+  h_9d56aba080c170 103-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c798fc3ef4cb2cb5cb85e8894cc894de14d580b",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
