@@ -18,6 +18,8 @@ interface Waiter {
 }
 
 interface Flight {
+  readonly id: string;
+  write?: Promise<unknown>;
   readonly controller: AbortController;
   readonly waiters: Set<Waiter>;
   writable: boolean;
@@ -45,12 +47,17 @@ export function createCache<T extends JsonValue = JsonValue>(options: CacheOptio
   }
   function fence(namespace: string, key?: string) {
     const prefix = `${namespace}\n`;
-    for (const [id, flight] of flights) {
+    const writes: Promise<unknown>[] = [];
+    for (const flight of active) {
+      const id = flight.id;
       if (key === undefined ? id.startsWith(prefix) : id === `${prefix}${key}`) {
         flight.writable = false;
-        flights.delete(id);
+        if (flights.get(id) === flight) flights.delete(id);
+        if (flight.write) writes.push(flight.write);
       }
     }
+    // Drain dispatched commands, including writes detached by an earlier fence.
+    return Promise.allSettled(writes);
   }
 
   function scoped<U extends JsonValue>(
@@ -140,7 +147,7 @@ export function createCache<T extends JsonValue = JsonValue>(options: CacheOptio
         validateName(key);
         const duration = ttl(input.ttlMs);
         const text = encode(value, Date.now() + duration, config.maxValueBytes, validate);
-        fence(namespace, key);
+        await fence(namespace, key);
         if (duration === 0) {
           const result = await service.delete(key);
           return { outcome: result.outcome === "bypassed" ? "bypassed" : "skipped" };
@@ -157,7 +164,7 @@ export function createCache<T extends JsonValue = JsonValue>(options: CacheOptio
       async delete(key) {
         ready();
         validateName(key);
-        fence(namespace, key);
+        await fence(namespace, key);
         try {
           const generation = await adapter.generation(namespace);
           await adapter.delete(namespace, generation, key);
@@ -169,7 +176,7 @@ export function createCache<T extends JsonValue = JsonValue>(options: CacheOptio
       },
       async invalidate() {
         ready();
-        fence(namespace);
+        await fence(namespace);
         try {
           await adapter.invalidate(namespace);
           return { outcome: "invalidated" };
@@ -200,6 +207,7 @@ export function createCache<T extends JsonValue = JsonValue>(options: CacheOptio
         if (!flight) {
           if (active.size >= config.maxInFlight) throw new CacheError("busy");
           flight = {
+            id,
             controller: new AbortController(),
             waiters: new Set(),
             writable: true,
@@ -220,7 +228,8 @@ export function createCache<T extends JsonValue = JsonValue>(options: CacheOptio
               !current.controller.signal.aborted
             ) {
               try {
-                await adapter.delete(namespace, snapshot.generation, key);
+                current.write = adapter.delete(namespace, snapshot.generation, key);
+                await current.write;
               } catch {
                 backend("delete");
               }
@@ -229,8 +238,10 @@ export function createCache<T extends JsonValue = JsonValue>(options: CacheOptio
             const value = await loader(current.controller.signal);
             if (current.controller.signal.aborted) throw new CacheError("aborted");
             const text = encode(value, Date.now() + duration, config.maxValueBytes, validate);
-            if (duration > 0 && current.writable && !closed)
-              await write(key, text, duration, snapshot.generation);
+            if (duration > 0 && current.writable && !closed) {
+              current.write = write(key, text, duration, snapshot.generation);
+              await current.write;
+            }
             return text;
           })();
           const settle = (failed: boolean, value: unknown) => {

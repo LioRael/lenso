@@ -197,6 +197,11 @@ CLI operations. Plugin `source` metadata is used when declared; the real config
 path is the fallback. Missing dependencies name the consumer and missing
 instance; duplicate IDs identify available declaration locations. Contributions
 use the existing redaction policy, not a second configuration renderer.
+Assembly `details.path` identifies the declaration field (for example,
+`["plugins", 2, "requires", 0]`); duplicate IDs include both declaration
+`details.paths`, and cycles include each participating dependency edge. These
+indices refer to the declared plugin array, before dependency sorting. Repair
+hints use static text and do not include rejected configuration values.
 Inspection never loads `lenso.engine.ts`, runs Engine/application setup or infers
 runtime service methods/health. Trusted config top-level code and schema converters
 still execute. It does not dump resolved runtime configuration or override

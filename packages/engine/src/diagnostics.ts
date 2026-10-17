@@ -99,7 +99,9 @@ function safeDetail(
   if (details && typeof details === "object") {
     if (detail.code === "invalid-input")
       result.details = { paths: safePaths(Reflect.get(details, "paths")) };
-    else if (detail.code === "invalid-plugin")
+    else if (
+      ["invalid-plugin", "invalid-id", "invalid-source", "missing-dependency"].includes(detail.code)
+    )
       result.details = { path: safePaths([Reflect.get(details, "path")])[0] ?? [] };
     else if (
       ["ambiguous-application-target", "missing-application-selection"].includes(detail.code)
@@ -121,10 +123,14 @@ function safeDetail(
           ? { sourceId: Reflect.get(details, "sourceId").slice(0, 256) }
           : {}),
       };
+    else if (detail.code === "cyclic-dependency")
+      result.details = { paths: safePaths(Reflect.get(details, "paths")) };
     else if (detail.code === "duplicate-id") {
       const sources = Reflect.get(details, "declaringSources");
       if (Array.isArray(sources))
         result.details = {
+          path: safePaths([Reflect.get(details, "path")])[0] ?? [],
+          paths: safePaths(Reflect.get(details, "paths")),
           declaringSources: sources
             .slice(0, diagnosticLimit)
             .flatMap((source) =>
@@ -234,7 +240,16 @@ function describeError(
           {
             code: item.code,
             phase: "config",
-            message: "Configuration could not be resolved or validated.",
+            message:
+              item.code === "config-invalid"
+                ? "Configuration failed validation. Correct the indicated field in its source to match the plugin configuration contract."
+                : item.code === "config-cancelled"
+                  ? "Configuration resolution was cancelled. Retry startup with an active signal when ready."
+                  : item.code === "config-file-missing"
+                    ? "Configuration file is missing. Create the declared file or correct its source location."
+                    : item.code === "config-env-invalid"
+                      ? "Environment configuration is invalid. Check the declared binding and its parser."
+                      : "Configuration could not be resolved. Check the indicated source and its declared format.",
             pluginId: item.pluginId,
             ...(item.source ? { source: item.source } : {}),
             details: {

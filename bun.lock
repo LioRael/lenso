@@ -159,7 +159,7 @@
         "@cloudflare/workers-types": "^5.20261008.1",
         "@lenso/auth": "^0.5.0",
         "@lenso/core": "^0.3.1",
-        "@lenso/engine": "^0.6.0",
+        "@lenso/engine": "^0.6.0 || ^0.7.0",
         "@lenso/manage": "^0.5.2",
         "drizzle-orm": "^0.45.3",
         "zod": "^4.6.5",
@@ -193,7 +193,7 @@
       "peerDependencies": {
         "@lenso/auth": "^0.5.0",
         "@lenso/core": "^0.3.1",
-        "@lenso/engine": "^0.6.0",
+        "@lenso/engine": "^0.6.0 || ^0.7.0",
         "@lenso/manage": "^0.5.2",
         "@lenso/tasks": "^0.4.0",
         "@opentelemetry/api": "1.9.1",
@@ -250,7 +250,7 @@
       "peerDependencies": {
         "@lenso/auth": "^0.5.0",
         "@lenso/core": "^0.3.1",
-        "@lenso/engine": "^0.6.0",
+        "@lenso/engine": "^0.6.0 || ^0.7.0",
         "@lenso/manage": "^0.5.2",
         "drizzle-orm": "^0.45.3",
         "zod": "4.6.5",
@@ -311,6 +311,19 @@
         "@opentelemetry/api": "1.9.1",
         "@standard-schema/spec": "1.1.0",
       },
+    },
+    "packages/events": {
+      "name": "@lenso/events",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@lenso/core": "workspace:^",
+      },
+      "peerDependencies": {
+        "@lenso/core": "^0.3.0",
+      },
+      "optionalPeers": [
+        "@lenso/core",
+      ],
     },
     "packages/lenso": {
       "name": "@lenso/core",
@@ -427,7 +440,7 @@
       "peerDependencies": {
         "@lenso/auth": "^0.5.0",
         "@lenso/core": "^0.3.1",
-        "@lenso/engine": "^0.6.0",
+        "@lenso/engine": "^0.6.0 || ^0.7.0",
         "@lenso/manage": "^0.5.2",
         "@lenso/tasks": "^0.4.0",
         "drizzle-orm": "^0.45.3",
@@ -513,7 +526,7 @@
         "@cloudflare/workers-types": "5.20261008.1",
         "@lenso/auth": "^0.5.0",
         "@lenso/core": "^0.3.1",
-        "@lenso/engine": "^0.6.0",
+        "@lenso/engine": "^0.6.0 || ^0.7.0",
         "@lenso/manage": "^0.5.2",
         "@lenso/scheduler": "^0.3.3",
         "@lenso/tasks": "^0.4.0",
@@ -563,7 +576,7 @@
         "@lenso/runtime-sdk": "workspace:*",
       },
       "peerDependencies": {
-        "@lenso/engine": "^0.6.0",
+        "@lenso/engine": "^0.6.0 || ^0.7.0",
         "@lenso/manage": "^0.5.2",
         "@lenso/runtime-sdk": "0.1.0",
       },
@@ -722,7 +735,7 @@
       "peerDependencies": {
         "@lenso/audit": "^0.3.1",
         "@lenso/core": "^0.3.1",
-        "@lenso/engine": "^0.6.0",
+        "@lenso/engine": "^0.6.0 || ^0.7.0",
         "@lenso/limits": "^0.2.1",
         "@lenso/manage": "^0.5.0",
         "pg": "8.23.1",
@@ -979,6 +992,8 @@
     "@lenso/db": ["@lenso/db@workspace:packages/db"],
 
     "@lenso/engine": ["@lenso/engine@workspace:packages/engine"],
+
+    "@lenso/events": ["@lenso/events@workspace:packages/events"],
 
     "@lenso/example-greeting": ["@lenso/example-greeting@workspace:examples/greeting"],
 
