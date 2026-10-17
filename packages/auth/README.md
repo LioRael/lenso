@@ -7,21 +7,23 @@ realm, and owns only the session state it actually manages.
 
 ## Entry points
 
-| Import                                            | Responsibility                                                               |
-| ------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `@lenso/auth`                                     | Sources, trusted actors, realms, operation audiences, requirements, policies |
-| `@lenso/auth/plugin`                              | Public Lenso lifecycle integration                                           |
-| `@lenso/auth/sessions`                            | Optional opaque managed sessions and domain Store contract                   |
-| `@lenso/auth/session-source`                      | Existing `getSession` bridge; external session ownership                     |
-| `@lenso/auth/fetch`                               | Explicit credential extraction, origin gate, safe error responses            |
-| `@lenso/auth/browser`                             | Data-only typed login/discovery descriptors                                  |
-| `@lenso/auth/interactive`                         | Explicit password and host external-entry capabilities                       |
-| `@lenso/auth/http`                                | Instance-bound discovery, login and session HTTP transport                   |
-| `@lenso/auth/orpc`                                | Typed middleware for oRPC 2.0.0-beta.42                                      |
-| `@lenso/auth/drizzle/pg`                          | Native Drizzle PostgreSQL session store                                      |
-| `@lenso/auth/drizzle/sqlite`                      | Native Drizzle Bun SQLite session store                                      |
-| `@lenso/auth/drizzle/d1`                          | Native Drizzle D1 session store, no Bun runtime imports                      |
-| `@lenso/auth/drizzle/schema-pg` / `schema-sqlite` | Auth-owned session schemas                                                   |
+| Import                                            | Responsibility                                                                 |
+| ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `@lenso/auth`                                     | Sources, trusted actors, realms, operation audiences, requirements, policies   |
+| `@lenso/auth/plugin`                              | Public Lenso lifecycle integration                                             |
+| `@lenso/auth/sessions`                            | Optional opaque managed sessions and domain Store contract                     |
+| `@lenso/auth/session-source`                      | Existing `getSession` bridge; external session ownership                       |
+| `@lenso/auth/fetch`                               | Explicit credential extraction, origin gate, safe error responses              |
+| `@lenso/auth/browser`                             | Data-only typed login/discovery descriptors                                    |
+| `@lenso/auth/interactive`                         | Explicit password and host external-entry capabilities                         |
+| `@lenso/auth/http`                                | Instance-bound discovery, login and session HTTP transport                     |
+| `@lenso/auth/orpc`                                | Typed middleware for oRPC 2.0.0-beta.42                                        |
+| `@lenso/auth/oauth`                               | OAuth authorization server, current grant verification and scoped Auth sources |
+| `@lenso/auth/oauth-http`                          | Fetch binding for OAuth metadata, consent and token endpoints                  |
+| `@lenso/auth/drizzle/pg`                          | Native Drizzle PostgreSQL session store                                        |
+| `@lenso/auth/drizzle/sqlite`                      | Native Drizzle Bun SQLite session store                                        |
+| `@lenso/auth/drizzle/d1`                          | Native Drizzle D1 session store, no Bun runtime imports                        |
+| `@lenso/auth/drizzle/schema-pg` / `schema-sqlite` | Auth-owned session schemas                                                     |
 
 The root imports none of Lenso, oRPC, Drizzle or Bun. Those dependencies are
 optional peers selected by entry point. Build uses shared chunks so all public
@@ -73,6 +75,7 @@ const binding = createAuthHttpBinding({
   sessions,
   logoutPath: "/operator/auth/logout",
   renewPath: "/operator/auth/renew", // Optional; managed renewal eligibility still applies.
+  sessionStatusPath: "/operator/auth/session", // Authoritative renewal scheduling hints.
 });
 assertAuthHttpBindings([binding], reservedRoutes);
 // The host dispatches binding.fetch(request), or lends binding to its Console adapter.
@@ -98,6 +101,16 @@ Expected-subject mismatches return 412; denied credentials 401, Origin/CSRF 403,
 and unavailable owners 503. Responses are `no-store`. Cancellation remains the
 caller's reason; it is not rollback of dispatched effects. Renewal uses the
 existing store CAS, not browser notifications or a second session manager.
+
+Session lifetime is explicit; Auth has no implicit one-hour default. In this
+example the credential expires after one idle hour unless the owner successfully
+touches or renews it earlier, and always expires after eight absolute hours.
+Verification and `status` do not advance activity. On return, read the discovered
+status endpoint: `serverNow`, `renewAfterAt`, `expiresAt` and `absoluteExpiresAt`
+describe the server's clock and current bounds. Renew only while valid and due,
+with Origin, CSRF and expected-subject fencing. A 409 `RENEWAL_NOT_DUE` preserves
+the session; a 401 requires login. A suspended browser cannot renew an expired
+credential on wake. Increasing expiry is not a renewal or recovery mechanism.
 
 `externalEntry` adapts a host-owned `start` and optional exact callback
 `{ path, method, complete }`. `sessionSource` remains the existing-session
@@ -504,6 +517,59 @@ integration, not in the Auth domain model.
 No old Rust wire/data compatibility, automatic existing-session migration,
 cross-process signed delegation, JWT/OIDC implementation or cookie issuance is
 claimed by this release.
+
+## OAuth delegation and service permissions
+
+`createOAuthAuthorizationServer` from `/oauth` owns code/refresh rotation and
+PKCE verification over a borrowed `OAuthStore`. Configure the issuer, resource,
+registered clients/scopes, human `Access`, and `allowedScopes(subject, signal)`
+using the application's current permission service. `null` denies an inactive or
+unassigned subject. The SQL adapter needs an explicit namespace, driver and
+migration; it never acquires a connection or migrates on requests.
+
+`server.source` verifies identity only. `server.sourceForScopes(["users.read"])`
+also requires every selected scope to appear in both the consented grant and
+current permissions, in the same verification. Configure scopes in trusted
+assembly code, never from request JSON. Both sources bind to the human Access's
+realm and read authoritative state on every verification; custom stores must
+not cache away revocation or rotation. Missing operation scope returns 403;
+expired/revoked tokens return 401 through `authErrorResponse`.
+
+Before, obtaining scopes and an Auth actor required two verifications:
+
+```ts
+const grant = await oauth.verify(token, signal);
+if (!grant.scopes.includes("users.read")) throw new AuthError("FORBIDDEN");
+const actor = await identityAccess.required(token, { signal });
+```
+
+For a known operation, configure its source once and compose the ordinary
+membership reader and service policy:
+
+```ts
+const auth = createAuth(realm("staff", oauth.sourceForScopes(["users.read"])));
+const readUsers = auth.for(audience("staff-users:read")).memberships(readTenantMembership);
+// One current grant/scope lookup, then the selected tenant's current policy.
+const actor = await readUsers.authorized(token, tenantId, canReadUsers, { signal });
+// A later dispatch/disclosure boundary must still revalidate:
+await readUsers.enforce(actor, tenantId, canReadUsers, { signal });
+// Close auth during owner cleanup.
+```
+
+Realm identifies the subject namespace; audience identifies the service entry;
+OAuth scopes cap delegated authority; membership authorizes the actual object.
+None substitutes for another. This composition does not cache permission facts
+across operations. An entry that needs the full grant inventory can still use
+`verify`; it must not treat returned plain data as an Auth actor.
+
+`createOAuthHttpBinding` from `/oauth-http` mounts into an existing Fetch host.
+The host supplies public rate admission, human evidence and cookie/CSRF/identity
+transition admission. Invalid JSON, invalid UTF-8 and oversized bodies return
+400 `invalid_request`; storage/admission failures remain opaque 503 errors.
+These entries use WebCrypto/Fetch, without Bun/Node imports. Native clients use
+S256 and registered literal-loopback redirects (the port may vary); this is not
+an automatic browser launcher or a native SDK. Workers still require a durable
+store with atomic CAS and their own admission/connection lifecycle.
 
 ## Checks
 
