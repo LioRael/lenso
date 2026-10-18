@@ -170,7 +170,17 @@ function describeError(
   if (error instanceof InitializationError)
     return {
       code: error.code,
-      phase: error.code === "initialization-invalid-input" ? "input" : "config",
+      phase:
+        error.code === "initialization-invalid-input"
+          ? "input"
+          : [
+                "initialization-unauthorized",
+                "initialization-closed",
+                "initialization-conflict",
+                "initialization-outcome-unknown",
+              ].includes(error.code)
+            ? "invoke"
+            : "config",
       message: error.message,
     };
   const lifetime = lifecycleFailure(error);

@@ -140,6 +140,7 @@ test("a failed configuration insert rolls back owner/marker and the same request
       const request = { requestId: "rollback-attempt-001", input };
       const failed = await run(directory, ["setup", "apply", "--stdin"], request);
       expect(failed.value.error.code).toBe("initialization-outcome-unknown");
+      expect(failed.value.error.phase).toBe("invoke");
       expect(
         db.query<{ total: number }, []>("SELECT count(*) AS total FROM first_run_owner").get()!
           .total,
