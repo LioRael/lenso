@@ -13,8 +13,8 @@ Inspect the application's installed package exports, declarations and peer requi
 External plugins use public `Plugin<Service>` or `@lenso/engine/authoring` contracts, never framework source paths or checkout-only scripts. Follow the standalone [content Engine plugin](https://github.com/LioRael/lenso/blob/main/packages/cli/examples/content-plugin/index.ts) when authoring build extensions. No framework clone is required to consume published exports.
 
 For a source-review workflow before registry publication, the
-[Bun Web quickstart](https://github.com/LioRael/lenso/blob/main/docs/BUN_WEB_QUICKSTART.md)
-uses the existing template and real packed artifacts in an external app, including
+[Bun Web source workflow](https://github.com/LioRael/lenso/blob/main/docs/BUN_WEB_SOURCE_WORKFLOW.md)
+uses the existing template switched to packed artifacts in an external app, including
 install, CLI/Web verification, Engine dev/build and enabling the shipped content
 extension. Its SDK preparation belongs to the framework source workspace, not the
 consumer. Check the extension's Engine peer range against the installed Engine.

@@ -8,7 +8,7 @@ Use one real plugin object per instance, pass it into the consuming factory, put
 
 Acquire resources in setup and immediately register cleanup; factories/config module imports only declare the graph. Call the returned service directly. Wrap app use so stop runs on success/failure and retains both errors if they fail together. A service object retained after stop needs its own closed/drain behavior; the framework cannot revoke arbitrary native references.
 
-Public package exports normally resolve to built `dist`. For a source checkout, prepare the pinned SDK, frozen-install and build affected packages before the consumer. The validated [Bun Web quickstart](https://github.com/LioRael/lenso/blob/main/docs/BUN_WEB_QUICKSTART.md) installs packed public artifacts in an independent app. It does not establish npm publication.
+Public package exports normally resolve to built `dist`. For a source checkout, prepare the pinned SDK, frozen-install and build affected packages before the consumer. The [Bun Web quickstart](https://github.com/LioRael/lenso/blob/main/docs/BUN_WEB_QUICKSTART.md) uses fixed published packages and its own lockfile in an independent app; no Runtime preparation is required. Framework changes retain the separate [source pack workflow](https://github.com/LioRael/lenso/blob/main/docs/BUN_WEB_SOURCE_WORKFLOW.md).
 
 Share browser types through type-only exports and browser-safe clients; keep listeners/config/Engine out of that dependency graph. Extract `packages/` only for an actual shared/build/release boundary. The `lenso-best-practices` skill contains the broader repository decisions without replacing this API workflow.
 
