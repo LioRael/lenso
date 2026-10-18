@@ -1,3 +1,4 @@
+import type { Initialization } from "./initialization";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ConfigBinding, ConfigState } from "./config-types";
 
@@ -54,6 +55,7 @@ export function defineApp<const P extends readonly Plugin<unknown>[]>(app: {
   plugins: P;
   instanceId?: string;
   logger?: Logger;
-}): { plugins: P; instanceId?: string; logger?: Logger } {
+  initialization?: Initialization;
+}): { plugins: P; instanceId?: string; logger?: Logger; initialization?: Initialization } {
   return app;
 }

@@ -261,3 +261,25 @@ collect that stream once rather than also exporting it through an OTel log SDK.
 `generate` writes `.lenso/manifest.json`, `server.ts` and `client.ts` by default. Build plugins can add owned files; the command reports their paths from `.lenso/.engine-files.json`. Conflicting owners, edited outputs and path/symlink escapes fail before overwriting files. See [Engine authoring](../packages/engine/README.md) for `lenso.engine.ts`, discovery/generation hooks, explicit capability replacement and custom build targets. Manifest schemaVersion is 1, contains plugin/dependency and operation descriptions, and identifies the selected config as source. Keys are sorted; unchanged bytes are not rewritten. Missing router produces an empty client entry, removing stale imports. Metadata must be plain JSON and contain no secrets; sensitive fields are redacted. No timestamps or setup results enter generated output. Determinism depends on deterministic config metadata; import-time randomness, environment-sensitive declarations and module caches remain app-owned constraints. A new CLI process loads current source; repeated in-process discovery follows normal module caching. Edit source/config, then regenerate; do not hand-edit generated files.
 
 Engine setup is build-time trusted code: check/generate/build execute it, while inspect/call read only the selected application config and never load Engine config. Dev runs generation and beforeStart in a fresh supervised worker, passing the explicit config and entry overrides through that worker. The worker's active convention supplies the entry when none is explicit. Ready hooks execute only after the application IPC signal. Dev stops the runtime before awaiting Engine LIFO cleanup on restart or shutdown. Static imports and explicit existing file/directory watches invalidate the next cycle; generated/cache paths are excluded. Dynamic reads require `context.watch`. Worker startup is limited to 30 seconds and shutdown to 5 seconds; forced termination reports a diagnostic.
+
+## Explicit first-run setup (source candidate)
+
+Applications may opt into the separate [initialization contract](INITIALIZATION.md).
+`setup status` performs authorized runtime readiness reads; `setup apply --stdin`
+(or `--input-file`) validates `{requestId,input}`, commits the app-owned first-run
+transaction, and attempts separately authorized activation. `setup activate`
+resumes a committed pending revision without another password or owner creation.
+No inline credential input is accepted. The app supplies a trusted
+`initializationBinding`; JSON actor/owner flags grant no authority.
+
+This entry never starts the incomplete business app or Engine. The same explicit
+initializer is a named config export and the default app's optional startup gate.
+No bootstrap route, user role, secret backend or permission is enabled merely by
+installing the SDK. Missing current authorization, uncertain database state,
+conflicting retry input and an already completed first-owner claim fail closed.
+CLI errors use the existing safe finite JSON envelope; handled non-ready status
+results still require checking `data.state` before treating setup as complete.
+
+The new entry requires matching unreleased TS/native candidates. Released native
+v0.2.0 and registry Core 0.3.1 do not contain this setup feature. Native binaries
+retain their own publication lifecycle; no release is performed by these docs.

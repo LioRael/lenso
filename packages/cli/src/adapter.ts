@@ -1,3 +1,4 @@
+import { setup } from "./setup";
 import { resolve } from "node:path";
 import { createConnection, type Socket } from "node:net";
 import { build, discover, generate } from "@lenso/engine";
@@ -37,6 +38,13 @@ export async function runAdapter(argv: string[]): Promise<void> {
   }
   const help = {
     commands: [
+      {
+        name: "setup",
+        usage:
+          "setup status|apply|activate [--root directory] [--app directory] [--config file] [--stdin | --input-file file]",
+        effect:
+          "explicit trusted initialization; apply can commit first owner/configuration; activate resumes the committed revision",
+      },
       {
         name: "check",
         usage: "check [--root directory] [--app directory] [--config file]",
@@ -82,6 +90,14 @@ export async function runAdapter(argv: string[]): Promise<void> {
         "Only canonical configs in declared package.json workspaces are candidates; discovery imports nothing and grants no authority.",
     },
     errorCodes: [
+      "initialization-required",
+      "initialization-not-ready",
+      "initialization-unauthorized",
+      "initialization-invalid-input",
+      "initialization-closed",
+      "initialization-conflict",
+      "initialization-unavailable",
+      "initialization-outcome-unknown",
       "invalid-arguments",
       "invalid-application-target",
       "ambiguous-application-target",
@@ -192,10 +208,24 @@ export async function runAdapter(argv: string[]): Promise<void> {
       span.setAttribute("lenso.cli.command", command);
       if (values.has("--entry") && !["build", "dev"].includes(command))
         usage("--entry is available for build/dev only.");
-      if ((values.has("--input-file") || flags.has("--stdin")) && command !== "call")
-        usage("Input options are available for call only.");
-      if (command !== "call" && command !== "inspect" && positionals.length)
+      if (
+        (values.has("--input-file") || flags.has("--stdin")) &&
+        !["call", "setup"].includes(command)
+      )
+        usage("Input options are available for call or setup apply only.");
+      if (command !== "call" && command !== "inspect" && command !== "setup" && positionals.length)
         usage("Unexpected positional arguments.");
+      if (
+        command === "setup" &&
+        (positionals.length !== 1 || !["status", "apply", "activate"].includes(positionals[0]!))
+      )
+        usage("Usage: setup status|apply|activate.");
+      if (
+        command === "setup" &&
+        positionals[0] !== "apply" &&
+        (flags.has("--stdin") || values.has("--input-file"))
+      )
+        usage("Input options are available for setup apply only.");
       if (command === "inspect" && positionals.length > 2)
         usage("Usage: inspect [plugin-id [method]].");
       if (command === "call" && (positionals.length < 2 || positionals.length > 3))
@@ -221,6 +251,46 @@ export async function runAdapter(argv: string[]): Promise<void> {
       const entry = values.get("--entry");
       let data: unknown;
       switch (command) {
+        case "setup": {
+          const action = positionals[0] as "status" | "apply" | "activate";
+          let input: unknown;
+          if (action === "apply") {
+            if (Number(flags.has("--stdin")) + Number(values.has("--input-file")) !== 1)
+              usage(
+                "setup apply requires exactly one of --stdin or --input-file; no inline credentials.",
+              );
+            let text: string;
+            try {
+              text = flags.has("--stdin")
+                ? await Bun.stdin.text()
+                : await Bun.file(resolve(values.get("--input-file")!)).text();
+            } catch {
+              throw new CliError(
+                {
+                  code: "input-read-failed",
+                  phase: "input",
+                  message: "Cannot read initialization input.",
+                },
+                2,
+              );
+            }
+            if (Buffer.byteLength(text) > 65536) usage("Initialization input exceeds 64 KiB.");
+            try {
+              input = JSON.parse(text);
+            } catch {
+              throw new CliError(
+                {
+                  code: "invalid-json",
+                  phase: "input",
+                  message: "Initialization input must be valid JSON.",
+                },
+                2,
+              );
+            }
+          }
+          data = await setup(target, action, input);
+          break;
+        }
         case "check": {
           const discovery = await discover(target);
           data = {

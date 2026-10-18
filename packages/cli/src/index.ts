@@ -9,3 +9,5 @@ export type {
   OperationBoundOptions,
 } from "@lenso/engine/operations";
 export { CliError, diagnostic, type CliDiagnostic, type SourceLocation } from "./diagnostics";
+
+export { setup } from "./setup";

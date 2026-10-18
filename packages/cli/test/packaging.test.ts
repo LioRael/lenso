@@ -311,6 +311,28 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
         }
       }`,
     ]);
+    // Initialization uses the same installed public exports outside this checkout.
+    const firstRun = joinPath(consumer, "first-run");
+    await cp(joinPath(repository, "packages/cli/examples/first-run"), firstRun, {
+      recursive: true,
+    });
+    await run(consumer, [
+      "-e",
+      `
+      import assert from 'node:assert/strict';
+      import {setup,call} from '@lenso/cli';
+      process.env.LENSO_FIRST_RUN_HOME=process.cwd()+'/first-run-private';
+      const target={root:process.cwd()+'/first-run'};
+      assert.equal((await setup(target,'status')).state,'uninitialized');
+      await assert.rejects(call(target,'greeting','greet',{}),error=>error.diagnostic.code==='initialization-required');
+      const request={requestId:'packaged-attempt-001',input:{username:'packaged-owner',password:'SYNTHETIC-password-123',providerKey:'SYNTHETIC-provider'}};
+      const completed=await setup(target,'apply',request);
+      assert.equal(completed.state,'ready');
+      assert.equal((await setup(target,'apply',request)).revision,completed.revision);
+      assert.deepEqual(await call(target,'greeting','greet',{}),{message:'Hello, packaged-owner!'});
+      assert.equal(JSON.stringify(completed).includes('SYNTHETIC'),false);
+    `,
+    ]);
     // Exercise the shipped template itself, with its own manifest and real archives.
     const template = joinPath(temporary, "bun-web-template");
     await cp(joinPath(repository, "templates/bun-web"), template, { recursive: true });
