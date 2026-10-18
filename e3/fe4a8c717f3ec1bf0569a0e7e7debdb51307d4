@@ -1,0 +1,52 @@
+.changeset/explicit-application-initialization.md
+  h_9d56aba080c170 1-12
+docs/CLI.md
+  h_9d56aba080c170 264-285
+docs/INITIALIZATION.md
+  h_9d56aba080c170 1-120
+packages/cli/examples/first-run/.gitignore
+  h_9d56aba080c170 1
+packages/cli/examples/first-run/README.md
+  h_9d56aba080c170 1-78
+packages/cli/examples/first-run/lenso.config.ts
+  h_9d56aba080c170 1-105
+packages/cli/examples/first-run/src/native.ts
+  h_9d56aba080c170 1-242
+packages/cli/examples/first-run/tsconfig.json
+  h_9d56aba080c170 1-5
+packages/cli/src/adapter.ts
+  h_9d56aba080c170 1,41-47,93-100,211-216,218-228,254-293
+packages/cli/src/index.ts
+  h_9d56aba080c170 12-13
+packages/cli/src/setup.ts
+  h_9d56aba080c170 1-69
+packages/cli/test/initialization.test.ts
+  h_9d56aba080c170 1-162
+packages/cli/test/packaging.test.ts
+  h_9d56aba080c170 314-335
+packages/engine/src/application.ts
+  h_9d56aba080c170 47
+packages/engine/src/diagnostics.ts
+  h_9d56aba080c170 1,170-175
+packages/lenso/package.json
+  h_9d56aba080c170 46-50,54
+packages/lenso/src/initialization.ts
+  h_9d56aba080c170 1-315
+packages/lenso/src/lifecycle.ts
+  h_9d56aba080c170 1,21-26,30-32
+packages/lenso/src/plugin.ts
+  h_9d56aba080c170 1,58-59
+packages/lenso/test/initialization.test.ts
+  h_9d56aba080c170 1-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e3fe4a8c717f3ec1bf0569a0e7e7debdb51307d4",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
