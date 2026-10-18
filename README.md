@@ -10,8 +10,9 @@ applications have independent build or runtime boundaries. Templates recommend
 organization; they are not a list of supported layouts.
 
 The [Bun Web quickstart](docs/BUN_WEB_QUICKSTART.md) walks through a new external
-app, real package archives, CLI/Web calls, Engine dev/build and an optional packaged
-Engine extension, with configuration failure diagnostics.
+app with pinned published dependencies and a lockfile, CLI/Web calls, Engine
+dev/build and configuration failure diagnostics. No Runtime preparation or
+framework build is required for that consumer path.
 
 A plugin can be one ordinary TS module, a workspace dependency or an npm package.
 Keep business functions callable and testable without Core or Engine; setup only
@@ -66,8 +67,9 @@ pin change or root lockfile change is needed.
 
 Install the [Rust `lenso` CLI v0.2.0](https://github.com/LioRael/lenso-cli/releases/tag/v0.2.0)
 separately; this TypeScript package no longer installs an executable. The matching
-adapter candidates are `@lenso/cli@0.21.0` and `@lenso/engine@0.7.0`; preparation
-has not published them to npm. Registry CLI 0.20.1 lacks the adapter export.
+published adapters are `@lenso/cli@0.21.0` and `@lenso/engine@0.7.0`
+(verified on the official npm registry on 2026-10-18). Source preparation does
+not publish packages. Historical CLI 0.20.1 lacks the adapter export.
 See the [minimal registry release candidate](docs/TS-ADAPTER-RELEASE.md) for exact
 scope and clean-consumer evidence. Historical Rust CLI 0.1.0 lacks this module bridge.
 
@@ -100,7 +102,7 @@ CLI and Web reuse the same input schema and service. Each CLI call starts a fres
 | `@lenso/otel` | application-owned OpenTelemetry bootstrap, OTLP and optional oRPC/Workers entries | [Telemetry API](packages/otel/README.md) |
 | `@lenso/manage` | optional instance-bound operation catalogs, agent tools and an explicitly mounted oRPC adapter | [Manage API](packages/manage/README.md) |
 
-[Minimal templates](templates/README.md) consume real packed packages outside the workspace. They are template contents; no scaffold command or npm release is implied. PostgreSQL, SQLite and local D1 Notes use real storage and explicit migrations.
+[Minimal templates](templates/README.md) are application contents, not a scaffold command. Bun Web consumes pinned published packages; the other templates retain source-pack workflows. PostgreSQL, SQLite and local D1 Notes use real storage and explicit migrations.
 
 Web and all clients use exactly **oRPC 2.0.0-beta.42**, still a prerelease, with no
 v1 compatibility path. See the [Web migration notes](packages/web/README.md).

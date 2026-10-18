@@ -1,8 +1,11 @@
 # Application starting points
 
 Copy a template directory outside this repository. These are application contents,
-not a scaffold generator. Use Bun 1.4.3 and packed packages from the same framework
-build; the package names do not imply an npm release exists.
+not a scaffold generator. Use Bun 1.4.3. **`bun-web` is the published-package
+consumer path**, with exact registry versions and its own `bun.lock`; follow the
+[Bun Web quickstart](../docs/BUN_WEB_QUICKSTART.md). It needs neither framework
+builds nor Runtime preparation. The other templates retain their source-pack
+workflow; their package names alone do not establish publication.
 
 ## Choose a size
 
@@ -31,10 +34,12 @@ explicitly supplies `envSource` to the thin plugin; configuration resolves once
 before setup. Factories can instead take sources backed by another environment,
 or no sources for schema defaults.
 
-## Install real artifacts
+## Framework-maintainer artifacts (other templates or source changes)
 
-For an end-to-end copy/pack/install/dev workflow, use the
-[Bun Web quickstart](../docs/BUN_WEB_QUICKSTART.md).
+For ordinary Bun Web consumers, use the registry quickstart above and
+`bun install --frozen-lockfile` in the copied directory. For framework source
+changes, retain the [Bun Web source workflow](../docs/BUN_WEB_SOURCE_WORKFLOW.md),
+which explicitly switches only that verification copy to archives.
 
 Prepare and build the framework first (`bun run prepare:runtime`,
 `bun install --frozen-lockfile`, `bun run build`). SDK preparation is required by
@@ -51,7 +56,7 @@ run `bun pm pack --filename /absolute/path/to/application/vendor/<filename>`:
 | `packages/web`     | `lenso-web.tgz`     | Bun Web, workspace, Workers |
 | `packages/workers` | `lenso-workers.tgz` | Workers                     |
 
-Then run `bun install` in the copied application root. Manifests use reviewable
+Then run `bun install` in the copied application root. Source-mode manifests use reviewable
 `file:.../vendor/*.tgz` dependencies; root overrides keep transitive core/Engine
 dependencies on the same archives. Workers installs neither Engine nor CLI.
 Do not point consumers at framework source or invent registry versions.

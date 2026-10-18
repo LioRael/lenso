@@ -79,3 +79,24 @@ selected Manage operations and explicit route/binding seam. The public greeting
 does not invent identity or provide an always-allow management route. Actual
 Console attachment remains owned by the parallel Console/Relay task; these
 results do not assert cross-repository dependency or frontend compatibility.
+
+## Published-package consumer follow-up (2026-10-18)
+
+The earlier source-pack evidence above remains historical. `templates/bun-web`
+now pins npm Core 0.3.1, Engine 0.7.0, CLI 0.21.0 and Web 0.3.2 and includes its
+own lockfile. A new `/tmp` consumer with an empty package cache, controlled PATH,
+and official native v0.2.0 completed frozen installation, typecheck, the focused
+listener/config checks, inspect, CLI/HTTP calls, one business edit, dev reload,
+stop/restart and build without a framework checkout, vendor or Runtime SDK.
+Measured acceptance sequence: 30.118 s, including 28.282 s installation; zero
+application configuration edits, one business edit, no help requests. This is one
+macOS arm64 observation, not a cross-platform or speedup claim.
+
+One requested diagnostic criterion remains release-blocked: missing adapter writes
+a useful installation hint to stderr, but released native v0.2.0 returns JSON
+`invalid-output` (exit 3). CLI main `7964c1c8b80e8d75b9bb6ce1fc62d9eae9109b40`
+already distinguishes `typescript-adapter-missing` in its embedded bootstrap;
+release v0.2.0 is from commit `5468c60f1c359a249ebed501dabb30c037bd7b44`.
+No replacement binary or unpublished API was used for consumer acceptance.
+A later native release is needed for the precise structured diagnostic criterion;
+ordinary installed CLI/HTTP use works with the existing release.

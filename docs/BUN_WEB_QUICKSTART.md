@@ -1,143 +1,111 @@
-# A new Bun Web application from real packages
+# Bun Web with published packages
 
-Use the existing `templates/bun-web` when one Bun application needs a service,
-CLI and Web. This path installs real archives outside the framework workspace;
-it does not depend on a registry release or source aliases. Requirements: Bun
-1.4.3, Node for the TypeScript executable, Git and a POSIX shell.
+Use `templates/bun-web` for one ordinary async service exposed through HTTP and
+native CLI. Copy just that directory (including `bun.lock`) from a reviewed source
+archive into a new application directory. No framework checkout, sibling repo,
+Runtime SDK, framework build, pack step, vendor archive or override is required.
 
-## Prepare the framework and copy the application
+## Install
 
-From a fresh checkout of the reviewed Lenso revision:
+Requirements: Bun **1.4.3**, Node for `tsc`, and the official
+[native Lenso CLI v0.2.0](https://github.com/LioRael/lenso-cli/releases/tag/v0.2.0).
+Download the release asset for your platform, verify it against the release's
+`SHA256SUMS`, and place the executable named `lenso` in a directory on `PATH`.
+For example, on macOS arm64 (use a new directory you own):
 
 ```sh
-cd lenso
-FRAMEWORK="$PWD"
-bun run prepare:runtime
-bun install --frozen-lockfile
-bun node_modules/turbo/bin/turbo run build --filter=@lenso/cli --filter=@lenso/web
-
-# Choose a new directory outside this checkout; mkdir refuses an existing app.
-APP="$(dirname "$PWD")/hello-lenso"
-mkdir "$APP"
-cp -R templates/bun-web/. "$APP/"
-mkdir "$APP/vendor"
-bun pm pack --cwd packages/lenso --filename "$APP/vendor/lenso-core.tgz"
-bun pm pack --cwd packages/engine --filename "$APP/vendor/lenso-engine.tgz"
-bun pm pack --cwd packages/cli --filename "$APP/vendor/lenso-cli.tgz"
-bun pm pack --cwd packages/web --filename "$APP/vendor/lenso-web.tgz"
-
-cd "$APP"
-bun install
-bun run typecheck
-bun run test
-bun run inspect
-printf '%s\n' '{"name":"Ada"}' | bun run call
-bun run build
+mkdir lenso-tools
+curl --fail --location --output lenso-tools/lenso \
+  https://github.com/LioRael/lenso-cli/releases/download/v0.2.0/lenso-v0.2.0-aarch64-apple-darwin
+printf '%s\n' '0d6addbfc2d213054becda79fba0267f7104064f4829c85995c04388d1af3cce  lenso-tools/lenso' | shasum -a 256 -c -
+chmod +x lenso-tools/lenso
+export PATH="$PWD/lenso-tools:$PATH"
 ```
 
-SDK preparation is a requirement of the **framework source workspace**, which
-includes Runtime packages. It downloads the checksum-pinned snapshot and builds
-only its TS SDK, with no Cargo or sibling checkout. The copied greeting installs
-only Core, Engine, CLI and Web plus their declared dependencies. Keep its archives
-from one build. Commit the application's newly created `bun.lock` for subsequent
-`bun install --frozen-lockfile`; no framework lockfile changes are required.
+In the copied application:
 
-`inspect` reports a static greeting declaration without starting a listener.
-`call` returns `{"data":{"count":1,"message":"Hello, Ada!"},"ok":true,"schemaVersion":1}`.
-The config and Web router select the exact same greeting plugin and input schema;
-each CLI call owns a fresh service, while HTTP shares one running counter.
+```sh
+bun install --frozen-lockfile --registry https://registry.npmjs.org
+bun run typecheck
+lenso help --json
+bun run inspect
+printf '%s\n' '{"name":"Ada"}' | bun run call
+```
 
-## Run Engine dev and the built application
+The manifest fixes `@lenso/core@0.3.1`, `@lenso/engine@0.7.0`,
+`@lenso/cli@0.21.0` and `@lenso/web@0.3.2`, all from the official npm registry.
+`bun.lock` fixes the dependency closure and integrity hashes. Web uses the pinned
+prerelease `@orpc/server@2.0.0-beta.42`; do not replace it with registry `latest`.
+The npm `@lenso/cli` package supplies operations and `./adapter`, **no bin**;
+`bunx @lenso/cli` is not the native CLI installation step.
+
+`inspect` imports trusted config and reports the shared input schema without
+starting the app. `call` validates input, starts a fresh app, invokes the service
+and awaits cleanup. The initial result's data is
+`{"message":"Hello, Ada!","count":1}`.
+
+## Run, edit and restart
 
 ```sh
 LENSO_PORT=3000 bun run dev
 ```
 
-Wait for Engine's `Ready` message and actual URL. From another terminal:
+The listener binds only `127.0.0.1`. Wait for its actual URL, then in another
+terminal:
 
 ```sh
 curl --fail-with-body -H 'content-type: application/json' \
   --data '{"json":{"name":"Ada"}}' http://127.0.0.1:3000/rpc/greet
 ```
 
-Repeat the request to see count 2. Edit the greeting's business implementation
-in `src/greeting.ts`: Engine restarts the app and the in-memory count resets.
-Ctrl-C closes the owned listener. To verify the built entry separately:
+Change the single business expression in `src/greeting.ts`, for example
+`` `${prefix}, ${name.toUpperCase()}!` ``. Engine restarts the HTTP app after the
+edit. Call both entries again: both now return `Hello, ADA!`. No router or CLI
+handler change is needed; both use `greetingInput` and the same ordinary service.
+HTTP retains its in-memory counter; each finite CLI call starts at 1. Stop with
+Ctrl-C and run `bun run dev` again: the business edit remains, the counter resets.
+This sample has no durable database or resume journal.
+
+`LENSO_PORT=0` chooses an available port and prints its URL. No `.env` edit is
+required. `GREETING_PREFIX=Hi` optionally overrides the greeting default.
+
+For a built application:
 
 ```sh
+bun run build
 LENSO_PORT=3000 bun dist/server.js
 ```
 
-The server also accepts `LENSO_PORT=0`, which allocates an available port and
-prints its actual URL; use that URL for requests. `GREETING_PREFIX=Hi` overrides
-the schema's greeting default. Importing `src/server.ts` defines plugins but does
-not listen; tests can call `startServer(0)` and must await `app.stop()`.
+Stop owned processes before removing the copied application, `.lenso`, `dist` or
+`node_modules`. Dependencies can be restored with the same frozen install.
 
-## Diagnose the boundary that failed
+## Diagnose the actual boundary
 
-| Symptom                                             | Meaning and next action                                                                                                                                                                                              |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Missing `.runtime-deps/sdk` on framework install    | Run `bun run prepare:runtime` before the frozen install. Do not create a placeholder SDK or edit `bun.lock`.                                                                                                         |
-| Preparation download/checksum/build failure         | Preserve the pin and previous prepared output; fix network/toolchain or use the explicitly authorized local-source mode documented in the root README.                                                               |
-| Missing `dist` export                               | Build the selected framework packages before packing; repack all four archives and reinstall in the consumer.                                                                                                        |
-| `LENSO_PORT=bad`, empty, fractional or out of range | Startup exits 1 with `code: config-invalid`, `phase: config`, cause `pluginId: http` and `details.path: [port]`. Malformed numeric env has source ID `listener-env`. No plugin setup or listener acquisition occurs. |
-| Listener setup fails after valid port config        | Check whether the chosen loopback port is occupied; choose `LENSO_PORT=0` or another owned port. Unknown setup details are intentionally omitted from the safe diagnostic.                                           |
-| CLI input has a one-character name                  | Input schema rejects it before setup (exit 2). Use the shared schema reported by `inspect`.                                                                                                                          |
-| Dev says failed and keeps watching                  | Engine remains available for edits; Ctrl-C ends the supervisor. A failed startup never reports Ready.                                                                                                                |
+- Missing native executable: install the official v0.2.0 asset on `PATH`.
+- Missing project adapter: published native v0.2.0 writes an installation
+  suggestion to stderr but its JSON error is `invalid-output` (exit 3). This is a
+  release diagnostic limitation, not malformed business output. Restore this
+  application's fixed `@lenso/cli` using `bun install --frozen-lockfile`.
+  CLI main has `typescript-adapter-missing` in `error.adapterError.code`, but
+  that precise diagnostic is not in the v0.2.0 release.
+  Installing a global npm CLI or cloning the framework does not repair the app.
+- Invalid name: inspect the shared schema; a one-character name fails before setup.
+- Invalid `LENSO_PORT`: startup reports `config-invalid`, phase `config`, and
+  attributes the port to `http`. Choose an integer from 0 through 65535.
+- Occupied port: use an owned free port or `LENSO_PORT=0`.
 
-The listener's port uses Core `bindConfig` plus the explicit numeric `envSource`.
-Core validates all installed config before setup. The entry prints the existing
-Engine `diagnostic(error)` projection, including safe instance/field attribution,
-instead of an unhandled Bun stack containing raw rejected values.
+For coding-agent work, use the repository's canonical
+[`lenso-develop`](../.agents/skills/lenso-develop/SKILL.md) and
+[`lenso-diagnose`](../.agents/skills/lenso-diagnose/SKILL.md) skills. Links follow the
+reviewed source revision; installed exports and lockfile remain authoritative.
+No additional prompt system is shipped in the template.
 
-## Enable an existing Engine plugin
+Auth, Manage, MCP, Console, Runtime and Agent are optional separate integrations.
+The registry `@lenso/agent@1.20.0` is the old launcher, not the new embedded Agent
+API; this ordinary TS path does not install it. The greeting has no authentication
+and is a local sample. Add real entry identity and shared business policy before
+using it as a remote service.
 
-The shipped content Engine extension reads Markdown and generates an owned data
-module. It uses the public authoring API and adds no runtime service or listener.
-In the application terminal (with `FRAMEWORK` and `APP` from above):
-
-```sh
-bun pm pack --cwd "$FRAMEWORK/packages/cli/examples/content-plugin" \
-  --filename "$APP/vendor/lenso-example-content.tgz"
-bun add ./vendor/lenso-example-content.tgz
-mkdir content
-printf '%s\n' '# Welcome' > content/welcome.md
-cat > lenso.engine.ts <<'TS'
-import { defineEngineConfig } from "@lenso/engine/authoring";
-import { contentPlugin } from "lenso-example-content-engine";
-
-export default defineEngineConfig({ plugins: [contentPlugin()] });
-TS
-bunx --no-install lenso generate --json
-cat .lenso/content.ts
-bun run build
-```
-
-The output contains `welcome` and the Markdown body. Engine defaults still generate
-the manifest/client and build the same server. During dev, editing Markdown
-invalidates generation through the plugin's explicit `context.watch("content")`.
-Do not hand-edit `.lenso/content.ts`. `inspect` and `call` continue to work without
-loading Engine plugins. The two shipped extension packages declare a peer range
-matching this revision's Engine; keep extension and framework artifacts together.
-
-## Optional runtime plugins and Console
-
-The greeting is a local unauthenticated example. Adding a package does not
-install a plugin: create its public plugin instance, declare exact `requires`
-references, and include the same objects in the app's explicit plugin list.
-Web's listener belongs to `startServer`, so a finite CLI call does not bind a port.
-
-Console needs an authenticated host entry; a running Engine or a CLI `operations`
-export is insufficient. Reuse [Auth](../packages/auth/README.md) for verified
-current request evidence, select existing contextual service operations with
-[Manage](../packages/manage/README.md#running-entries), and mount
-`createManageRouter` through the application's owned Web route. Its per-request
-`evidence`, `canList` and `binding` callbacks use current Auth; business services
-retain their authorization. Do not pass an actor in greeting JSON or add an
-always-allow policy to simulate Console access.
-
-The runnable Console host and its frontend belong to
-[`lenso-console/examples/ts-console`](https://github.com/LioRael/lenso-console/tree/main/examples/ts-console).
-Use that repository's version-matched host instructions for actual Console
-attachment; this path verifies the standalone TS application, not Console UI or
-cross-repository dependency compatibility.
+Framework maintainers retain the separate
+[source pack workflow](BUN_WEB_SOURCE_WORKFLOW.md). Its Runtime preparation is a
+source-workspace requirement, not an ordinary application dependency.
