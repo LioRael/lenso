@@ -1,3 +1,4 @@
+import { connectDev } from "./dev-connection";
 import { setup } from "./setup";
 import { resolve } from "node:path";
 import { createConnection, type Socket } from "node:net";
@@ -38,6 +39,12 @@ export async function runAdapter(argv: string[]): Promise<void> {
   }
   const help = {
     commands: [
+      {
+        name: "recent",
+        usage:
+          "recent [plugin-id [method]] --connect private-file --generation inspected-generation [--limit 16]",
+        effect: "bounded development invocation metadata only; no payloads or durable history",
+      },
       {
         name: "setup",
         usage:
@@ -193,7 +200,17 @@ export async function runAdapter(argv: string[]): Promise<void> {
           if (flags.has(arg)) usage("Repeated flag.");
           flags.add(arg);
         } else if (
-          ["--root", "--app", "--config", "--entry", "--workspace", "--input-file"].includes(arg)
+          [
+            "--root",
+            "--app",
+            "--config",
+            "--entry",
+            "--workspace",
+            "--input-file",
+            "--connect",
+            "--generation",
+            "--limit",
+          ].includes(arg)
         ) {
           if (values.has(arg)) usage("Repeated option.");
           const value = args[++index];
@@ -202,6 +219,26 @@ export async function runAdapter(argv: string[]): Promise<void> {
         } else if (arg.startsWith("-")) usage("Unknown flag.");
         else positionals.push(arg);
       }
+      if (values.has("--connect") && !["call", "inspect", "recent", "dev"].includes(command))
+        usage("--connect is supported only for dev/inspect/call/recent.");
+      if (
+        values.has("--connect") &&
+        command !== "dev" &&
+        ["--app", "--config", "--entry", "--workspace"].some((key) => values.has(key))
+      )
+        usage(
+          "Connected commands select the descriptor only; app/config/entry/workspace selectors are unsupported.",
+        );
+      if (
+        values.has("--generation") &&
+        (!["call", "recent"].includes(command) || !values.has("--connect"))
+      )
+        usage("--generation requires call/recent --connect.");
+      if (values.has("--limit") && (command !== "recent" || !values.has("--connect")))
+        usage("--limit requires recent --connect.");
+      if (command === "recent" && !values.has("--connect")) usage("recent requires --connect.");
+      if (values.has("--workspace") && values.has("--connect"))
+        usage("Workspace connections are unsupported; select one application.");
       if (flags.has("--help") || flags.has("-h")) command = "help";
       if (!help.commands.some((item) => item.name === command))
         usage("Unknown command; use lenso help.");
@@ -213,7 +250,13 @@ export async function runAdapter(argv: string[]): Promise<void> {
         !["call", "setup"].includes(command)
       )
         usage("Input options are available for call or setup apply only.");
-      if (command !== "call" && command !== "inspect" && command !== "setup" && positionals.length)
+      if (
+        command !== "call" &&
+        command !== "inspect" &&
+        command !== "recent" &&
+        command !== "setup" &&
+        positionals.length
+      )
         usage("Unexpected positional arguments.");
       if (
         command === "setup" &&
@@ -226,7 +269,7 @@ export async function runAdapter(argv: string[]): Promise<void> {
         (flags.has("--stdin") || values.has("--input-file"))
       )
         usage("Input options are available for setup apply only.");
-      if (command === "inspect" && positionals.length > 2)
+      if (["inspect", "recent"].includes(command) && positionals.length > 2)
         usage("Usage: inspect [plugin-id [method]].");
       if (command === "call" && (positionals.length < 2 || positionals.length > 3))
         usage("Usage: call <plugin-id> <method> [JSON input].");
@@ -240,7 +283,9 @@ export async function runAdapter(argv: string[]): Promise<void> {
       )
         usage("--workspace cannot be combined with --app, --config or --entry.");
       const target =
-        command === "help" || values.has("--workspace")
+        command === "help" ||
+        values.has("--workspace") ||
+        (values.has("--connect") && command !== "dev")
           ? { root: values.get("--root") ?? process.cwd() }
           : await selectApplication(
               values.get("--root") ?? process.cwd(),
@@ -300,8 +345,21 @@ export async function runAdapter(argv: string[]): Promise<void> {
           };
           break;
         }
+        case "recent":
+          data = await connectDev(values.get("--connect")!, "recent", {
+            generation: values.get("--generation"),
+            pluginId: positionals[0],
+            method: positionals[1],
+            limit: values.has("--limit") ? Number(values.get("--limit")) : undefined,
+          });
+          break;
         case "inspect":
-          data = await inspect(target, positionals[0], positionals[1]);
+          data = values.has("--connect")
+            ? await connectDev(values.get("--connect")!, "inspect", {
+                pluginId: positionals[0],
+                method: positionals[1],
+              })
+            : await inspect(target, positionals[0], positionals[1]);
           break;
         case "generate": {
           const manifest = await generate(target);
@@ -349,7 +407,14 @@ export async function runAdapter(argv: string[]): Promise<void> {
               2,
             );
           }
-          data = await call(target, plugin!, method!, input);
+          data = values.has("--connect")
+            ? await connectDev(values.get("--connect")!, "call", {
+                generation: values.get("--generation"),
+                pluginId: plugin!,
+                method: method!,
+                input,
+              })
+            : await call(target, plugin!, method!, input);
           break;
         }
         case "dev": {
@@ -387,6 +452,7 @@ export async function runAdapter(argv: string[]): Promise<void> {
           await dev({
             ...target,
             entry,
+            connectionFile: values.get("--connect"),
             workspace: values.get("--workspace"),
             workspaceRoot: values.get("--root"),
             presentation: eventSocket

@@ -1,4 +1,6 @@
 import { definePlugin, startApp, type Logger, type RunningApp } from "@lenso/core";
+import { serveDevOperations } from "@lenso/cli";
+import { operations } from "../lenso.config";
 import { reportDevReady } from "@lenso/engine/dev-ready";
 import { createBunListenerPlugin } from "@lenso/web/bun";
 import { greeting } from "./greeting";
@@ -41,14 +43,20 @@ export async function createExampleServer(
 
 if (import.meta.main) {
   const example = await createExampleServer(Number(process.env.LENSO_PORT ?? 3000));
+  const connection = await serveDevOperations({
+    running: example.app,
+    plugins: [greeting],
+    operations,
+  });
   reportDevReady({
+    connection: connection?.connection,
     urls: [example.url],
     capabilities: example.app.status().map((plugin) => plugin.id),
   });
   let stopping: Promise<void> | undefined;
   const shutdown = () => {
-    stopping ??= example.app
-      .stop()
+    stopping ??= Promise.resolve(connection?.close())
+      .then(() => example.app.stop())
       .then(() => {
         process.exitCode = 0;
       })

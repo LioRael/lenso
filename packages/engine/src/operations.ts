@@ -19,6 +19,9 @@ export interface Operation<C = unknown> {
   readonly method: string;
   readonly description: string;
   readonly input: StandardSchemaV1;
+  readonly output?: StandardSchemaV1;
+  /** Safe declared business errors; classification still requires mapError, never thrown object codes. */
+  readonly errors?: readonly { readonly code: string; readonly message: string }[];
   readonly mapError?: (error: unknown) => EngineDiagnostic | undefined;
   readonly context?: true;
   readonly [operationContext]?: C;
@@ -260,7 +263,7 @@ function observedCancellation(
 function inputIssuePaths(
   operation: Operation,
   issues: readonly StandardSchemaV1.Issue[],
-): string[][] {
+): (string | number)[][] {
   try {
     const standard = operation.input["~standard"] as StandardSchemaV1.Props &
       Partial<StandardJSONSchemaV1.Props>;
@@ -279,6 +282,11 @@ function inputIssuePaths(
           declared.add(JSON.stringify(child));
           visit(Reflect.get(properties, key), child, depth + 1);
         }
+      const items = Reflect.get(node, "items");
+      if (items && typeof items === "object") {
+        declared.add(JSON.stringify([...path, "*"]));
+        visit(items, [...path, "*"], depth + 1);
+      }
       for (const keyword of ["anyOf", "oneOf", "allOf"]) {
         const alternatives = Reflect.get(node, keyword);
         if (Array.isArray(alternatives))
@@ -291,9 +299,18 @@ function inputIssuePaths(
       const path = (issue.path ?? []).map((segment) =>
         typeof segment === "object" ? segment.key : segment,
       );
-      if (path.length > 8 || !path.every((key) => typeof key === "string" && key.length <= 128))
+      if (
+        path.length > 8 ||
+        !path.every(
+          (key) =>
+            (typeof key === "string" && key.length <= 128) ||
+            (typeof key === "number" && Number.isSafeInteger(key) && key >= 0),
+        )
+      )
         return [];
-      return declared.has(JSON.stringify(path)) ? [path as string[]] : [];
+      return declared.has(JSON.stringify(path.map((key) => (typeof key === "number" ? "*" : key))))
+        ? [path as (string | number)[]]
+        : [];
     });
   } catch {
     return [];
@@ -358,6 +375,7 @@ export async function validateOperationInput(
       {
         code: "invalid-input",
         phase: "input",
+        effectState: "not-started",
         message: "Input validation failed.",
         ...location,
       },
@@ -368,6 +386,7 @@ export async function validateOperationInput(
     throw new EngineError({
       code: "invalid-input",
       phase: "input",
+      effectState: "not-started",
       message: "Input does not satisfy the shared service schema.",
       ...location,
       details: {
@@ -385,6 +404,7 @@ export async function invokeValidatedOperation<O extends Operation>(
   options: OperationInvocationOptions<NoInfer<OperationContext<O>>> = {},
 ): Promise<unknown> {
   const location = { ...operationLocation(operation), instanceId: running.instanceId };
+  let dispatched = false;
   const waitForGate = async <T>(callback: () => T | Promise<T>): Promise<T> => {
     try {
       return await callback.call(options);
@@ -434,7 +454,8 @@ export async function invokeValidatedOperation<O extends Operation>(
     checkCancellation(running, operation, options.signal);
     if (options.beforeExecute) await waitForGate(options.beforeExecute);
     checkCancellation(running, operation, options.signal);
-    const result = await executeWithErrorMapping(
+    dispatched = true;
+    let result = await executeWithErrorMapping(
       running,
       operation,
       validatedInput,
@@ -445,17 +466,48 @@ export async function invokeValidatedOperation<O extends Operation>(
       },
     );
     checkCancellation(running, operation, options.signal);
+    if (operation.output) {
+      let checked;
+      try {
+        checked = await operation.output["~standard"].validate(result);
+      } catch {
+        throw new EngineError({
+          code: "invalid-output",
+          phase: "output",
+          message: "Output validation failed.",
+          ...location,
+          effectState: "unknown",
+        });
+      }
+      if (checked.issues)
+        throw new EngineError({
+          code: "invalid-output",
+          phase: "output",
+          message: "Output does not satisfy the shared service schema.",
+          ...location,
+          effectState: "unknown",
+          details: {
+            paths: inputIssuePaths({ ...operation, input: operation.output }, checked.issues),
+          },
+        });
+      result = checked.value;
+    }
+    checkCancellation(running, operation, options.signal);
     // Check the original result before redaction, which otherwise hides cycles and non-JSON values.
     const raw = boundedJson(result, maxBytes);
     const safe = redact(JSON.parse(raw), environmentSecrets());
     boundedJson(safe, maxBytes);
     return safe;
   } catch (cause) {
-    if (cause instanceof EngineError) throw cause;
+    if (cause instanceof EngineError) {
+      cause.markEffectState(dispatched ? "unknown" : "not-started", location);
+      throw cause;
+    }
     throw new EngineError(
       {
         code: "invocation-failed",
         phase: "invoke",
+        effectState: dispatched ? "unknown" : "not-started",
         message: "Service invocation failed.",
         ...location,
       },
@@ -493,6 +545,16 @@ export function validateOperations(
       (item.retry !== undefined && !["safe", "unsafe", "unknown"].includes(item.retry)) ||
       (item.cancellation !== undefined &&
         !["cooperative", "request-only", "none", "unknown"].includes(item.cancellation)) ||
+      (item.output !== undefined &&
+        (item.output?.["~standard"]?.version !== 1 ||
+          typeof item.output["~standard"].validate !== "function")) ||
+      (item.errors !== undefined &&
+        (!Array.isArray(item.errors) ||
+          item.errors.length > 32 ||
+          item.errors.some(
+            (error: { code?: unknown; message?: unknown }) =>
+              typeof error.code !== "string" || typeof error.message !== "string",
+          ))) ||
       item.input?.["~standard"]?.version !== 1 ||
       typeof item.input["~standard"].validate !== "function"
     ) {
@@ -525,7 +587,23 @@ export function describeOperation(operation: Operation, configPath: string) {
   } catch {
     /* Some schemas cannot be represented statically. */
   }
+  let outputSchema: Record<string, unknown> | null = null;
+  try {
+    const output = operation.output?.["~standard"] as
+      | (StandardSchemaV1.Props & Partial<StandardJSONSchemaV1.Props>)
+      | undefined;
+    outputSchema = output?.jsonSchema?.output({ target: "draft-2020-12" }) ?? null;
+  } catch {
+    /* Runtime validation remains available without conversion. */
+  }
   return {
+    outputSchema: outputSchema ? safeInputSchema(outputSchema) : null,
+    outputSchemaAvailability: !operation.output
+      ? "not-declared"
+      : outputSchema
+        ? "available"
+        : "runtime-validation-only",
+    errors: (operation.errors ?? []).map(({ code, message }) => ({ code, message })),
     pluginId: operation.plugin.id,
     method: operation.method,
     description: operation.description,
@@ -576,6 +654,10 @@ export function safeInputSchema(
 }
 
 export function redactOperationDescription(description: ReturnType<typeof describeOperation>) {
-  const { inputSchema, ...metadata } = description;
-  return { ...(redact(metadata, environmentSecrets()) as typeof metadata), inputSchema };
+  const { inputSchema, outputSchema, ...metadata } = description;
+  return {
+    ...(redact(metadata, environmentSecrets()) as typeof metadata),
+    inputSchema,
+    outputSchema,
+  };
 }

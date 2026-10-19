@@ -9,3 +9,5 @@ export class GreetingInputError extends Error {
     super("Name must contain at least 2 characters");
   }
 }
+
+export const greetingOutput = z.object({ message: z.string(), count: z.number().int().positive() });

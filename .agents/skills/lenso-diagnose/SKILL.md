@@ -15,7 +15,9 @@ Follow the symptom, not a mandatory checklist. Use existing app operations and p
 4. Choose the smallest relevant check or source fix. For an authorized existing operation, use `lenso call <plugin-id> <method> --root <app> --stdin --json` or `--input-file <file>` with its actual input schema. Assess **all installed setup** before calling, including read operations. After uncertain results, query authorized state or report uncertainty instead of replaying.
 5. Verify the changed boundary using the app's existing focused test/typecheck or command. Rebuild changed framework packages before consumers because exports resolve to `dist`; do not typecheck consumers while a build clears that same output. Report observed phase/code/source, evidence, changes, checks run and remaining uncertainty; name any missing authorized interface.
 
-Finite CLI commands return one `schemaVersion: 1` JSON envelope on stdout; logs go to stderr. `dev --json` is unsupported. Metadata (`effect`, `destructive`, `retry`, `cancellation`) describes intent, not permission, idempotency, signal propagation or rollback. `outputDescription` is prose, not an output schema.
+Finite CLI commands return one `schemaVersion: 1` JSON envelope on stdout; logs go to stderr. `dev --json` uses the native supervisor lifecycle JSONL contract. Metadata (`effect`, `destructive`, `retry`, `cancellation`) describes intent, not permission, idempotency, signal propagation or rollback. `outputDescription` is prose; use declared `outputSchema`/availability when the installed exports support it.
+
+For an explicitly selected ready dev connection in matching source builds, use `inspect --connect <private-file>`, then `call --connect <file> --generation <inspected-generation>`; no fallback to a fresh app. `recent --connect --generation <inspected-generation>` is a bounded payload-free in-memory query, not a durable receipt. Follow [Engine, config and dev](references/engine-config-dev.md) for scope and availability.
 
 ## Execution and authority gates
 

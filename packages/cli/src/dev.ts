@@ -13,6 +13,7 @@ interface DevOptions {
   root: string;
   config?: string;
   entry?: string;
+  connectionFile?: string;
   workspace?: string;
   workspaceRoot?: string;
   presentation?: DevPresentation;
@@ -75,6 +76,7 @@ export async function dev(options: DevOptions): Promise<void> {
       root: options.root,
       config: options.config,
       entry: options.entry,
+      connectionFile: options.connectionFile,
       onEvent(event) {
         switch (event.type) {
           case "starting":

@@ -11,3 +11,10 @@ export type {
 export { CliError, diagnostic, type CliDiagnostic, type SourceLocation } from "./diagnostics";
 
 export { setup } from "./setup";
+
+export {
+  serveDevOperations,
+  connectDev,
+  type DevCallRecord,
+  type DevOperationBinding,
+} from "./dev-connection";

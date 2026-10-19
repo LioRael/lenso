@@ -26,7 +26,7 @@
     "release:verify": "bun scripts/release-verify.ts",
     "release:prepare": "bun scripts/release-ci.ts prepare",
     "scripts:typecheck": "tsc --noEmit -p scripts/tsconfig.json",
-    "scripts:test": "bun test scripts/ci-docs.test.ts scripts/prepare-runtime.test.ts scripts/release.test.ts scripts/release-ci.test.ts scripts/release-select.test.ts"
+    "scripts:test": "bun test scripts/ci-docs.test.ts scripts/prepare-runtime.test.ts scripts/release.test.ts scripts/release-ci.test.ts scripts/release-select.test.ts scripts/pack-dev-combination.test.ts"
   },
   "devDependencies": {
     "@changesets/apply-release-plan": "8.1.1",

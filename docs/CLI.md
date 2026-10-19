@@ -107,7 +107,7 @@ lists and borrow an explicitly supplied running app.
 
 `defineOperation` checks the service method's input type. The schema uses Standard Schema v1, including Zod 4. `inspect [plugin-id [method]]` derives JSON Schema from that same object's Standard JSON Schema converter. Field names/types remain discoverable, including credential fields; payload defaults/examples are omitted. If conversion is absent or unsupported, it reports `runtime-validation-only` and `inputSchema:null`; it never starts resources to infer methods. Source locations are explicit declaration metadata, otherwise the exact config file; line/column are omitted unless supplied or reported by Bun build diagnostics.
 
-Calls validate input before setup, start one app, invoke the declared own service method with validated input and the original service as `this`, then stop. Unknown methods fail before setup. Both business and cleanup failures survive in ordered causes. No eval, automatic retry or inferred exposure occurs. Each CLI call owns a fresh app instance; HTTP normally retains an app. An effect description provides no idempotency or authorization guarantee. Keep authorization inside shared application/service rules or an already authorized public API. CLI does not invent an actor from JSON input.
+Calls validate input before setup, start one app, invoke the declared own service method with validated input and the original service as `this`, then stop. Unknown methods fail before setup. Both business and cleanup failures survive in ordered causes. No eval, automatic retry or inferred exposure occurs. Each ordinary CLI call owns a fresh app instance; HTTP normally retains an app. An effect description provides no idempotency or authorization guarantee. Keep authorization inside shared application/service rules or an already authorized public API. CLI does not invent an actor from JSON input.
 
 Operations may also declare `destructive`, `outputDescription`, `retry`
 (`safe`, `unsafe`, `unknown`) and `cancellation` (`cooperative`, `request-only`,
@@ -166,6 +166,86 @@ not arguments, schemas or discovery metadata. The optional
 not elevated authority. Its opt-in HTTP Fetch entry borrows a running app and
 requires host-injected verified authentication plus the same service policies.
 No listener, scope/audience credential issuance or authorization shortcut is supplied.
+
+## Declared output and error contracts
+
+An Operation may provide `output: sharedOutputSchema` using the same Standard Schema
+object as its oRPC `.output(...)` route. The shared executor validates service output
+before redaction/JSON serialization; this is validation after invocation, not rollback.
+`errors: [{code, message}]` describes safe business failures. Existing `mapError` still
+classifies real domain Error instances; declaring an error does not trust arbitrary
+thrown objects, create handlers, or bypass service policy. `outputDescription` remains
+prose. Inspect adds `outputSchema`, `outputSchemaAvailability` (`not-declared`,
+`available`, `runtime-validation-only`) and `errors`. MCP preserves existing tool names,
+projects a convertible output schema, and wraps scalar/array results as `{result}` in
+structured content. Missing converters never fabricate schemas.
+
+Diagnostics preserve safe `details.paths`, operation/source and phase. `effectState`
+records invocation provenance: `not-started` means this operation was not dispatched,
+not that configuration/setup had no effects; `unknown` follows dispatch failures,
+output failures, cancellation or lost results; `completed` only records a settled
+successful invocation. No value proves external durability or rollback.
+
+## Connect to one ready development instance
+
+Availability: this is a coordinated source capability of Engine, CLI operation library
+and native CLI. Package version strings have not been bumped; the published CLI v0.2.0
+and adapter 0.21.0 alone do not supply this path. Select matching reviewed source builds
+and inspect installed exports/help. No framework pack/vendor override or Runtime is
+required by ordinary TS business services. Source consumers still rebuild `dist`.
+
+An entry explicitly attaches the same app it already lends to Web/MCP:
+
+```ts
+import { serveDevOperations } from "@lenso/cli";
+const connection = await serveDevOperations({
+  running: app,
+  plugins,
+  operations,
+  binding: operationBinding,
+});
+reportDevReady({ connection: connection?.connection, urls: [url] });
+// Owner shutdown: await connection?.close(), drain other borrowed entries, then app.stop().
+```
+
+The helper creates no listener unless the existing dev supervisor opted in. It borrows
+exact installed instances and the existing trusted launch binding, validates shared input,
+and invokes the shared executor; it neither starts/stops the app nor bypasses business
+identity/tenant policy. Only a same-user private Unix socket is used; no TCP listener,
+credential issuance, auto-attachment, shell/eval or cross-language Runtime is added.
+Current support is Bun on Unix; non-TS native adapters explicitly return `unsupported`.
+
+```sh
+lenso dev --root examples/greeting --connect .lenso/dev.json
+# Other terminal; use an explicit absolute descriptor path if cwd differs:
+lenso inspect --root examples/greeting --connect /absolute/examples/greeting/.lenso/dev.json --json
+lenso call greeting greet --root examples/greeting --connect /absolute/examples/greeting/.lenso/dev.json --generation GENERATION_FROM_INSPECT --stdin --json
+lenso recent greeting greet --root examples/greeting --connect /absolute/examples/greeting/.lenso/dev.json --generation GENERATION_FROM_INSPECT --limit 16 --json
+```
+
+Ordinary calls retain their fresh-app behavior. Connected commands import no target
+config and never fall back to starting an app. Calls require the inspected generation;
+stale/missing generations refuse dispatch. A descriptor is published only after real
+runtime readiness and Engine ready hooks; entries without the explicit host fail with
+`dev-connection-unsupported`. An existing unowned descriptor is not replaced. Restart
+revokes admission, removes the old descriptor, stops the owned runtime, and replaces the
+generation. Shutdown drains cooperative work; a noncooperative runtime may reach the
+existing forced-stop timeout, with effects unknown. The supervisor removes its own
+socket directory even after forced termination.
+
+Static inspect retains `inspection: static` and reports checked/not-checked scope.
+Connected inspect reports `inspection: running`, instance and generation. Installed
+versions, watched-input sample digest and generation are distinct: the pre-launch digest
+is not loaded-byte attestation, a Git release SHA or proof of matching registry artifacts.
+Provider health and business authorization are not inferred from ready status.
+
+`recent` requires the inspected generation and optional plugin/method selection (default limit 16, maximum 64). It is only in-memory metadata for this connection generation: at most 64 records,
+5-minute query window, stable callRef, operation, call-time instance/generation/watch-input revision, start/duration/code/phase/effectState/outcome. It stores no
+business input, output, context, arbitrary errors or credentials, survives no restart and
+is not an Observe backend, durable receipt, retry journal or evidence of an external
+commit. One connected request is admitted, no queue/retry; input is capped at 256 KiB,
+output at 1 MiB, with a 30s binding signal. The optional fourth binding argument is `{signal, generation}`; existing three-argument `OperationBinding` functions remain compatible. Cancellation reaches the trusted binding;
+ordinary methods are not automatically cooperative. The owner drains actual work.
 
 ## Short feedback path
 
@@ -283,3 +363,22 @@ results still require checking `data.state` before treating setup as complete.
 The new entry requires matching unreleased TS/native candidates. Released native
 v0.2.0 and registry Core 0.3.1 do not contain this setup feature. Native binaries
 retain their own publication lifecycle; no release is performed by these docs.
+
+## Upstream-owned local combination archives
+
+Maintainers can run `bun scripts/pack-dev-combination.ts NEW_OUTPUT_DIRECTORY`
+after building the affected packages on a clean committed checkout. This bounded
+Core/Engine/CLI/Manage/MCP/Auth/Web combination stages archives without touching source
+manifests. It pins candidate references in every shipped package.json (including example
+manifests), rejects unresolved local references, verifies exports/dist, and emits archive
+hashes plus `combination.json` and `install-fragment.json`. It never publishes or changes
+package names/versions. Existing output directories are refused.
+
+Consumers use those ready archives and supplied dependency/override selection together;
+they need not repack or edit package metadata. The selection keeps Bun from mixing
+same-version registry and candidate module identities. File paths target the immutable
+local output location; relocation needs a freshly generated upstream fragment. Preserve
+unrelated application dependencies. Validate a representative consumer and retain its
+lockfile/receipt before calling a combination verified: successful packing is not proof
+of compatibility. This is local source-candidate integration, separate from ordinary
+published dependency installation and future coordinated releases.

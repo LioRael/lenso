@@ -7,7 +7,7 @@ import {
   type OperationBoundOptions,
   type OperationRuntime,
 } from "@lenso/engine/operations";
-import { EngineError } from "@lenso/engine/diagnostics";
+import { diagnostic, environmentSecrets, redact, EngineError } from "@lenso/engine/diagnostics";
 import {
   ErrorCode,
   McpError,
@@ -95,7 +95,7 @@ function positive(value: number | undefined, fallback: number, min = 1): number 
   return actual;
 }
 
-function failure(code: string): CallToolResult {
+function failure(code: string, error?: unknown): CallToolResult {
   const safe = Object.hasOwn(messages, code) ? code : "invocation-failed";
   const phase =
     safe === "invalid-input" || safe === "input-too-large"
@@ -106,7 +106,14 @@ function failure(code: string): CallToolResult {
   return {
     isError: true,
     content: [
-      { type: "text", text: JSON.stringify({ code: safe, phase, message: messages[safe] }) },
+      {
+        type: "text",
+        text: JSON.stringify(
+          error instanceof EngineError
+            ? redact(diagnostic(error), environmentSecrets())
+            : { code: safe, phase, message: messages[safe], effectState: "unknown" },
+        ),
+      },
     ],
   };
 }
@@ -164,6 +171,18 @@ async function adapterForSelection<I, O extends Operation>(
         "Cancellation signals reach host bindings. Only cooperative services interrupt; cancellation does not roll back effects.",
       ].join("\n"),
       inputSchema: item.inputSchema as Tool["inputSchema"],
+      ...(operation.outputSchema
+        ? {
+            outputSchema: (operation.outputSchema.type === "object"
+              ? operation.outputSchema
+              : {
+                  type: "object",
+                  properties: { result: operation.outputSchema },
+                  required: ["result"],
+                  additionalProperties: false,
+                }) as Tool["outputSchema"],
+          }
+        : {}),
       _meta: { "lenso/operation": operation },
       execution: { taskSupport: "forbidden" },
       annotations: {
@@ -356,7 +375,25 @@ async function adapterForSelection<I, O extends Operation>(
         boundedJson(structuredContent, maxOutput);
         return { content: [{ type: "text", text }], structuredContent };
       } catch (error) {
-        return failure(error instanceof EngineError ? error.diagnostic.code : "invocation-failed");
+        const failed = failure(
+          error instanceof EngineError ? error.diagnostic.code : "invocation-failed",
+          error,
+        );
+        const text = failed.content[0];
+        if (text?.type === "text" && Buffer.byteLength(text.text) > maxOutput) {
+          const detail = diagnostic(error);
+          const compact = JSON.stringify({
+            code: detail.code,
+            phase: detail.phase,
+            message: "Diagnostic truncated to the host output limit.",
+            effectState: detail.effectState ?? "unknown",
+            truncated: true,
+          });
+          return Buffer.byteLength(compact) <= maxOutput
+            ? { isError: true, content: [{ type: "text", text: compact }] }
+            : failure("output-too-large");
+        }
+        return failed;
       }
     },
     close(): Promise<void> {

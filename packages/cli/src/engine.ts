@@ -1,3 +1,4 @@
+import { installedOperationVersions } from "./provenance";
 import { startApp } from "@lenso/core";
 import {
   readApplication,
@@ -171,6 +172,21 @@ export async function inspect(
   return {
     configPath,
     inspection: "static" as const,
+    scope: {
+      checked: ["declaration", "assembly", "schema-conversion"],
+      notChecked: ["setup", "runtime-readiness", "provider-health", "business-authorization"],
+    },
+    provenance: {
+      installedVersions: installedOperationVersions(),
+      codeRevision: null,
+      generation: null,
+    },
+    capabilities: {
+      connectedCall: false,
+      recentCalls: false,
+      reason:
+        "Static declaration inspection; select a ready dev connection for runtime capabilities.",
+    },
     plugins: ordered.map((plugin) => ({
       id: plugin.id,
       requires: (plugin.requires ?? []).map((dependency) => dependency.id),

@@ -1,6 +1,6 @@
 import { defineApp } from "@lenso/core";
 import { defineOperation } from "@lenso/cli";
-import { greetingInput } from "./src/contracts";
+import { greetingInput, greetingOutput } from "./src/contracts";
 import { greeting } from "./src/greeting";
 export default defineApp({ plugins: [greeting] });
 
@@ -9,6 +9,7 @@ export const operations = [
     plugin: greeting,
     method: "greet",
     input: greetingInput,
+    output: greetingOutput,
     description: "Greet a name and increment this app instance's in-memory count.",
     effect: "write",
     source: { file: "src/greeting.ts", export: "greeting" },
