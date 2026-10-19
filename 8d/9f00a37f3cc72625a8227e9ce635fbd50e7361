@@ -1,0 +1,66 @@
+.agents/skills/lenso-develop/references/engine-cli.md
+  h_9d56aba080c170 9,31
+.agents/skills/lenso-develop/references/recipes.md
+  h_9d56aba080c170 27-30
+.agents/skills/lenso-diagnose/SKILL.md
+  h_9d56aba080c170 18-20
+.agents/skills/lenso-diagnose/references/engine-config-dev.md
+  h_9d56aba080c170 29-34
+.changeset/explicit-dev-operation-contracts.md
+  h_9d56aba080c170 1-8
+docs/CLI.md
+  h_9d56aba080c170 110,170-246
+examples/greeting/lenso.config.ts
+  h_9d56aba080c170 3,12
+examples/greeting/src/contracts.ts
+  h_9d56aba080c170 12-13
+examples/greeting/src/router.ts
+  h_9d56aba080c170 4,13-23,25
+examples/greeting/src/server.ts
+  h_9d56aba080c170 2-3,46-50,52,58-59
+packages/cli/src/adapter.ts
+  h_9d56aba080c170 1,42-47,203-213,222-241,253-259,272,286-288,348-355,357-362,410-417,455
+packages/cli/src/dev-connection.ts
+  h_9d56aba080c170 1-445
+packages/cli/src/dev.ts
+  h_9d56aba080c170 16,79
+packages/cli/src/engine.ts
+  h_9d56aba080c170 1,175-189
+packages/cli/src/index.ts
+  h_9d56aba080c170 14-20
+packages/cli/src/provenance.ts
+  h_9d56aba080c170 1-26
+packages/cli/test/dev-connection.test.ts
+  h_9d56aba080c170 1-177
+packages/cli/test/packaging.test.ts
+  h_9d56aba080c170 188-189
+packages/engine/src/dev-ready.ts
+  h_9d56aba080c170 1-6,8,14,30-40,51
+packages/engine/src/dev.ts
+  h_9d56aba080c170 1-12,30-31,78-83,98-99,135-150,158-164,247,253-280,283-297,314-339,346,356,364
+packages/engine/src/diagnostics.ts
+  h_9d56aba080c170 13,24-39,43,115-116,119
+packages/engine/src/operations.ts
+  h_9d56aba080c170 22-24,266,285-289,302-309,311-313,378,389,407,457-458,469-495,502-505,510,548-557,590-598,600-606,657-662
+packages/manage/src/adapter.ts
+  h_9d56aba080c170 93-95
+packages/mcp/README.md
+  h_9d56aba080c170 59,241-242
+packages/mcp/src/adapter.ts
+  h_9d56aba080c170 10,98,109-116,174-185,378-396
+packages/mcp/src/index.ts
+  h_9d56aba080c170 59-66,236-247
+packages/mcp/test/output-contract.test.ts
+  h_9d56aba080c170 1-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8d9f00a37f3cc72625a8227e9ce635fbd50e7361",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
