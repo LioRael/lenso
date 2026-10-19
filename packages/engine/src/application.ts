@@ -44,6 +44,7 @@ export function applicationConfigPath(target: string | ApplicationTarget): strin
 }
 
 export interface AppDefinition<O extends Operation = Operation> {
+  readonly initialization?: import("@lenso/core/initialization").Initialization;
   readonly instanceId?: string;
   readonly logger?: Logger;
   readonly plugins: readonly Plugin<unknown>[];

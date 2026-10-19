@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../tsconfig.json",
+  "compilerOptions": { "noEmit": true, "customConditions": ["lenso-source"] },
+  "include": ["lenso.config.ts", "src/**/*.ts"]
+}

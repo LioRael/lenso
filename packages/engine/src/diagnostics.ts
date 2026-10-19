@@ -1,3 +1,4 @@
+import { InitializationError } from "@lenso/core/initialization";
 import { ConfigError, DiagnosticError, lifecycleFailure } from "@lenso/core";
 
 export interface SourceLocation {
@@ -166,6 +167,22 @@ function describeError(
   seen: DiagnosticTraversal,
   depth: number,
 ): EngineDiagnostic {
+  if (error instanceof InitializationError)
+    return {
+      code: error.code,
+      phase:
+        error.code === "initialization-invalid-input"
+          ? "input"
+          : [
+                "initialization-unauthorized",
+                "initialization-closed",
+                "initialization-conflict",
+                "initialization-outcome-unknown",
+              ].includes(error.code)
+            ? "invoke"
+            : "config",
+      message: error.message,
+    };
   const lifetime = lifecycleFailure(error);
   const phase = lifetime?.phase ?? fallback.phase ?? "runtime";
   const base = safeDetail(

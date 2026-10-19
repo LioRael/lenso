@@ -1,3 +1,4 @@
+import type { Initialization } from "./initialization";
 import { validatePlugins } from "./diagnostics";
 import { metrics, SpanStatusCode, trace } from "@opentelemetry/api";
 import { ConfigError, preflightConfigs } from "./config";
@@ -17,10 +18,18 @@ export interface RunningApp {
 
 /** Serial setup and explicit LIFO cleanup; business methods stay ordinary async. */
 export async function startApp(
-  app: { plugins: readonly Plugin<unknown>[]; instanceId?: string; logger?: Logger },
+  app: {
+    plugins: readonly Plugin<unknown>[];
+    instanceId?: string;
+    logger?: Logger;
+    initialization?: Initialization;
+  },
   options: ConfigReadContext & { instanceId?: string; logger?: Logger } = {},
 ): Promise<RunningApp> {
   const plugins = validatePlugins(app.plugins);
+  if (options.signal?.aborted)
+    throw new ConfigError([{ code: "config-cancelled", pluginId: plugins[0]?.id ?? "" }]);
+  await app.initialization?.assertReady();
   const snapshots = await preflightConfigs(plugins, options);
   const configurations = new Map<Plugin<unknown>, ConfigState>(
     plugins.map((plugin) => {

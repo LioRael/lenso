@@ -43,10 +43,15 @@
       "lenso-source": "./src/config-file.ts",
       "types": "./dist/config-file.d.ts",
       "import": "./dist/config-file.js"
+    },
+    "./initialization": {
+      "lenso-source": "./src/initialization.ts",
+      "types": "./dist/initialization.d.ts",
+      "import": "./dist/initialization.js"
     }
   },
   "scripts": {
-    "build": "bun build src/index.ts src/plugin.ts src/browser.ts src/config.ts src/config-env.ts src/config-file.ts --outdir dist --target browser --packages external --splitting && tsc -p tsconfig.build.json",
+    "build": "bun build src/index.ts src/plugin.ts src/browser.ts src/config.ts src/config-env.ts src/config-file.ts src/initialization.ts --outdir dist --target browser --packages external --splitting && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },
