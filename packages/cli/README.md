@@ -40,7 +40,15 @@ const greeting = definePlugin({
   },
 });
 export default defineApp({ plugins: [greeting] });
-export const operations = [defineOperation({ plugin: greeting, method: "greet", input, output })];
+export const operations = [
+  defineOperation({
+    plugin: greeting,
+    method: "greet",
+    description: "Greet one name.",
+    input,
+    output,
+  }),
+];
 ```
 
 Run `lenso inspect greeting greet --root . --json`, then supply `{"name":"Ada"}`
