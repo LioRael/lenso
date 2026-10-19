@@ -56,7 +56,14 @@ function result(data: unknown, maxBytes: number): CallToolResult {
   const text = stableJson(redact(data, environmentSecrets()));
   if (Buffer.byteLength(text) > maxBytes)
     throw failure("output-too-large", "output", "Operation output exceeds the host limit.");
-  return { content: [{ type: "text", text }] };
+  const finite = JSON.parse(text);
+  return {
+    content: [{ type: "text", text }],
+    structuredContent:
+      finite !== null && typeof finite === "object" && !Array.isArray(finite)
+        ? finite
+        : { result: finite },
+  };
 }
 
 const oversizedDiagnostic = stableJson({
@@ -226,6 +233,18 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
           "Cancellation is request-only: in-flight work and cleanup are awaited; no rollback or automatic retry.",
         ].join("\n"),
         inputSchema: schema as Tool["inputSchema"],
+        ...(operation.outputSchema
+          ? {
+              outputSchema: (operation.outputSchema.type === "object"
+                ? operation.outputSchema
+                : {
+                    type: "object",
+                    properties: { result: operation.outputSchema },
+                    required: ["result"],
+                    additionalProperties: false,
+                  }) as Tool["outputSchema"],
+            }
+          : {}),
         _meta: { "lenso/operation": operation },
         execution: { taskSupport: "forbidden" },
         annotations: {

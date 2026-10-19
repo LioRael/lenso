@@ -6,7 +6,7 @@ Read [CLI development](https://github.com/LioRael/lenso/blob/main/docs/CLI.md) w
 
 - `lenso.config.ts` default-exports `defineApp({plugins})`; its separate named `operations` export is the CLI allowlist. Use `defineOperation` from `@lenso/cli` with the exact installed plugin, own callable service method and shared Standard Schema input.
 - Actor/evidence-aware methods can declare `context: true`; the context type comes from the real second parameter. CLI's named `operationBinding` supplies trusted context after input validation/setup; MCP uses only its explicit launch `binding`. Ordinary single-input wrappers remain supported. Follow [Notes companion factories](https://github.com/LioRael/lenso/blob/main/examples/notes/src/operations.ts) and [Tasks declarations](https://github.com/LioRael/lenso/blob/main/examples/tasks/lenso.config.ts). Map known authorization errors to safe `CliError` codes at that boundary.
-- Exposure is opt-in, separate from permission. `effect`, `destructive`, `retry` and `cancellation` describe semantics; they do not authorize, retry, propagate abort or roll back. `outputDescription` is prose, not an output schema.
+- Exposure is opt-in, separate from permission. `effect`, `destructive`, `retry` and `cancellation` describe semantics; they do not authorize, retry, propagate abort or roll back. `outputDescription` is prose. Matching source builds also accept `output: sharedOutputSchema` (reuse the oRPC output schema) and safe `errors: [{code,message}]`; actual domain classification still uses `mapError`, not thrown object codes.
 - CLI input validates before setup; a valid call starts one app, invokes with the service as `this`, and awaits stop. Return finite acyclic plain JSON, including an explicit value instead of `undefined`. Keep secrets out of schema metadata, constraints and output.
 
 For a changed declaration, use the installed application's CLI entry:
@@ -28,7 +28,7 @@ Read [Manage](https://github.com/LioRael/lenso/blob/main/packages/manage/README.
 
 Read the [local MCP contract](https://github.com/LioRael/lenso/blob/main/packages/mcp/README.md) before adding stdio tools. `serveStdio` owns a dedicated local Bun process with fixed trusted root and additional launch allowlist. Input must convert to an SDK-compatible object schema; keep stdout protocol-only. Calls use launch identity, not per-request remote actors. One call is admitted; concurrency returns `adapter-busy`, with no queue. SDK cancellation is checked before/after invocation, not automatically propagated to the business method; it remains request-only, not durable cancellation or rollback. Shutdown drains work and cleanup.
 
-Verify installed Manage/CLI/MCP exports before using these newer bindings. No generic management CLI, automatic retries, durable receipts, config read-all/write-all or hot restart is supplied.
+Verify installed Manage/CLI/MCP exports before using these newer bindings. No generic management CLI, automatic retries, durable receipts or config read-all/write-all is supplied. For the opt-in same-user ready dev connection, read the CLI guide's “Connect to one ready development instance”; borrow the same app and retain its trusted binding, require generation on calls, and close entries before stopping the app.
 
 ## Application Engine extensions
 

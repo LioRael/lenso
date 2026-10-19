@@ -1,4 +1,15 @@
-import { realpathSync } from "node:fs";
+import {
+  realpathSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+  existsSync,
+  mkdtempSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { isDevReadyMessage } from "./dev-ready";
 import { devConditionArgs, startObservedEngineDevCycle, type EngineDevCycle } from "./engine-dev";
@@ -16,6 +27,8 @@ export type DevSupervisorEvent =
 
 export interface DevSupervisorOptions extends ApplicationTarget {
   entry?: string;
+  /** Opt-in private descriptor published only after ready hooks succeed. */
+  connectionFile?: string;
   /** Observers cannot interrupt resource ownership; synchronous exceptions are ignored. */
   onEvent?(event: DevSupervisorEvent): void;
   stdout?: "inherit" | "ignore";
@@ -62,6 +75,12 @@ async function stopProcess(previous: ReturnType<typeof Bun.spawn>, timeoutMs = 5
 }
 
 export async function createDevSupervisor(options: DevSupervisorOptions): Promise<DevSupervisor> {
+  if (options.connectionFile && process.platform === "win32")
+    throw new EngineError({
+      code: "unsupported",
+      phase: "engine-dev",
+      message: "Development operation connections currently require a Unix host.",
+    });
   if (
     options.stopTimeoutMs !== undefined &&
     (!Number.isFinite(options.stopTimeoutMs) || options.stopTimeoutMs <= 0)
@@ -76,6 +95,8 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
     child: ReturnType<typeof Bun.spawn>;
     engine: EngineDevCycle;
     ready: boolean;
+    generation: string;
+    connectionDirectory?: string;
   };
   let active: Active | undefined;
   let stopping = Promise.resolve();
@@ -111,12 +132,35 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
   function stopActive(): Promise<void> {
     const previous = active;
     active = undefined;
+    if (previous) {
+      try {
+        previous.child.send({ type: "lenso:dev-revoke", generation: previous.generation });
+      } catch {
+        /* Process may already be gone. */
+      }
+      if (options.connectionFile) {
+        const file = resolve(root, options.connectionFile);
+        try {
+          if (JSON.parse(readFileSync(file, "utf8")).generation === previous.generation)
+            unlinkSync(file);
+        } catch {
+          /* Never remove an unowned descriptor. */
+        }
+      }
+    }
     if (previous)
       stopping = stopping.then(async () => {
         try {
           await stopProcess(previous.child, options.stopTimeoutMs);
         } catch (error) {
           cleanupFailed(error);
+        }
+        if (previous.connectionDirectory) {
+          try {
+            rmSync(previous.connectionDirectory, { recursive: true, force: true });
+          } catch (error) {
+            cleanupFailed(error);
+          }
         }
         try {
           await previous.engine.close();
@@ -200,14 +244,57 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
           }
           break;
         }
+        let connectionDirectory: string | undefined;
         try {
           chosenEntry = engine.entry;
           watchFiles = [...engine.watchFiles, resolve(root, "lenso.engine.ts")];
           watchers.replace(watchFiles, sourceDirectories);
           const entry = await checkedEntry(root, engine.entry, "dev");
+          const generation = crypto.randomUUID();
+          const codeHash = options.connectionFile ? createHash("sha256") : undefined;
+          for (const file of options.connectionFile ? [...new Set(watchFiles)].sort() : []) {
+            try {
+              codeHash?.update(file).update(readFileSync(file));
+            } catch {
+              /* Missing watches are explicit limitations. */
+            }
+          }
+          const provenance = {
+            generation,
+            codeRevision: {
+              kind: "watched-inputs-sha256",
+              digest: codeHash?.digest("hex") ?? null,
+              scope:
+                "Watched inputs sampled before launch; not loaded-byte attestation or a release SHA",
+              verifiedLoadedBytes: false,
+            },
+          };
+          if (options.connectionFile && existsSync(resolve(root, options.connectionFile)))
+            throw new EngineError({
+              code: "dev-connection-in-use",
+              phase: "engine-dev",
+              message: "Connection descriptor already exists; select another owned path.",
+            });
+          connectionDirectory = options.connectionFile
+            ? mkdtempSync(join(tmpdir(), "lenso-dev-"))
+            : undefined;
           const child = Bun.spawn([process.execPath, ...devConditionArgs(), entry], {
             cwd: root,
-            env: { ...process.env, ...env },
+            env: {
+              ...process.env,
+              ...env,
+              LENSO_DEV_PROVENANCE: options.connectionFile ? JSON.stringify(provenance) : undefined,
+              LENSO_DEV_CONFIG: options.connectionFile
+                ? resolve(root, options.config ?? "lenso.config.ts")
+                : undefined,
+              LENSO_DEV_GENERATION: options.connectionFile ? generation : undefined,
+              LENSO_DEV_DESCRIPTOR: options.connectionFile
+                ? resolve(root, options.connectionFile)
+                : undefined,
+              LENSO_DEV_SOCKET: connectionDirectory
+                ? join(connectionDirectory, "operations.sock")
+                : undefined,
+            },
             stdout: options.stdout ?? "inherit",
             stderr: options.stderr ?? "inherit",
             ipc(message, subprocess) {
@@ -224,13 +311,39 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
               void current.engine
                 .ready()
                 .then(() => {
-                  if (!closed && active === current && current.child.exitCode === null)
+                  if (!closed && active === current && current.child.exitCode === null) {
+                    if (options.connectionFile && !message.connection)
+                      throw new EngineError({
+                        code: "dev-connection-unsupported",
+                        phase: "engine-dev",
+                        message: "Entry did not attach an explicit borrowed operation host.",
+                      });
+                    if (options.connectionFile && message.connection) {
+                      if (message.connection.generation !== generation)
+                        throw new EngineError({
+                          code: "stale-generation",
+                          phase: "engine-dev",
+                          message: "Runtime reported a different generation.",
+                        });
+                      writeFileSync(
+                        resolve(root, options.connectionFile),
+                        JSON.stringify({
+                          schemaVersion: 1,
+                          root,
+                          ...message.connection,
+                          provenance,
+                        }),
+                        { flag: "wx", mode: 0o600 },
+                      );
+                      current.child.send({ type: "lenso:dev-admit", generation });
+                    }
                     emit({
                       type: "ready",
                       pid: current.child.pid,
                       urls: message.urls,
                       capabilities: message.capabilities,
                     });
+                  }
                 })
                 .catch(async (error) => {
                   if (!closed && active === current) {
@@ -240,7 +353,7 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
                 });
             },
           });
-          const launched = { child, engine, ready: false };
+          const launched = { child, engine, ready: false, generation, connectionDirectory };
           active = launched;
           void child.exited.then(async (code) => {
             if (active !== launched || closed) return;
@@ -248,6 +361,7 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
             await stopActive();
           });
         } catch (error) {
+          if (connectionDirectory) rmSync(connectionDirectory, { recursive: true, force: true });
           try {
             await engine.close();
           } catch (cleanup) {

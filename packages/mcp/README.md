@@ -56,8 +56,7 @@ minutes, and reject changed visibility. Restart discovery after a stale cursor.
 Non-HTTP callers can supply `identityKey`; otherwise use the same trusted identity
 reference on subsequent pages. HTTP binds identity to issuer, subject, tenant,
 resource and scopes. Successful calls include redacted `structuredContent` as
-well as the JSON text block; non-object results use `{result: value}`. No output
-schema is inferred.
+well as the JSON text block; non-object results use `{result: value}`. Declared Operation output schemas are projected when convertible; no output schema is inferred.
 
 For a **dedicated local process**, replace the adapter creation above with:
 
@@ -239,8 +238,8 @@ the raw DB has administrative authority outside the tool surface; this adapter
 does not grant that authority to its client. Remote credentials, audiences and
 scopes belong to the explicitly enabled HTTP entry, never this stdio entry.
 
-Successful tool content contains one text block with Engine's deterministic,
-redacted JSON result. No output schema is fabricated. Undefined, cyclic,
+Successful tool content includes bounded structured content and one text block with Engine's deterministic,
+redacted JSON result. A declared convertible output schema is projected; no output schema is fabricated. Scalar/array structured results use `{result}`. Undefined, cyclic,
 nonfinite, and nonplain output fails through the existing serialization policy.
 Business failures use `isError: true` with safe Engine/CLI diagnostic JSON,
 without raw input, arbitrary exception text, or stacks. Unknown tool names

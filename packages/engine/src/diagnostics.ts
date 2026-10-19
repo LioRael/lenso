@@ -10,6 +10,7 @@ export interface SourceLocation {
 export interface EngineDiagnostic {
   readonly code: string;
   readonly phase: string;
+  readonly effectState?: "not-started" | "unknown" | "completed";
   readonly message: string;
   readonly instanceId?: string;
   readonly pluginId?: string;
@@ -20,11 +21,26 @@ export interface EngineDiagnostic {
   readonly causes?: readonly EngineDiagnostic[];
 }
 export class EngineError extends Error {
-  readonly diagnostic: EngineDiagnostic;
+  private readonly detail: EngineDiagnostic;
+  private executionEffect?: EngineDiagnostic["effectState"];
+  private executionLocation?: Partial<EngineDiagnostic>;
+  get diagnostic(): EngineDiagnostic {
+    return this.executionEffect
+      ? { ...this.executionLocation, ...this.detail, effectState: this.executionEffect }
+      : this.detail;
+  }
+  /** Invocation provenance, without changing the error or its original cause identity. */
+  markEffectState(
+    state: NonNullable<EngineDiagnostic["effectState"]>,
+    location?: Partial<EngineDiagnostic>,
+  ): void {
+    this.executionEffect = state;
+    this.executionLocation = location;
+  }
 
   constructor(detail: EngineDiagnostic, options?: ErrorOptions) {
     super(detail.message, options);
-    this.diagnostic = detail;
+    this.detail = detail;
     this.name = "EngineError";
   }
 }
@@ -96,9 +112,11 @@ function safeDetail(
       ...(Number.isSafeInteger(detail.source.line) ? { line: detail.source.line } : {}),
       ...(Number.isSafeInteger(detail.source.column) ? { column: detail.source.column } : {}),
     };
+  if (["not-started", "unknown", "completed"].includes(detail.effectState ?? ""))
+    result.effectState = detail.effectState;
   const details = detail.details;
   if (details && typeof details === "object") {
-    if (detail.code === "invalid-input")
+    if (detail.code === "invalid-input" || detail.code === "invalid-output")
       result.details = { paths: safePaths(Reflect.get(details, "paths")) };
     else if (
       ["invalid-plugin", "invalid-id", "invalid-source", "missing-dependency"].includes(detail.code)

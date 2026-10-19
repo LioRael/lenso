@@ -90,6 +90,9 @@ function prepareSelection<O extends Operation>(options: ManageSelectionOptions<O
       const snapshot = { ...operation };
       return Object.freeze({
         ...snapshot,
+        ...(snapshot.errors === undefined
+          ? {}
+          : { errors: Object.freeze(snapshot.errors.map((error) => Object.freeze({ ...error }))) }),
         ...(snapshot.source === undefined ? {} : { source: Object.freeze({ ...snapshot.source }) }),
       });
     }),

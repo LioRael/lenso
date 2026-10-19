@@ -24,3 +24,7 @@ bun test examples/notes/test/recipes.test.ts examples/notes/test/files.test.ts e
 ```
 
 The DX owner's checked-in evidence reports Notes/Tasks typechecks, 8 tests/124 assertions, real Engine readiness/login/shutdown, SQLite file restart and PostgreSQL task restart persistence. This skill task inspected source/report and did not repeat those integration tests. The R2 result is a separate local workerd provider test, **not** a complete Auth+D1+R2 deployment. Follow the recipe's explicit disposable database/migration instructions only when that boundary is part of the authorized task.
+
+## Repeated local service calls without repeated setup
+
+For matching Engine/CLI/native source builds, the existing greeting entry is the smallest runnable scene: `examples/greeting/src/server.ts` lends one app to its Web listener and `serveDevOperations`, while `lenso.config.ts` and the oRPC router reuse `greetingInput`/`greetingOutput`. Use `dev --connect`, explicit connected inspect, generation-pinned call and bounded recent metadata as documented in the CLI guide. Do not install old registry versions and assume these source exports exist; do not force a Runtime dependency or reconstruct this path with pack/vendor overrides. This scene is not an Agent loop or deployment recipe.

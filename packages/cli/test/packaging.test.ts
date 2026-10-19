@@ -185,7 +185,8 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       import {defineEnginePlugin,defineEngineConfig} from '@lenso/engine/authoring';
       import {definePlugin,bindConfig,definePluginConfig,startApp} from '@lenso/core';
       import {defineOperation,type Operation} from '@lenso/engine/operations';
-      import {invoke} from '@lenso/cli';
+      import {invoke,serveDevOperations,connectDev,type DevOperationBinding} from '@lenso/cli';
+      void serveDevOperations;void connectDev;const devBinding:DevOperationBinding<Operation>=(_o,_i,_app,request)=>({signal:request.signal});void devBinding;
       import {defineManage,selectManageOperations,bindManageOperation} from '@lenso/manage';
       import {createManageRouter} from '@lenso/manage/orpc';
       const managementInput={"~standard":{version:1 as const,vendor:"consumer",validate:(value:unknown)=>({value})}};
