@@ -153,7 +153,13 @@ export class SourceInputs {
         metadata = JSON.parse(await readFile(manifest, "utf8"));
         for (const group of ["dependencies", "devDependencies", "optionalDependencies"])
           for (const [name, value] of Object.entries(metadata?.[group] ?? {}))
-            if (typeof value === "string" && /^(workspace:|link:|file:)/.test(value))
+            // A file: archive is an installed artifact, not a live source directory.
+            // Real links escaping node_modules are still followed at resolution time.
+            if (
+              typeof value === "string" &&
+              /^(workspace:|link:|file:)/.test(value) &&
+              !/^file:.*\.(?:tgz|tar\.gz)$/i.test(value)
+            )
               local.add(name);
       } catch {
         // The manifest is still watched; Bun owns validation and actual resolution.
