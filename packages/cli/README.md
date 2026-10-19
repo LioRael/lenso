@@ -1,5 +1,62 @@
 # TypeScript operation API and internal adapter
 
+## Guidance for the installed adapter
+
+From the consuming application's directory, locate this installed Markdown file:
+
+```sh
+bun -e 'console.log(import.meta.resolve("@lenso/cli/guide"))'
+```
+
+Read the returned file; do not import Markdown as executable code. Its adjacent
+`package.json` records the installed adapter version and exports. This guide and
+the included `examples/` belong to that artifact, while repository `main` may
+describe newer APIs. Equal version strings alone do not identify a local source
+candidate: keep its archive hash/source receipt when using one. This new guide
+export is a source change, not a claim that registry `@lenso/cli@0.21.0` contains it.
+If an older installation has no guide export, inspect its package README and public
+declarations without upgrading or assuming missing features.
+
+Other Lenso packages and the native command have independent versions. Verify the
+app's installed exports and `lenso help --json` before using their capabilities.
+This package provides no Runtime requirement for ordinary local services.
+
+### Minimal Operation recipe
+
+With this adapter, compatible installed Core/Engine, and the application's own
+Standard Schema implementation (here Zod), put this in `lenso.config.ts`:
+
+```ts
+import { defineApp, definePlugin } from "@lenso/core";
+import { defineOperation } from "@lenso/cli";
+import { z } from "zod";
+
+const input = z.object({ name: z.string() });
+const output = z.object({ message: z.string() });
+const greeting = definePlugin({
+  id: "greeting",
+  setup() {
+    return { greet: ({ name }: { name: string }) => ({ message: `Hello, ${name}!` }) };
+  },
+});
+export default defineApp({ plugins: [greeting] });
+export const operations = [defineOperation({ plugin: greeting, method: "greet", input, output })];
+```
+
+Run `lenso inspect greeting greet --root . --json`, then supply `{"name":"Ada"}`
+on stdin to `lenso call greeting greet --root . --stdin --json`. Input and output
+use the declared schemas; adapt the same service/schema for another entry rather
+than copying business logic. A finite call owns app startup/cleanup. Declaration
+does not grant permission; authenticated services still enforce their policy.
+
+The packaged `examples/first-run/README.md` describes a separate opt-in setup
+recipe and its exact Core/native candidate prerequisites. It is not needed for
+this Operation. Notes/private-files/Tasks recipes live in the repository, are not
+included here, and require their own provider/dependency verification; a source
+recipe's presence does not prove compatibility with installed packages.
+
+## Command and development lifecycle
+
 The only installed command is the Rust `lenso` executable from `LioRael/lenso-cli`.
 This package provides `defineOperation`, inspection/invocation APIs and the explicit
 `@lenso/cli/adapter` module used through Bun. It has no `bin`, executable entry or
@@ -26,7 +83,7 @@ reportDevReady({
 });
 ```
 
-The included greeting entry already calls this helper. It is a no-op outside supervised dev; authors never need to handwrite IPC messages. Custom entries call it after successful startup. Service-only entries can omit `urls`. Use enabled capability names, without
+The repository greeting entry already calls this helper. It is a no-op outside supervised dev; authors never need to handwrite IPC messages. Custom entries call it after successful startup. Service-only entries can omit `urls`. Use enabled capability names, without
 configuration values or secrets. Entries without this signal remain Starting;
 spawning a process alone does not prove readiness. Failed starts keep watching
 for source changes. The displayed URL is the reported listener origin, with no
@@ -40,7 +97,7 @@ console or intercept application logs.
 ## Engine plugins
 
 Discovery, generation, targets and dev scheduling live in
-[`@lenso/engine`](../engine/README.md), with a typed programmatic API and the public
+the installed `@lenso/engine` package (see its README), with a typed programmatic API and the public
 `@lenso/engine/authoring` plugin protocol. No extra configuration is needed for the
 default Bun build. Extensions still use `lenso.engine.ts` beside `lenso.config.ts`.
 
