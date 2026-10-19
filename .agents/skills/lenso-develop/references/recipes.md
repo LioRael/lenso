@@ -1,6 +1,6 @@
 # Delivered login, private-file and durable-task recipes
 
-Availability: local DX commit `b79aa1e`, based on `74139b0`. The skill checkout itself remains on the earlier source baseline; these files become usable only after selecting/integrating that delivery. This is not a registry-publication claim. Inspect the named files in the actual checkout before importing them.
+Availability: these recipes are included in the repository source at `6dae6eca8499dcec126cc181a5daca9f1de292a0`. They are example source, not a registry-publication claim. Inspect the named files in the selected checkout and verify the application's installed dependency exports before adapting them; source availability does not establish support in an installed package version.
 
 - Login/private files: `examples/notes/RECIPES.md`, `src/private-files.ts`, `src/recipes/web.ts`.
 - Static assembly view: `examples/notes/src/recipes/inspect.ts`.
