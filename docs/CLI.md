@@ -360,3 +360,22 @@ results still require checking `data.state` before treating setup as complete.
 The new entry requires matching unreleased TS/native candidates. Released native
 v0.2.0 and registry Core 0.3.1 do not contain this setup feature. Native binaries
 retain their own publication lifecycle; no release is performed by these docs.
+
+## Upstream-owned local combination archives
+
+Maintainers can run `bun scripts/pack-dev-combination.ts NEW_OUTPUT_DIRECTORY`
+after building the affected packages on a clean committed checkout. This bounded
+Core/Engine/CLI/Manage/MCP/Auth/Web combination stages archives without touching source
+manifests. It pins candidate references in every shipped package.json (including example
+manifests), rejects unresolved local references, verifies exports/dist, and emits archive
+hashes plus `combination.json` and `install-fragment.json`. It never publishes or changes
+package names/versions. Existing output directories are refused.
+
+Consumers use those ready archives and supplied dependency/override selection together;
+they need not repack or edit package metadata. The selection keeps Bun from mixing
+same-version registry and candidate module identities. File paths target the immutable
+local output location; relocation needs a freshly generated upstream fragment. Preserve
+unrelated application dependencies. Validate a representative consumer and retain its
+lockfile/receipt before calling a combination verified: successful packing is not proof
+of compatibility. This is local source-candidate integration, separate from ordinary
+published dependency installation and future coordinated releases.
