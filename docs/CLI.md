@@ -199,7 +199,10 @@ An entry explicitly attaches the same app it already lends to Web/MCP:
 ```ts
 import { serveDevOperations } from "@lenso/cli";
 const connection = await serveDevOperations({
-  running: app, plugins, operations, binding: operationBinding,
+  running: app,
+  plugins,
+  operations,
+  binding: operationBinding,
 });
 reportDevReady({ connection: connection?.connection, urls: [url] });
 // Owner shutdown: await connection?.close(), drain other borrowed entries, then app.stop().
