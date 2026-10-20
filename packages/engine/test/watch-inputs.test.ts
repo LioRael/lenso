@@ -77,6 +77,31 @@ test("declared local links are followed even inside the same dependency tree", a
   expect(inputs.directories).toContain(local);
 });
 
+test("installed archives stay opaque while file directories retain their editable graphs", async () => {
+  for (const [dependency, editable] of [
+    ["file:./artifact.tgz", false],
+    ["file:./artifact.tar.gz", false],
+    ["file:./source", true],
+  ] as const) {
+    const root = await fixture();
+    const installed = join(root, "node_modules/library");
+    await Bun.write(
+      join(root, "package.json"),
+      JSON.stringify({ dependencies: { library: dependency } }),
+    );
+    await Bun.write(join(installed, "package.json"), '{"name":"library","exports":"./entry.ts"}');
+    await Bun.write(join(installed, "entry.ts"), "export {value} from './nested'");
+    await Bun.write(join(installed, "nested.ts"), "export const value = 'installed'");
+    await Bun.write(join(root, "entry.ts"), "import 'library'");
+    const inputs = new SourceInputs(root);
+    await inputs.add(join(root, "entry.ts"));
+    expect(inputs.files).toContain(join(root, "package.json"));
+    expect(inputs.files).toContain(join(installed, "package.json"));
+    expect(inputs.files).toContain(join(installed, "entry.ts"));
+    expect(inputs.files.has(join(installed, "nested.ts"))).toBe(editable);
+  }
+});
+
 test("graph and explicit watches share listeners, replace ownership and close real fs.watch resources", async () => {
   const root = await fixture();
   const code = join(root, "code/entry.ts");
