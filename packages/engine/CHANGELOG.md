@@ -1,5 +1,24 @@
 # @lenso/engine
 
+## 0.8.0
+
+### Minor Changes
+
+- 8d9f00a: Project declared output schemas and business error metadata through existing Operations, CLI and MCP. Add opt-in same-user dev connections with generation fences and bounded payload-free recent call metadata, borrowing the host's running app.
+
+### Patch Changes
+
+- e3fe4a8: Add explicit, opt-in application initialization with trusted host authorization,
+  existing configuration preflight, a durable first-owner/config transaction contract,
+  resumable activation and a startup readiness fence. The matching native CLI source
+  adds setup status/apply/activate; its release remains separate. Include a real
+  private SQLite first-run example, without enabling a bootstrap HTTP route or
+  installing platform secrets implicitly.
+- 96f021f: Ship installed CLI guidance, exclusive development output ownership, archive-aware source scanning, and distinct unavailable-versus-invalid MCP credential verification errors.
+- Updated dependencies [e3fe4a8]
+- Updated dependencies [bfd8133]
+  - @lenso/core@0.4.0
+
 ## 0.7.0
 
 ### Minor Changes
