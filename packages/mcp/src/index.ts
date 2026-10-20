@@ -24,6 +24,7 @@ import { acquireStdioOwnership } from "./borrowed-stdio";
 
 export { createMcpAdapter, type McpAdapterOptions, type McpRequestContext } from "./adapter";
 export { createHttpMcp, type HttpMcpOptions, type McpIdentity } from "./http";
+export { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 export { serveBorrowedStdio, type BorrowedStdioOptions } from "./borrowed-stdio";
 
 export interface StdioOptions {
