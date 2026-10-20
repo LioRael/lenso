@@ -3,6 +3,12 @@ import { definePlugin, startApp } from "@lenso/core";
 import { defineOperation } from "@lenso/engine/operations";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+  InvalidTokenError,
+  ServerError,
+  TemporarilyUnavailableError,
+} from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -152,7 +158,7 @@ async function fixture(overrides: Partial<HttpMcpOptions<McpIdentity>> = {}) {
     verifyToken(token) {
       verifies++;
       const verified = tokens.get(token);
-      if (!verified) throw new Error("private token verification failure");
+      if (!verified) throw new InvalidTokenError("private token verification failure");
       return verified;
     },
     canList: () => visible,
@@ -356,6 +362,188 @@ test("every protected request verifies token, issuer, expiry, audience and scope
     await f.close();
   }
 });
+
+test.each(["oauth", "personal-token"] as const)(
+  "%s verification failures distinguish invalid credentials from unavailable verification",
+  async (mode) => {
+    let failure: unknown;
+    const f = await fixture({
+      ...(mode === "personal-token"
+        ? { authenticationMode: mode, personalTokenIssuer: issuer, authorizationServers: undefined }
+        : {}),
+      verifyToken() {
+        throw failure;
+      },
+    });
+    try {
+      for (const [error, status, code] of [
+        [
+          new InvalidTokenError("private credential detail", "https://private.example/"),
+          401,
+          "invalid-token",
+        ],
+        [
+          new TemporarilyUnavailableError("private provider detail"),
+          503,
+          "authentication-unavailable",
+        ],
+        [new ServerError("private storage detail"), 503, "authentication-unavailable"],
+        [new Error("private unexpected detail"), 503, "authentication-unavailable"],
+        [
+          { name: "InvalidTokenError", errorCode: "invalid_token" },
+          503,
+          "authentication-unavailable",
+        ],
+      ] as const) {
+        failure = error;
+        const response = await f.raw(undefined, { method: "GET" });
+        expect(response.status).toBe(status);
+        expect(response.headers.get("cache-control")).toBe("no-store");
+        expect(await response.json()).toEqual({ error: code });
+        if (status === 401)
+          expect(response.headers.get("www-authenticate")).toContain("invalid_token");
+        else expect(response.headers.get("www-authenticate")).toBeNull();
+      }
+      expect(f.requests).toHaveLength(0);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test.each(["without refresh token", "with refresh token"] as const)(
+  "official OAuth client keeps its session through verification outages: %s",
+  async (credentialMode) => {
+    const hasRefreshToken = credentialMode === "with refresh token";
+    let unavailable = false;
+    let verifications = 0;
+    let refreshes = 0;
+    let redirects = 0;
+    let savedTokens = 0;
+    let invalidations = 0;
+    let reads = 0;
+    let initializations = 0;
+    const statuses: number[] = [];
+    const f = await fixture({
+      verifyToken(token) {
+        verifications++;
+        if (unavailable) throw new TemporarilyUnavailableError("private store is unavailable");
+        if (token !== "fixture-one") throw new InvalidTokenError("private token rejected");
+        return identity();
+      },
+    });
+    const provider: OAuthClientProvider = {
+      redirectUrl: "http://localhost/callback",
+      clientMetadata: { redirect_uris: ["http://localhost/callback"] },
+      clientInformation: () => ({ client_id: "fixture-client", issuer }),
+      tokens: () => ({
+        access_token: "fixture-one",
+        token_type: "Bearer",
+        issuer,
+        ...(hasRefreshToken ? { refresh_token: "fixture-refresh" } : {}),
+      }),
+      saveTokens: () => {
+        savedTokens++;
+      },
+      invalidateCredentials: () => {
+        invalidations++;
+      },
+      redirectToAuthorization: () => {
+        redirects++;
+      },
+      saveCodeVerifier: () => {},
+      codeVerifier: () => "fixture-verifier",
+      discoveryState: () => ({
+        authorizationServerUrl: issuer,
+        resourceMetadata: { resource, authorization_servers: [issuer] },
+        authorizationServerMetadata: {
+          issuer,
+          authorization_endpoint: issuer + "authorize",
+          token_endpoint: issuer + "token",
+          response_types_supported: ["code"],
+          code_challenge_methods_supported: ["S256"],
+          token_endpoint_auth_methods_supported: ["none"],
+        },
+      }),
+    };
+    const transport = new StreamableHTTPClientTransport(new URL(resource), {
+      authProvider: provider,
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        if (request.url === issuer + "token") {
+          refreshes++;
+          return Response.json({
+            access_token: "fixture-one",
+            refresh_token: "fixture-refresh",
+            token_type: "Bearer",
+          });
+        }
+        // No external fetch is permitted, including OAuth discovery.
+        if (request.url !== resource) throw new Error("Unexpected fixture URL.");
+        const body = request.method === "POST" ? await request.clone().json() : undefined;
+        if (body?.method === "initialize") initializations++;
+        if (body?.method === "tools/call") reads++;
+        const response = await f.adapter.fetch(request);
+        if (body?.method === "tools/call") statuses.push(response.status);
+        return response;
+      },
+    });
+    const client = new Client({ name: "verification-recovery-fixture", version: "1" });
+    try {
+      await client.connect(transport);
+      await client.listTools();
+      const session = transport.sessionId;
+      expect((await client.callTool({ name: readName })).structuredContent).toEqual({
+        tenant: "one",
+        count: 0,
+      });
+      const before = verifications;
+      unavailable = true;
+      let failed = false;
+      try {
+        await client.callTool({ name: readName });
+      } catch {
+        failed = true;
+      }
+      const outageVerifications = verifications - before;
+      const bindingsDuringOutage = f.requests.length;
+      unavailable = false;
+      const recovered = await client.callTool({ name: readName });
+      expect({
+        failed,
+        statuses,
+        refreshes,
+        redirects,
+        savedTokens,
+        invalidations,
+        reads,
+        initializations,
+        outageVerifications,
+        bindingsDuringOutage,
+        bindingsAfterRecovery: f.requests.length,
+        sameSession: transport.sessionId === session,
+        recovered: recovered.structuredContent,
+      }).toEqual({
+        failed: true,
+        statuses: [200, 503, 200],
+        refreshes: 0,
+        redirects: 0,
+        savedTokens: 0,
+        invalidations: 0,
+        reads: 3,
+        initializations: 1,
+        outageVerifications: 1,
+        bindingsDuringOutage: 1,
+        bindingsAfterRecovery: 2,
+        sameSession: true,
+        recovered: { tenant: "one", count: 0 },
+      });
+    } finally {
+      await client.close();
+      await f.close();
+    }
+  },
+);
 
 test("official HTTP cursor pages reverify identities and reject revoked visibility", async () => {
   const f = await fixture({ listPageSize: 2 });

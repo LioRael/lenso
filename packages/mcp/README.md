@@ -115,6 +115,50 @@ are neither forwarded to services nor to a different resource. Session IDs never
 authenticate. Sessions and rate buckets bind issuer/subject/tenant/resource;
 foreign owners receive 404 and grants are not cached in sessions.
 
+`verifyToken` must distinguish rejected credentials from failed verification.
+Throw `InvalidTokenError` for a credential known to be invalid, expired or revoked.
+It is the official SDK class, re-exported by `@lenso/mcp`; its message, cause and
+error URI are never returned. All other thrown values return
+`503 {"error":"authentication-unavailable"}` without `WWW-Authenticate`.
+No operation or session creation is admitted on either failure. The 503 does not
+invalidate an existing session or credential; after service recovery the client
+can explicitly retry using its existing session and credentials, subject to the
+normal expiry and policy checks. The adapter does not retry or prove rollback.
+
+**Verifier migration:** older adapters treated every thrown value as an invalid
+token. Hosts must map their provider's known invalid-credential errors explicitly,
+using its real error classes rather than arbitrary `error.code` objects. For an
+application using `@lenso/auth`, a boundary can use:
+
+```ts
+import { AuthError } from "@lenso/auth";
+import { OAuthError } from "@lenso/auth/oauth";
+import { InvalidTokenError } from "@lenso/mcp";
+
+async function verifyToken(token: string, signal: AbortSignal) {
+  try {
+    return await hostIdentityProvider.verifyMcpAccessToken(token, signal);
+  } catch (error) {
+    if (
+      (error instanceof AuthError && error.code === "UNAUTHORIZED") ||
+      (error instanceof OAuthError && error.code === "invalid_grant")
+    )
+      throw new InvalidTokenError();
+    throw error; // Includes SERVICE_UNAVAILABLE; no refresh/login is requested.
+  }
+}
+```
+
+Map other providers' invalid-token classes at this same boundary. A plain `Error`
+used for invalid credentials now produces 503 until migrated. Missing credentials,
+invalid returned identity claims and missing required scopes retain their existing
+401/403 handling. This distinction applies to both OAuth and personal-token mode.
+The `invalid_grant` branch matters for hosts calling `@lenso/auth` OAuth verification
+directly. Do not map all `OAuthError`/`AuthError` instances to invalid tokens:
+storage failures and policy denials are not proof of credential invalidity.
+An entry-specific freshness/assurance requirement still needs the host's deliberate
+reauthentication decision.
+
 For a host-owned personal access token rather than OAuth, explicitly select:
 
 ```ts

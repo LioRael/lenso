@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import {
   SUPPORTED_PROTOCOL_VERSIONS,
   isInitializeRequest,
@@ -33,7 +34,9 @@ export interface HttpMcpOptions<
   readonly personalTokenIssuer?: string;
   readonly requiredScopes: readonly string[];
   readonly allowedOrigins: readonly string[];
-  /** Must cryptographically verify or introspect the token, including current validity/revocation. */
+  /** Cryptographically verify or introspect current validity/revocation.
+   * Throw the SDK InvalidTokenError only for known invalid credentials (401);
+   * other failures return 503 without a login challenge. */
   readonly verifyToken: (token: string, signal: AbortSignal) => I | Promise<I>;
   readonly maxFrameBytes?: number;
   readonly maxResponseBytes?: number;
@@ -360,8 +363,12 @@ export async function createHttpMcp<I extends McpIdentity, O extends Operation>(
         audience: Object.freeze([...verified.audience]),
         scopes: Object.freeze([...verified.scopes]),
       });
-    } catch {
-      return reply(401, "invalid-token", challenge("invalid_token"));
+    } catch (error) {
+      if (error instanceof InvalidTokenError)
+        return reply(401, "invalid-token", challenge("invalid_token"));
+      // An unavailable verifier is not evidence that a credential is invalid.
+      // A 401 would make OAuth clients refresh/reauthorize and resend the request.
+      return reply(503, "authentication-unavailable");
     }
     if (scopes.some((scope) => !identity.scopes.includes(scope)))
       return reply(403, "insufficient-scope", challenge("insufficient_scope"));
