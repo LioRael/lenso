@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { createHttpMcp, createMcpAdapter } from "@lenso/mcp";
+import { createHttpMcp, createMcpAdapter, InvalidTokenError } from "@lenso/mcp";
 import { startHost, testOnlyIdentity, testOnlyResource } from "./host";
 
 /** Offline fixture, not an OAuth credential or a production verifier. */
@@ -34,7 +34,8 @@ export async function runDemo() {
       allowedOrigins: [],
       verifyToken(token, signal) {
         signal.throwIfAborted();
-        if (token !== testOnlyBearerFixture) throw new Error("Test-only fixture rejected.");
+        if (token !== testOnlyBearerFixture)
+          throw new InvalidTokenError("Test-only fixture rejected.");
         return testOnlyIdentity;
       },
     });

@@ -17,6 +17,7 @@
   ],
   "type": "module",
   "exports": {
+    "./guide": "./README.md",
     ".": {
       "lenso-source": "./src/index.ts",
       "types": "./dist/index.d.ts",

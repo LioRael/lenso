@@ -16,7 +16,7 @@ lenso inspect <plugin-id> <method> --root <app> --json
 lenso call <plugin-id> <method> --root <app> --stdin --json
 ```
 
-Supply safe JSON on stdin; `--input-file <file>` or nonsensitive inline JSON are alternatives. `inspect` also accepts no selectors or only a plugin ID. Use `lenso help --json` for installed command/flag support: this baseline has help/check/inspect/generate/build/call/dev, and `dev --json` is unsupported. Inspect imports trusted canonical config and converters without setup; it is not a sandbox.
+Supply safe JSON on stdin; `--input-file <file>` or nonsensitive inline JSON are alternatives. `inspect` also accepts no selectors or only a plugin ID. Use `lenso help --json` for installed command/flag support. Matching native CLI source builds support `dev --json` lifecycle JSONL through the Rust supervisor; finite commands return one JSON envelope. Check the installed CLI's help before assuming it supports source-build features. Inspect imports trusted canonical config and converters without setup; it is not a sandbox.
 
 Pair the call with the app's focused typecheck/test. Verify invalid input and undeclared methods fail before setup; use an authorized disposable environment because the call starts the whole app.
 

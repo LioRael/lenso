@@ -7,6 +7,7 @@ import { EngineError, diagnostic, type EngineDiagnostic } from "./diagnostics";
 import { resolveApplicationTarget, type ApplicationTarget } from "./application";
 import { runtimeConditions } from "./resolution";
 import { SourceInputs } from "./source-inputs";
+import { acquireOutputLease } from "./output-lease";
 import type {
   BuildContext,
   DevEvent,
@@ -228,6 +229,7 @@ export class EngineSession {
   private setupPromise?: Promise<void>;
   private setupDefaults?: readonly EnginePlugin[];
   private setupComplete = false;
+  private outputLease?: Promise<() => Promise<void>>;
   private discoveryComplete = false;
   private runningStage?: Promise<unknown>;
   private conventionValue?: EngineConvention;
@@ -279,9 +281,19 @@ export class EngineSession {
     }
     this.setupDefaults = [...defaults];
     return (this.setupPromise = Promise.resolve().then(async () => {
+      if (this.mode !== "check") await this.claimOutput();
       await this.performSetup(this.setupDefaults!);
       this.setupComplete = true;
     }));
+  }
+  private claimOutput(): Promise<() => Promise<void>> {
+    return (this.outputLease ??= (async () => {
+      const path = await this.checkedOutput(".lenso/.engine-output.lock", "engine", {
+        file: this.configPath,
+      });
+      await mkdir(dirname(path), { recursive: true });
+      return acquireOutputLease(path, this.mode);
+    })());
   }
   private stateError(phase: string, closed = false): EngineError {
     return error(
@@ -619,6 +631,7 @@ export class EngineSession {
     return this.stage("engine-generation", true, () => this.performGeneration());
   }
   private async performGeneration(): Promise<void> {
+    await this.claimOutput();
     const files: (OwnedFile & { content: string; source: EngineSource })[] = [];
     const paths = new Set<string>();
     for (const [key, hook] of this.capabilities)
@@ -641,6 +654,7 @@ export class EngineSession {
             !file ||
             !safeRelative(file.path) ||
             file.path.toLowerCase() === ".engine-files.json" ||
+            file.path.toLowerCase() === ".engine-output.lock" ||
             typeof file.content !== "string"
           )
             throw error(
@@ -690,6 +704,7 @@ export class EngineSession {
               !file ||
               !safeRelative(file.path) ||
               file.path.toLowerCase() === ".engine-files.json" ||
+              file.path.toLowerCase() === ".engine-output.lock" ||
               typeof file.hash !== "string" ||
               typeof file.plugin !== "string" ||
               typeof file.capability !== "string",
@@ -768,6 +783,7 @@ export class EngineSession {
     return this.stage("build", true, () => this.performBuild(entry));
   }
   private async performBuild(entry?: string): Promise<string> {
+    await this.claimOutput();
     const key = `target:${this.target}`;
     const unavailable = () =>
       error(
@@ -905,6 +921,16 @@ export class EngineSession {
       this.watches.clear();
       this.watchRegistrations.clear();
       this.sourceFiles = [];
+      // Keep output exclusively owned until every plugin cleanup has settled.
+      const release = await this.outputLease?.catch(() => undefined);
+      if (release) {
+        try {
+          await release();
+        } catch (cause) {
+          errors.push(cause);
+          causes.push(diagnostic(cause));
+        }
+      }
       if (causes.length)
         throw new EngineError(
           {
