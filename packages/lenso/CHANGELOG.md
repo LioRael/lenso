@@ -1,5 +1,17 @@
 # @lenso/core
 
+## 0.4.0
+
+### Minor Changes
+
+- e3fe4a8: Add explicit, opt-in application initialization with trusted host authorization,
+  existing configuration preflight, a durable first-owner/config transaction contract,
+  resumable activation and a startup readiness fence. The matching native CLI source
+  adds setup status/apply/activate; its release remains separate. Include a real
+  private SQLite first-run example, without enabling a bootstrap HTTP route or
+  installing platform secrets implicitly.
+- bfd8133: Add opt-in collectPlugins for exact dependency closure and withApp for finite application lifetimes that preserve work and cleanup failures. Include a local Auth, Storage and Cache composition example.
+
 ## 0.3.1
 
 ### Patch Changes

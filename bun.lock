@@ -289,7 +289,7 @@
     },
     "packages/cli": {
       "name": "@lenso/cli",
-      "version": "0.21.0",
+      "version": "0.22.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
@@ -315,7 +315,7 @@
     },
     "packages/engine": {
       "name": "@lenso/engine",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@opentelemetry/api": "1.9.1",
@@ -337,7 +337,7 @@
     },
     "packages/lenso": {
       "name": "@lenso/core",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "dependencies": {
         "@opentelemetry/api": "1.9.1",
         "@standard-schema/spec": "1.1.0",
@@ -376,7 +376,7 @@
     },
     "packages/manage": {
       "name": "@lenso/manage",
-      "version": "0.5.3",
+      "version": "0.5.4",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
@@ -399,7 +399,7 @@
     },
     "packages/mcp": {
       "name": "@lenso/mcp",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "dependencies": {
         "@lenso/cli": "workspace:^",
         "@lenso/core": "workspace:^",

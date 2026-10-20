@@ -1,5 +1,17 @@
 # @lenso/manage
 
+## 0.5.4
+
+### Patch Changes
+
+- 8d9f00a: Project declared output schemas and business error metadata through existing Operations, CLI and MCP. Add opt-in same-user dev connections with generation fences and bounded payload-free recent call metadata, borrowing the host's running app.
+- Updated dependencies [8d9f00a]
+- Updated dependencies [e3fe4a8]
+- Updated dependencies [96f021f]
+- Updated dependencies [bfd8133]
+  - @lenso/engine@0.8.0
+  - @lenso/core@0.4.0
+
 ## 0.5.3
 
 ### Patch Changes

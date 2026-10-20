@@ -1,5 +1,23 @@
 # @lenso/mcp
 
+## 0.6.0
+
+### Minor Changes
+
+- 8d9f00a: Project declared output schemas and business error metadata through existing Operations, CLI and MCP. Add opt-in same-user dev connections with generation fences and bounded payload-free recent call metadata, borrowing the host's running app.
+
+### Patch Changes
+
+- 96f021f: Ship installed CLI guidance, exclusive development output ownership, archive-aware source scanning, and distinct unavailable-versus-invalid MCP credential verification errors.
+- Updated dependencies [8d9f00a]
+- Updated dependencies [e3fe4a8]
+- Updated dependencies [96f021f]
+- Updated dependencies [bfd8133]
+  - @lenso/engine@0.8.0
+  - @lenso/cli@0.22.0
+  - @lenso/manage@0.5.4
+  - @lenso/core@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes
