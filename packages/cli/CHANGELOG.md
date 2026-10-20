@@ -14,6 +14,7 @@
 
 ### Patch Changes
 
+- Declare Engine 0.8 compatibility in the two shipped extension examples while retaining their existing Engine 0.6 and 0.7 ranges.
 - 96f021f: Ship installed CLI guidance, exclusive development output ownership, archive-aware source scanning, and distinct unavailable-versus-invalid MCP credential verification errors.
 - Updated dependencies [8d9f00a]
 - Updated dependencies [e3fe4a8]
