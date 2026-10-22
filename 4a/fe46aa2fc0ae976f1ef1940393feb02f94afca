@@ -1,0 +1,14 @@
+examples/notes/src/recipes/private-files.ts
+  h_9d56aba080c170 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4afe46aa2fc0ae976f1ef1940393feb02f94afca",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
