@@ -269,6 +269,10 @@ test("official HTTP SDK negotiates, discovers real schema and reuses borrowed ap
       arguments: { amount: -1, tenant: "two", actor: "admin", root: "/" },
     });
     expect(text(invalid)).toContain("invalid-input");
+    expect(invalid.structuredContent).toMatchObject({ code: "invalid-input", phase: "input" });
+    expect(invalid.structuredContent).toEqual(
+      JSON.parse((invalid.content as Array<{ text: string }>)[0]!.text),
+    );
     expect(f.starts()).toBe(1);
     expect(f.stops()).toBe(0);
     expect(new Set(f.requests.map((request) => request.requestId)).size).toBe(f.requests.length);
@@ -281,6 +285,20 @@ test("official HTTP SDK negotiates, discovers real schema and reuses borrowed ap
       .read({}, { identity: identity(), requestId: "owner", signal: new AbortController().signal });
     expect(read.count).toBe(6);
     expect((await f.raw(undefined, { method: "GET" })).status).toBe(503);
+  } finally {
+    await f.close();
+  }
+});
+
+test("optional execution evidence cannot overflow a fitting HTTP business reply", async () => {
+  const f = await fixture({ maxResponseBytes: 256 });
+  try {
+    const { client } = await f.connect();
+    const result = await client.callTool({ name: readName });
+    const { _meta: metadata } = result;
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({ count: 0 });
+    expect(metadata?.["lenso/execution"]).toBeUndefined();
   } finally {
     await f.close();
   }

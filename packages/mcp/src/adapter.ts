@@ -6,8 +6,10 @@ import {
   type Operation,
   type OperationBoundOptions,
   type OperationRuntime,
+  type OperationExecutionEvidence,
 } from "@lenso/engine/operations";
 import { diagnostic, environmentSecrets, redact, EngineError } from "@lenso/engine/diagnostics";
+import { diagnosticResult, executionResult } from "./result";
 import {
   ErrorCode,
   McpError,
@@ -95,7 +97,7 @@ function positive(value: number | undefined, fallback: number, min = 1): number 
   return actual;
 }
 
-function failure(code: string, error?: unknown): CallToolResult {
+function failure(code: string, error?: unknown, structured = true): CallToolResult {
   const safe = Object.hasOwn(messages, code) ? code : "invocation-failed";
   const phase =
     safe === "invalid-input" || safe === "input-too-large"
@@ -103,19 +105,14 @@ function failure(code: string, error?: unknown): CallToolResult {
       : safe === "output-too-large" || safe === "serialization-failed"
         ? "output"
         : "invoke";
-  return {
-    isError: true,
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(
-          error instanceof EngineError
-            ? redact(diagnostic(error), environmentSecrets())
-            : { code: safe, phase, message: messages[safe], effectState: "unknown" },
-        ),
-      },
-    ],
-  };
+  return diagnosticResult(
+    JSON.stringify(
+      error instanceof EngineError
+        ? redact(diagnostic(error), environmentSecrets())
+        : { code: safe, phase, message: messages[safe], effectState: "unknown" },
+    ),
+    structured,
+  );
 }
 
 /** Borrows only runtime capabilities, never app start/stop ownership. */
@@ -328,18 +325,22 @@ async function adapterForSelection<I, O extends Operation>(
     ): Promise<CallToolResult> {
       const entry = entryByName.get(name);
       if (!entry) throw new McpError(ErrorCode.InvalidParams, "Unknown tool.");
-      if (closed) return failure("adapter-closed");
-      if (pending.size >= maxConcurrent) return failure("adapter-busy");
-      if (request.signal.aborted) return failure("request-cancelled");
+      const structured = !toolByKey.get(entry.key)!.outputSchema;
+      const fail = (code: string, error?: unknown) => failure(code, error, structured);
+      if (closed) return fail("adapter-closed");
+      if (pending.size >= maxConcurrent) return fail("adapter-busy");
+      if (request.signal.aborted) return fail("request-cancelled");
       try {
         boundedJson(input, maxInput);
       } catch (error) {
-        return failure(
+        return fail(
           error instanceof EngineError && error.diagnostic.code === "output-too-large"
             ? "input-too-large"
             : "invalid-input",
         );
       }
+      let evidence: OperationExecutionEvidence | undefined;
+      const finish = (result: CallToolResult) => executionResult(result, evidence, maxOutput);
       try {
         const value = await tracked(request, async (context) => {
           const scoped = selection.createAdapter({
@@ -356,6 +357,10 @@ async function adapterForSelection<I, O extends Operation>(
               context.signal.throwIfAborted();
               return {
                 ...binding,
+                onExecutionEvidence: (actual) => {
+                  evidence = actual;
+                  return binding.onExecutionEvidence?.(actual);
+                },
                 signal: binding.signal
                   ? AbortSignal.any([context.signal, binding.signal])
                   : context.signal,
@@ -373,9 +378,9 @@ async function adapterForSelection<I, O extends Operation>(
             ? (finite as Record<string, unknown>)
             : { result: finite };
         boundedJson(structuredContent, maxOutput);
-        return { content: [{ type: "text", text }], structuredContent };
+        return finish({ content: [{ type: "text", text }], structuredContent });
       } catch (error) {
-        const failed = failure(
+        const failed = fail(
           error instanceof EngineError ? error.diagnostic.code : "invocation-failed",
           error,
         );
@@ -389,11 +394,13 @@ async function adapterForSelection<I, O extends Operation>(
             effectState: detail.effectState ?? "unknown",
             truncated: true,
           });
-          return Buffer.byteLength(compact) <= maxOutput
-            ? { isError: true, content: [{ type: "text", text: compact }] }
-            : failure("output-too-large");
+          return finish(
+            Buffer.byteLength(compact) <= maxOutput
+              ? diagnosticResult(compact, structured)
+              : fail("output-too-large"),
+          );
         }
-        return failed;
+        return finish(failed);
       }
     },
     close(): Promise<void> {

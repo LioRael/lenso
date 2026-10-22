@@ -10,6 +10,7 @@ import {
   type Operation,
   type OperationBoundOptions,
   type OperationRuntime,
+  type OperationExecutionEvidence,
 } from "@lenso/engine/operations";
 import { diagnostic, EngineError } from "@lenso/engine/diagnostics";
 
@@ -18,6 +19,7 @@ export interface ManageInvocationBinding<C = unknown> {
   readonly signal?: AbortSignal;
   readonly confirm?: () => boolean | Promise<boolean>;
   readonly approve?: () => boolean | Promise<boolean>;
+  readonly onExecutionEvidence?: (evidence: OperationExecutionEvidence) => void;
 }
 
 export interface ManageSelectionOptions<O extends Operation = Operation> {
@@ -217,6 +219,9 @@ function selectionFromState<O extends Operation>(
           ...(invocation.signal === undefined ? {} : { signal: invocation.signal }),
           ...(invocation.confirm === undefined ? {} : { confirm: invocation.confirm }),
           ...(invocation.approve === undefined ? {} : { approve: invocation.approve }),
+          ...(invocation.onExecutionEvidence === undefined
+            ? {}
+            : { onExecutionEvidence: invocation.onExecutionEvidence }),
           ...(maxOutputBytes === undefined ? {} : { maxOutputBytes }),
           beforeExecute: async () => {
             if (!(await visible(entry)))
