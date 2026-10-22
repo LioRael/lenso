@@ -1,0 +1,26 @@
+packages/scheduler/src/driver.ts
+  h_9d56aba080c170 25-27
+packages/scheduler/test/driver.test.ts
+  h_9d56aba080c170 2,50-84
+packages/tasks/README.md
+  h_9d56aba080c170 237-246
+packages/tasks/examples/recovery.ts
+  h_9d56aba080c170 1-268
+packages/tasks/src/contracts.ts
+  h_9d56aba080c170 104
+packages/tasks/src/worker.ts
+  h_9d56aba080c170 152-154,156
+packages/tasks/test/worker.test.ts
+  h_9d56aba080c170 298-369
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf1573cf0b5e21a4c14e34aef2010267cd240846",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
