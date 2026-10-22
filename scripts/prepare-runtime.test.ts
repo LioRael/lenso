@@ -43,14 +43,14 @@ async function fixture() {
   roots.push(root);
   await writeFile(
     join(root, "package.json"),
-    JSON.stringify({ name: "lenso-workspace", private: true, engines: { bun: "1.4.3" } }),
+    JSON.stringify({ name: "lenso-workspace", private: true, engines: { bun: "1.4.4" } }),
   );
   return root;
 }
 
 async function buildFixture(args: string[], cwd: string) {
-  if (args[0] !== "run") return;
-  const dist = join(cwd, "sdk/typescript/dist");
+  if (args[0] !== "build") return;
+  const dist = join(cwd, "dist");
   await mkdir(dist, { recursive: true });
   for (const file of ["index.js", "index.d.ts", "schema.js", "schema.d.ts"]) {
     await writeFile(join(dist, file), `// built fixture ${file}\n`);
@@ -79,13 +79,19 @@ test("only frozen script-free install and SDK-only build execute; repeated prep 
   const commands: string[][] = [];
   const run = async (args: string[], cwd: string) => {
     expect(cwd.startsWith(join(root, ".runtime-deps/.prepare-"))).toBe(true);
-    commands.push(args);
+    commands.push(
+      args.map((arg) =>
+        arg.includes("/source/node_modules/")
+          ? "<source>/node_modules/" + arg.split("/source/node_modules/")[1]
+          : arg,
+      ),
+    );
     await buildFixture(args, cwd);
   };
   await prepareRuntime(root, { fetch: fetchFixture, run, pin });
   const output = join(root, ".runtime-deps");
   const provenance = await readFile(join(output, "provenance.json"), "utf8");
-  expect(JSON.parse(provenance)).toMatchObject({ ...pin, bun: "1.4.3" });
+  expect(JSON.parse(provenance)).toMatchObject({ ...pin, bun: "1.4.4" });
   expect((await readdir(join(output, "sdk"))).sort()).toEqual(["dist", "package.json"]);
   expect(
     JSON.parse(await readFile(join(output, "sdk/package.json"), "utf8")).scripts,
@@ -99,9 +105,33 @@ test("only frozen script-free install and SDK-only build execute; repeated prep 
   expect(await readFile(join(output, "sdk/dist/index.js"), "utf8")).not.toContain("tampered");
   expect(commands).toEqual([
     ["install", "--frozen-lockfile", "--ignore-scripts"],
-    ["run", "build:sdk"],
+    [
+      "build",
+      "index.ts",
+      "schema.ts",
+      "--outdir",
+      "dist",
+      "--target",
+      "bun",
+      "--packages",
+      "external",
+      "--splitting",
+    ],
+    ["<source>/node_modules/typescript/bin/tsc", "-p", "tsconfig.build.json"],
     ["install", "--frozen-lockfile", "--ignore-scripts"],
-    ["run", "build:sdk"],
+    [
+      "build",
+      "index.ts",
+      "schema.ts",
+      "--outdir",
+      "dist",
+      "--target",
+      "bun",
+      "--packages",
+      "external",
+      "--splitting",
+    ],
+    ["<source>/node_modules/typescript/bin/tsc", "-p", "tsconfig.build.json"],
   ]);
   expect((await readdir(output)).sort()).toEqual([".owner", "provenance.json", "sdk", "source"]);
 });
@@ -116,7 +146,7 @@ test("failed SDK build preserves all previous ready state", async () => {
       fetch: fetchFixture,
       pin,
       run: async (args) => {
-        if (args[0] === "run") throw new Error("build failed");
+        if (args[0] === "build") throw new Error("build failed");
       },
     }),
   ).rejects.toThrow("build failed");
@@ -143,7 +173,7 @@ test("cancelled SDK preparation releases its lock and preserves the ready artifa
         pin,
         async run(args, _cwd, signal) {
           expect(signal).toBe(abort.signal);
-          if (args[0] === "run") {
+          if (args[0] === "build") {
             abort.abort(reason);
             signal!.throwIfAborted();
           }
@@ -178,11 +208,8 @@ test("explicit local source captures dirty tracked bytes and rejects symlinks wi
   await writeFile(join(runtime, "crates/sdk/tests/schema-cases.json"), "[]");
   const run = async (args: string[], cwd: string) => {
     await buildFixture(args, cwd);
-    if (args[0] === "run")
-      await writeFile(
-        join(cwd, "sdk/typescript/dist/index.js"),
-        await readFile(join(cwd, "sdk/typescript/index.ts")),
-      );
+    if (args[0] === "build")
+      await writeFile(join(cwd, "dist/index.js"), await readFile(join(cwd, "index.ts")));
   };
   const prepare = () =>
     prepareRuntime(
@@ -267,8 +294,8 @@ test("bootstrap runs from a clean consuming fixture using only Bun and standard 
       pin: ${JSON.stringify(pin)},
       fetch: async () => new Response(await Bun.file(join(import.meta.dir, "fixture.tar.gz")).bytes()),
       run: async (args, cwd) => {
-        if (args[0] !== "run") return;
-        const dist = join(cwd, "sdk/typescript/dist");
+        if (args[0] === "install") return;
+        const dist = join(cwd, "dist");
         await mkdir(dist, { recursive: true });
         for (const name of ["index.js", "index.d.ts", "schema.js", "schema.d.ts"]) {
           await writeFile(join(dist, name), "// clean bootstrap");
@@ -288,4 +315,61 @@ test("bootstrap runs from a clean consuming fixture using only Bun and standard 
   expect(await readFile(join(root, ".runtime-deps/sdk/dist/index.js"), "utf8")).toContain(
     "clean bootstrap",
   );
+});
+
+test("Runtime compiler entry executes with Bun when PATH contains no Node", async () => {
+  const root = await fixture();
+  const compiler = join(root, "compiler.js");
+  await writeFile(
+    compiler,
+    "#!/usr/bin/env node\nconsole.log(`compiler-runtime:${process.versions.bun}`);\n",
+  );
+  const wrapper = join(root, "compiler-check.ts");
+  await writeFile(
+    wrapper,
+    `
+    import { runRuntimeCommand } from ${JSON.stringify(join(import.meta.dir, "prepare-runtime.ts"))};
+    await runRuntimeCommand([${JSON.stringify(compiler)}], import.meta.dir);
+  `,
+  );
+  const child = Bun.spawn([process.execPath, wrapper], {
+    cwd: root,
+    env: { PATH: "", HOME: root, TMPDIR: root },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  expect(code, stderr).toBe(0);
+  expect(stdout).toContain(`compiler-runtime:${Bun.version}`);
+});
+
+test("Runtime command retains underlying stdout/stderr and propagates its nonzero exit", async () => {
+  const root = await fixture();
+  const wrapper = join(root, "failure-check.ts");
+  await writeFile(
+    wrapper,
+    `
+    import { runRuntimeCommand } from ${JSON.stringify(join(import.meta.dir, "prepare-runtime.ts"))};
+    await runRuntimeCommand(["-e", "console.log('fixture-build-output');console.error('fixture-compiler-diagnostic');process.exit(23)"], import.meta.dir);
+  `,
+  );
+  const child = Bun.spawn([process.execPath, wrapper], {
+    cwd: root,
+    env: { PATH: "", HOME: root, TMPDIR: root },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  expect(code).not.toBe(0);
+  expect(stdout).toContain("fixture-build-output");
+  expect(stderr).toContain("fixture-compiler-diagnostic");
+  expect(stderr).toContain("exit 23");
 });

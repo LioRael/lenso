@@ -112,7 +112,7 @@ the remote destination has not been changed.
 ## 3. Prepare dependencies and verify the exact candidate
 
 Read the candidate's manifests and task definitions before choosing checks. Use
-the declared Bun version, currently `1.4.3`, and the single root lockfile. Confirm
+the declared Bun version, currently `1.4.4`, and the single root lockfile. Confirm
 the version with `bun --version`.
 Sources: `package.json` (`engines`, `packageManager`, `workspaces`), `mise.toml`,
 `AGENTS.md`.
