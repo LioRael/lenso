@@ -1,5 +1,13 @@
 # @lenso/audit
 
+## 0.3.4
+
+### Patch Changes
+
+- Accept the verified Core 0.4, Engine 0.9 and Manage 0.6 cohort in optional peer dependencies while retaining older supported ranges. Package implementation payloads are unchanged; this corrects strict npm dependency resolution for Console consumers.
+- Updated dependencies
+  - @lenso/auth@0.5.6
+
 ## 0.3.3
 
 ### Patch Changes
