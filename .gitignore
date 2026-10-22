@@ -46,3 +46,6 @@
 
 # macOS metadata
 .DS_Store
+
+# Per-checkout tools and disposable fixtures; never sync credentials.
+/.agents/state/
