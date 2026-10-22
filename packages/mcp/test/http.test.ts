@@ -290,6 +290,20 @@ test("official HTTP SDK negotiates, discovers real schema and reuses borrowed ap
   }
 });
 
+test("optional execution evidence cannot overflow a fitting HTTP business reply", async () => {
+  const f = await fixture({ maxResponseBytes: 256 });
+  try {
+    const { client } = await f.connect();
+    const result = await client.callTool({ name: readName });
+    const { _meta: metadata } = result;
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({ count: 0 });
+    expect(metadata?.["lenso/execution"]).toBeUndefined();
+  } finally {
+    await f.close();
+  }
+});
+
 test("official client retains 2025-03-26 Streamable HTTP negotiation", async () => {
   const f = await fixture();
   try {

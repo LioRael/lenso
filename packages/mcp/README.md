@@ -301,6 +301,22 @@ out of model context; the text block still carries the identical diagnostic.
 Each JSON representation, including non-object success wrappers, obeys the host
 output budget.
 
+After authorized service dispatch, all entries may include
+`_meta["lenso/execution"] = {instanceId, operation: {pluginId, method}, trace}`.
+`trace` is `{traceId, spanId}` from that invocation's actual Engine operation span,
+or `null` with no valid telemetry context. Input/admission failures have no
+execution evidence. Evidence contains no actor, tenant, request payload, baggage
+or span attributes. It identifies a span context, not an exported trace, completed
+effect or durable receipt; output validation can fail after the service span ends.
+Hosts keep their existing telemetry SDK/exporter ownership. Trusted bindings may
+observe the same immutable object with `onExecutionEvidence`; observer failures
+never change business outcomes. Optional evidence is redacted and capped at the
+smaller of 1024 bytes and the output budget, and omitted if it cannot fit. HTTP
+also drops it when needed to preserve an otherwise fitting business reply.
+Business content and successful output schemas remain unchanged. This MCP metadata
+does not enter Console RPC or the separate connected CLI `recent` records, and
+grants no trace-reading authority. Request IDs and tool names are not execution IDs.
+
 Descriptions come from canonical operation metadata. MCP hints default
 conservatively: read-only only for an explicit read effect, destructive unless
 explicitly false, idempotent only for declared safe retry, open-world true.

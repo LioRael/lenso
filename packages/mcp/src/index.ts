@@ -18,10 +18,11 @@ import {
   describeOperation,
   redactOperationDescription,
   validateOperations,
+  type OperationExecutionEvidence,
 } from "@lenso/engine/operations";
 import { environmentSecrets, redact, stableJson } from "@lenso/engine/diagnostics";
 import { acquireStdioOwnership } from "./borrowed-stdio";
-import { diagnosticResult } from "./result";
+import { diagnosticResult, executionResult } from "./result";
 
 export { createMcpAdapter, type McpAdapterOptions, type McpRequestContext } from "./adapter";
 export { createHttpMcp, type HttpMcpOptions, type McpIdentity } from "./http";
@@ -302,6 +303,7 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
           binding.structuredErrors,
         );
       const execute = async (): Promise<CallToolResult> => {
+        let evidence: OperationExecutionEvidence | undefined;
         try {
           if (extra.signal.aborted)
             throw failure("request-cancelled", "invoke", "Request cancelled before invocation.");
@@ -313,10 +315,19 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
             binding.pluginId,
             binding.method,
             input,
-            async (operation, validatedInput, running) => ({
-              ...(options.binding ? await options.binding(operation, validatedInput, running) : {}),
-              maxOutputBytes: maxOutput,
-            }),
+            async (operation, validatedInput, running) => {
+              const invocationBinding = options.binding
+                ? await options.binding(operation, validatedInput, running)
+                : {};
+              return {
+                ...invocationBinding,
+                maxOutputBytes: maxOutput,
+                onExecutionEvidence: (actual) => {
+                  evidence = actual;
+                  return invocationBinding.onExecutionEvidence?.(actual);
+                },
+              };
+            },
           );
           if (extra.signal.aborted)
             throw failure(
@@ -324,9 +335,13 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
               "invoke",
               "Request cancelled; operation may have completed. Cleanup was awaited.",
             );
-          return result(data, maxOutput);
+          return executionResult(result(data, maxOutput), evidence, maxOutput);
         } catch (error) {
-          return errorResult(error, maxOutput, binding.structuredErrors);
+          return executionResult(
+            errorResult(error, maxOutput, binding.structuredErrors),
+            evidence,
+            maxOutput,
+          );
         }
       };
       active = execute();

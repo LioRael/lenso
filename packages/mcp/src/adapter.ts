@@ -6,9 +6,10 @@ import {
   type Operation,
   type OperationBoundOptions,
   type OperationRuntime,
+  type OperationExecutionEvidence,
 } from "@lenso/engine/operations";
 import { diagnostic, environmentSecrets, redact, EngineError } from "@lenso/engine/diagnostics";
-import { diagnosticResult } from "./result";
+import { diagnosticResult, executionResult } from "./result";
 import {
   ErrorCode,
   McpError,
@@ -338,6 +339,8 @@ async function adapterForSelection<I, O extends Operation>(
             : "invalid-input",
         );
       }
+      let evidence: OperationExecutionEvidence | undefined;
+      const finish = (result: CallToolResult) => executionResult(result, evidence, maxOutput);
       try {
         const value = await tracked(request, async (context) => {
           const scoped = selection.createAdapter({
@@ -354,6 +357,10 @@ async function adapterForSelection<I, O extends Operation>(
               context.signal.throwIfAborted();
               return {
                 ...binding,
+                onExecutionEvidence: (actual) => {
+                  evidence = actual;
+                  return binding.onExecutionEvidence?.(actual);
+                },
                 signal: binding.signal
                   ? AbortSignal.any([context.signal, binding.signal])
                   : context.signal,
@@ -371,7 +378,7 @@ async function adapterForSelection<I, O extends Operation>(
             ? (finite as Record<string, unknown>)
             : { result: finite };
         boundedJson(structuredContent, maxOutput);
-        return { content: [{ type: "text", text }], structuredContent };
+        return finish({ content: [{ type: "text", text }], structuredContent });
       } catch (error) {
         const failed = fail(
           error instanceof EngineError ? error.diagnostic.code : "invocation-failed",
@@ -387,11 +394,13 @@ async function adapterForSelection<I, O extends Operation>(
             effectState: detail.effectState ?? "unknown",
             truncated: true,
           });
-          return Buffer.byteLength(compact) <= maxOutput
-            ? diagnosticResult(compact, structured)
-            : fail("output-too-large");
+          return finish(
+            Buffer.byteLength(compact) <= maxOutput
+              ? diagnosticResult(compact, structured)
+              : fail("output-too-large"),
+          );
         }
-        return failed;
+        return finish(failed);
       }
     },
     close(): Promise<void> {
