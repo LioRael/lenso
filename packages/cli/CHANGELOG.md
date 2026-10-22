@@ -2,6 +2,8 @@
 
 ## 0.22.1
 
+- Accept Engine 0.9 in the shipped content and module-target examples, retaining their existing supported ranges.
+
 ### Patch Changes
 
 - Updated dependencies [29b4e93]
