@@ -98,7 +98,7 @@ export interface WorkerOptions {
 }
 
 export interface TaskWorker {
-  /** Resolves after drain, rejects on worker failure. Hosts should observe this promise. */
+  /** Resolves after drain. Provider failures abort siblings, drain, then reject. Hosts should observe it. */
   readonly done: Promise<void>;
   /** Stops claiming first. Abort requests cancellation but still waits for handler settlement. */
   stop(options?: { abort?: boolean }): Promise<void>;
