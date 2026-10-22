@@ -76,11 +76,11 @@ async function download(pin: Pin, fetcher: ArchiveFetcher) {
   }
 }
 
-const run: Run = async (args, cwd, signal) => {
+export const runRuntimeCommand: Run = async (args, cwd, signal) => {
   signal?.throwIfAborted();
   const child = spawn(process.execPath, args, {
     cwd,
-    stdio: "ignore",
+    stdio: ["ignore", "inherit", "inherit"],
     detached: process.platform !== "win32",
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -99,12 +99,18 @@ const run: Run = async (args, cwd, signal) => {
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
   try {
-    const code = await new Promise<number | null>((accept, reject) => {
-      child.once("error", reject);
-      child.once("close", accept);
-    });
+    const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+      (accept, reject) => {
+        child.once("error", reject);
+        child.once("close", (code, exitSignal) => accept({ code, signal: exitSignal }));
+      },
+    );
     signal?.throwIfAborted();
-    if (code !== 0) throw new Error(`Runtime SDK command failed: bun ${args.join(" ")}`);
+    if (result.code !== 0) {
+      throw new Error(
+        `Runtime SDK command failed (exit ${result.code ?? "none"}${result.signal ? `, signal ${result.signal}` : ""}): bun ${args.join(" ")}`,
+      );
+    }
   } finally {
     signal?.removeEventListener("abort", cancel);
     if (timer) {
@@ -195,7 +201,7 @@ export async function prepareRuntime(
   if (manifest.name !== "lenso-workspace" || manifest.private !== true) {
     throw new Error("Preparation root must be the consuming lenso-workspace");
   }
-  const expectedBun = manifest.engines?.bun ?? "1.4.3";
+  const expectedBun = manifest.engines?.bun ?? "1.4.4";
   if (Bun.version !== expectedBun) {
     throw new Error(`Runtime SDK preparation requires Bun ${expectedBun}`);
   }
@@ -257,12 +263,34 @@ export async function prepareRuntime(
         await writeFile(destination, await file.bytes());
       }
     }
-    const execute = dependencies.run ?? run;
+    const execute = dependencies.run ?? runRuntimeCommand;
     options.signal?.throwIfAborted();
     await execute(["install", "--frozen-lockfile", "--ignore-scripts"], source, options.signal);
-    await execute(["run", "build:sdk"], source, options.signal);
-    options.signal?.throwIfAborted();
     const sdkSource = join(source, "sdk/typescript");
+    // Run both tools through this Bun executable, including TypeScript's Node-shebang
+    // entry. The runner needs no implicit Node installation or package build script.
+    await execute(
+      [
+        "build",
+        "index.ts",
+        "schema.ts",
+        "--outdir",
+        "dist",
+        "--target",
+        "bun",
+        "--packages",
+        "external",
+        "--splitting",
+      ],
+      sdkSource,
+      options.signal,
+    );
+    await execute(
+      [join(source, "node_modules/typescript/bin/tsc"), "-p", "tsconfig.build.json"],
+      sdkSource,
+      options.signal,
+    );
+    options.signal?.throwIfAborted();
     const sdkManifest = JSON.parse(await readFile(join(sdkSource, "package.json"), "utf8"));
     if (
       sdkManifest.name !== "@lenso/runtime-sdk" ||
