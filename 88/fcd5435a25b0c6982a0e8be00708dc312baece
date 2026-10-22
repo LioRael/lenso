@@ -1,0 +1,52 @@
+.changeset/deferred-dependencies-440fbf73442d.md
+  h_9d56aba080c170 2-8,11-12
+bun.lock
+  h_9d56aba080c170 226,292,318,379,392,402,562,600,655,682
+packages/auth/CHANGELOG.md
+  h_9d56aba080c170 3-10
+packages/auth/package.json
+  h_9d56aba080c170 3
+packages/cli/CHANGELOG.md
+  h_9d56aba080c170 3-9
+packages/cli/package.json
+  h_9d56aba080c170 3
+packages/engine/CHANGELOG.md
+  h_9d56aba080c170 3-8
+packages/engine/package.json
+  h_9d56aba080c170 3
+packages/manage/CHANGELOG.md
+  h_9d56aba080c170 3-15
+packages/manage/package.json
+  h_9d56aba080c170 3,46
+packages/mcp/CHANGELOG.md
+  h_9d56aba080c170 3-16
+packages/mcp/package.json
+  h_9d56aba080c170 3
+packages/realtime/CHANGELOG.md
+  h_9d56aba080c170 3-8
+packages/realtime/package.json
+  h_9d56aba080c170 3
+packages/scheduler/CHANGELOG.md
+  h_9d56aba080c170 3-15
+packages/scheduler/package.json
+  h_9d56aba080c170 3
+packages/storage/CHANGELOG.md
+  h_9d56aba080c170 3-8
+packages/storage/package.json
+  h_9d56aba080c170 3
+packages/tasks/CHANGELOG.md
+  h_9d56aba080c170 3-8
+packages/tasks/package.json
+  h_9d56aba080c170 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88fcd5435a25b0c6982a0e8be00708dc312baece",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
