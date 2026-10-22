@@ -37,9 +37,10 @@ interface ConnectionState {
   queue: { text: string; bytes: number }[];
   bytes: number;
   terminal?: Envelope;
-  waiter?: (value: IteratorResult<Envelope>) => void;
+  waiter?: () => void;
   closed: boolean;
   consumed: boolean;
+  reading?: boolean;
   heartbeatAt: number;
   removeAbort: () => void;
 }
@@ -105,8 +106,7 @@ export async function createRealtime<P>(options: RealtimeOptions<P>): Promise<Re
     if (connection.waiter) {
       const waiter = connection.waiter;
       connection.waiter = undefined;
-      connection.terminal = undefined;
-      waiter(terminal ? { done: false, value: terminal } : { done: true, value: undefined });
+      waiter();
     }
   }
   function push(connection: ConnectionState, event: Envelope) {
@@ -123,12 +123,6 @@ export async function createRealtime<P>(options: RealtimeOptions<P>): Promise<Re
       closeConnection(connection, { version: 1, kind: "gap", reason: "overflow" });
       return;
     }
-    if (connection.waiter) {
-      const waiter = connection.waiter;
-      connection.waiter = undefined;
-      waiter({ done: false, value: JSON.parse(text) });
-      return;
-    }
     const bytes = new TextEncoder().encode(text).byteLength;
     if (
       connection.queue.length >= config.maxBufferedEvents ||
@@ -140,6 +134,11 @@ export async function createRealtime<P>(options: RealtimeOptions<P>): Promise<Re
     }
     connection.queue.push({ text, bytes });
     connection.bytes += bytes;
+    if (connection.waiter) {
+      const waiter = connection.waiter;
+      connection.waiter = undefined;
+      waiter();
+    }
   }
   const providerFailed = () => {
     if (failed || stopped) return;
@@ -284,25 +283,34 @@ export async function createRealtime<P>(options: RealtimeOptions<P>): Promise<Re
     if (sub.validUntil <= now) throw new RealtimeError("expired");
   };
   const next = async (connection: ConnectionState): Promise<IteratorResult<Envelope>> => {
-    for (const sub of [...connection.subscriptions.values()])
-      if (!sub.initializing && sub.validUntil <= Date.now()) removeSub(sub, "expired");
-    if (!connection.closed && connection.identity.expiresAt <= Date.now())
-      closeConnection(connection, { version: 1, kind: "closed", reason: "expired" });
-    const item = connection.queue.shift();
-    if (item) {
-      connection.bytes -= item.bytes;
-      return { done: false, value: JSON.parse(item.text) };
+    if (connection.reading) throw new RealtimeError("invalid-input");
+    connection.reading = true;
+    try {
+      for (;;) {
+        for (const sub of [...connection.subscriptions.values()])
+          if (!sub.initializing && sub.validUntil <= Date.now()) removeSub(sub, "expired");
+        if (!connection.closed && connection.identity.expiresAt <= Date.now())
+          closeConnection(connection, { version: 1, kind: "closed", reason: "expired" });
+        const item = connection.queue.shift();
+        if (item) {
+          connection.bytes -= item.bytes;
+          return { done: false, value: JSON.parse(item.text) };
+        }
+        if (connection.terminal) {
+          const value = connection.terminal;
+          connection.terminal = undefined;
+          return { done: false, value };
+        }
+        if (connection.closed) return { done: true, value: undefined };
+        // Wake the reader without handing off private data. Revocation can purge
+        // the queue before this continuation resumes and rechecks the grant.
+        await new Promise<void>((resolve) => {
+          connection.waiter = resolve;
+        });
+      }
+    } finally {
+      connection.reading = false;
     }
-    if (connection.terminal) {
-      const value = connection.terminal;
-      connection.terminal = undefined;
-      return { done: false, value };
-    }
-    if (connection.closed) return { done: true, value: undefined };
-    if (connection.waiter) throw new RealtimeError("invalid-input");
-    return new Promise((resolve) => {
-      connection.waiter = resolve;
-    });
   };
   sweep = setInterval(() => {
     const now = Date.now();
@@ -497,20 +505,37 @@ export async function createRealtime<P>(options: RealtimeOptions<P>): Promise<Re
             {
               async pull(controller) {
                 try {
-                  const result = await iterator.next();
-                  if (result.done) {
-                    controller.close();
+                  for (;;) {
+                    const result = await iterator.next();
+                    if (result.done) {
+                      controller.close();
+                      return;
+                    }
+                    const event = result.value;
+                    // Awaiting the iterator is another delivery boundary. A
+                    // revoked/expired grant must not become a new SSE frame.
+                    const terminal =
+                      event.kind === "closed" || (event.kind === "gap" && !event.subscription);
+                    const sub = event.subscription
+                      ? connection.subscriptions.get(event.subscription)
+                      : undefined;
+                    if (
+                      !terminal &&
+                      (connection.closed ||
+                        connection.identity.expiresAt <= Date.now() ||
+                        (event.subscription && (!sub || sub.validUntil <= Date.now())))
+                    )
+                      continue;
+                    const prefix = first ? `retry: ${config.retryMs}\n` : "";
+                    first = false;
+                    const id = event.cursor ? `id: ${event.cursor}\n` : "";
+                    controller.enqueue(
+                      encoder.encode(
+                        `${prefix}${id}event: ${event.kind}\ndata: ${JSON.stringify(event)}\n\n`,
+                      ),
+                    );
                     return;
                   }
-                  const event = result.value;
-                  const prefix = first ? `retry: ${config.retryMs}\n` : "";
-                  first = false;
-                  const id = event.cursor ? `id: ${event.cursor}\n` : "";
-                  controller.enqueue(
-                    encoder.encode(
-                      `${prefix}${id}event: ${event.kind}\ndata: ${JSON.stringify(event)}\n\n`,
-                    ),
-                  );
                 } catch {
                   closeConnection(connection);
                   controller.error(new RealtimeError("closed"));

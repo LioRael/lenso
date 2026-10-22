@@ -120,23 +120,54 @@ test("raw upload streams bytes; app selects ownership and storage instead of cal
   ).toBe(403);
 });
 
-test("HEAD enforces read permission even when metadata is visible", async () => {
+test("GET and HEAD require read permission with conditional and Range headers", async () => {
   const f = fixture();
   f.files.read = async () => {
     throw new StorageError("forbidden", "Download permission revoked");
   };
   const handler = createFileDownloadHandler({ ...f, fileId: () => "id" });
+  const variants: Record<string, string>[] = [
+    {},
+    { "if-none-match": "etag" },
+    { "if-match": "etag" },
+    { "if-modified-since": "Wed, 21 Oct 2026 00:00:00 GMT" },
+    { range: "bytes=0-1" },
+    { range: "bytes=0-1", "if-range": "etag" },
+  ];
+  for (const method of ["GET", "HEAD"]) {
+    for (const headers of variants) {
+      const response = await handler({
+        request: new Request("https://app.invalid/files/id", {
+          method,
+          headers: { authorization: "alice", ...headers },
+        }),
+      });
+      expect(response!.status).toBe(403);
+      expect(response!.headers.get("etag")).toBeNull();
+      expect(response!.headers.get("content-length")).toBeNull();
+      expect(response!.headers.get("content-range")).toBeNull();
+    }
+  }
+});
+
+test("conditional and Range requests keep the authorized full-response contract", async () => {
+  const f = fixture();
+  const handler = createFileDownloadHandler({ ...f, fileId: () => "id" });
   for (const method of ["GET", "HEAD"]) {
     const response = await handler({
       request: new Request("https://app.invalid/files/id", {
         method,
-        headers: { authorization: "alice" },
+        headers: { authorization: "alice", "if-none-match": "etag", range: "bytes=0-1" },
       }),
     });
-    expect(response!.status).toBe(403);
-    expect(response!.headers.get("etag")).toBeNull();
-    expect(response!.headers.get("content-length")).toBeNull();
+    expect(response!.status).toBe(200);
+    expect(response!.headers.get("cache-control")).toBe("private, no-store");
+    expect(response!.headers.get("content-length")).toBe("5");
+    expect(response!.headers.get("content-range")).toBeNull();
+    if (method === "GET") expect(await response!.text()).toBe("hello");
+    else expect(response!.body).toBeNull();
   }
+  expect(f.events).toEqual(["read", "read"]);
 });
 
 test("HEAD cancels its authorized download without consuming bytes", async () => {
