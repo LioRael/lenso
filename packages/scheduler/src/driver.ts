@@ -22,6 +22,9 @@ export function startSchedulerDriver(
       });
     }
   })();
+  // Setup can yield before the host observes done; retain the rejection without
+  // letting a failed first tick become an unhandled process-level rejection.
+  void done.catch(() => {});
   return {
     done,
     async stop() {
