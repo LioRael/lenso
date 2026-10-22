@@ -1,0 +1,46 @@
+packages/realtime/README.md
+  h_9d56aba080c170 91-95
+packages/realtime/evidence/delivery-after.txt
+  h_9d56aba080c170 1-64
+packages/realtime/evidence/delivery-before.txt
+  h_9d56aba080c170 1-36
+packages/realtime/evidence/followup-verification.md
+  h_9d56aba080c170 1-53
+packages/realtime/evidence/hosts-after.txt
+  h_9d56aba080c170 1-26
+packages/realtime/evidence/redis-selected.txt
+  h_9d56aba080c170 1-62
+packages/realtime/src/index.ts
+  h_9d56aba080c170 40,43,109,137-141,286-312,508-536
+packages/realtime/test/delivery-boundary.test.ts
+  h_9d56aba080c170 1-193
+packages/storage/README.md
+  h_9d56aba080c170 149-160
+packages/storage/evidence/file-recovery.json
+  h_9d56aba080c170 1-24
+packages/storage/evidence/head-before.txt
+  h_9d56aba080c170 1-38
+packages/storage/evidence/storage-after.txt
+  h_9d56aba080c170 1-56
+packages/storage/evidence/verification.md
+  h_9d56aba080c170 1-59
+packages/storage/examples/file-recovery.ts
+  h_9d56aba080c170 1-220
+packages/storage/src/fetch.ts
+  h_9d56aba080c170 59-64
+packages/storage/test/fetch.test.ts
+  h_9d56aba080c170 88,123-204,231
+packages/storage/tsconfig.json
+  h_9d56aba080c170 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "816ab95f1b17b30bebf9e4eca00bca2e02949f49",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
