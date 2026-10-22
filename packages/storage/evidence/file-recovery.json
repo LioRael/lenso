@@ -1,0 +1,24 @@
+{
+  "migration": "missing table before explicit local migration; typed query succeeds after",
+  "upload": {
+    "status": 201,
+    "state": "ready",
+    "bytes": 18
+  },
+  "rollback": "original filename preserved after transaction throws",
+  "permission": "metadata visible; GET and HEAD 403 before provider access",
+  "download": {
+    "head": 200,
+    "transientFailure": 502,
+    "retry": 200,
+    "state": "ready"
+  },
+  "revocation": "each download request rechecks current application permission",
+  "failedUpload": {
+    "status": 413,
+    "state": "failed",
+    "object": "absent"
+  },
+  "pagination": "ready-only, filename/id ascending; two one-row pages, then empty",
+  "deletion": "204 on delete and retry; tombstone retained; payload absent"
+}

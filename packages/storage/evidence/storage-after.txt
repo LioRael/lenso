@@ -1,0 +1,56 @@
+bun test v1.4.3 (c6da4a4d3)
+
+packages/storage/test/local.test.ts:
+(pass) multi-chunk streaming roundtrip persists metadata across instances [38.84ms]
+(pass) create-only duplicate including competing instances never overwrites [13.00ms]
+(pass) ranges, conditional reads, empty files and unsupported signing [310.45ms]
+(pass) list key pagination, prefix and idempotent delete [219.99ms]
+(pass) deletion retries recover complete and partially removed per-key tombs [20.12ms]
+(pass) upload limits, mismatched size and source failures leave no artifacts [11.71ms]
+(pass) abort interrupts a source blocked in read and removes partial upload [5.27ms]
+(pass) rejects traversal and unsafe root ancestry [35.70ms]
+(pass) rejects object/payload/metadata symlinks and untrusted list entries [24.70ms]
+(pass) metadata key cannot be forged by moving an object directory [15.60ms]
+(pass) an open download keeps its snapshot after delete and recreate [29.76ms]
+(pass) incomplete committed objects are errors, not absent [14.89ms]
+(pass) cleanup aborts unconsumed downloads without deleting stored objects [28.30ms]
+(pass) cleanup interrupts an owned blocked upload and removes only its partial artifacts [22.96ms]
+
+packages/storage/test/files.test.ts:
+(pass) file records > migration is explicit, ordinary streams roundtrip, keys are independent and reads pin etag [22.42ms]
+(pass) file records > authorization defaults to deny [2.32ms]
+(pass) file records > locked input and source cleanup failures persist failed rather than uploading [3.01ms]
+(pass) file records > write failure provider compensates owned keys but preserves conflicting objects [1.19ms]
+(pass) file records > write failure conflict compensates owned keys but preserves conflicting objects [1.31ms]
+(pass) file records > direct completion rejects missing provider metadata [2.80ms]
+(pass) file records > direct completion rejects forged provider metadata [4.12ms]
+(pass) file records > direct completion rejects oversize provider metadata [4.51ms]
+(pass) file records > direct completion rejects no-etag provider metadata [2.59ms]
+(pass) file records > direct completion rejects wrong-size provider metadata [3.48ms]
+(pass) file records > direct uploads reject unsafe adapter capabilities and links [1.93ms]
+(pass) file records > direct completion ignores caller metadata and publishes only verified head [2.98ms]
+(pass) file records > a completed direct object can be verified after its PUT credential expires [2.76ms]
+(pass) file records > failed ready persistence compensates the owned object and retains recovery errors [3.44ms]
+(pass) file records > DB failure during recovery is retained after original metadata failure [1.29ms]
+(pass) file records > lost ready DB response preserves the published stream object [6.56ms]
+(pass) file records > lost ready DB response preserves the published direct object [3.08ms]
+(pass) file records > delete failure is retriable and every retry remains authorized; success leaves tombstone [4.41ms]
+(pass) file records > persisted CAS prevents concurrent completion and deletion during completion [4.97ms]
+
+packages/storage/test/stream.test.ts:
+(pass) counting is pull-based, does not consume ahead, and verifies actual bytes [0.34ms]
+(pass) over-limit and wrong declared size cancel rather than buffering the rest [0.16ms]
+(pass) aborting a stalled input cancels the source and rejects its consumer [0.24ms]
+(pass) cleanup can recover a cancellation failure after the primary stream error [0.09ms]
+
+packages/storage/test/fetch.test.ts:
+(pass) raw GET HEAD DELETE authenticate and invoke authorized service operations [1.25ms]
+(pass) raw upload streams bytes; app selects ownership and storage instead of caller fields [1.38ms]
+(pass) HEAD enforces read permission even when metadata is visible [0.11ms]
+(pass) HEAD cancels its authorized download without consuming bytes [0.08ms]
+(pass) Storage runtime codes and Fetch statuses stay legal without publishing provider text [0.85ms]
+
+ 42 pass
+ 0 fail
+ 299 expect() calls
+Ran 42 tests across 4 files. [1118.00ms]
