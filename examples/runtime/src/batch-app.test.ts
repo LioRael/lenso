@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { startApp } from "@lenso/core";
 import { batch, batchPlugins } from "./batch-app";
-import type { AggregateInput } from "./generated/logs";
+import type { AggregateInput } from "../.lenso/runtime/logs";
 
 const input: AggregateInput = {
   logs: [

@@ -1,4 +1,4 @@
-import type { AggregateInput, AggregateOutput } from "./generated/logs";
+import type { AggregateInput, AggregateOutput } from "../.lenso/runtime/logs";
 
 export class EmptyBatchError extends Error {
   constructor() {

@@ -1,5 +1,5 @@
 import { createServer, connect } from "node:net";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineEnginePlugin } from "@lenso/engine/authoring";
 import { EngineError } from "@lenso/engine/diagnostics";
@@ -13,12 +13,14 @@ export interface RuntimeContractOptions {
   readonly export?: string;
   /** Relative to .lenso; defaults to runtime/v1.contract.json. */
   readonly output?: string;
+  /** Emit both bindings beside the JSON by default. Paths remain relative to .lenso. */
+  readonly bindings?: { readonly name: string; readonly directory?: string };
   readonly name?: string;
   /** Extra inputs read dynamically; static imports are traced by Engine discovery. */
   readonly watch?: readonly string[];
 }
 
-/** Generate only the existing v1 wire contract, using Engine ownership and invalidation. */
+/** Generate the existing v1 contract and optional TS/Rust bindings through Engine ownership. */
 export function runtimeContractPlugin(options: RuntimeContractOptions) {
   const name = options.name ?? "lenso/runtime-contract";
   const exported = options.export ?? "v1Contract";
@@ -58,12 +60,23 @@ export function runtimeContractPlugin(options: RuntimeContractOptions) {
         return [];
       });
       for (const path of options.watch ?? []) context.watch(path);
-      context.generate(`${name}/contract`, async () => [
-        {
-          path: options.output ?? "runtime/v1.contract.json",
-          content: `${JSON.stringify(await readContract(), null, 2)}\n`,
-        },
-      ]);
+      context.generate(`${name}/contract`, async () => {
+        const contract = await readContract();
+        const output = options.output ?? "runtime/v1.contract.json";
+        const files = [{ path: output, content: `${JSON.stringify(contract, null, 2)}\n` }];
+        if (options.bindings) {
+          const { generate } = await import("@lenso/runtime-sdk/generate");
+          const binding = generate(contract, options.bindings.name);
+          const directory = options.bindings.directory ?? dirname(output);
+          // Do not normalize user paths: Engine must reject traversal and aliases.
+          const prefix = directory === "." ? "" : `${directory}/`;
+          files.push(
+            { path: `${prefix}${options.bindings.name}.ts`, content: binding.typescript },
+            { path: `${prefix}${options.bindings.name}.rs`, content: binding.rust },
+          );
+        }
+        return files;
+      });
     },
   });
 }

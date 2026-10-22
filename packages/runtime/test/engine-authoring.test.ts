@@ -39,6 +39,7 @@ async function fixture(source?: string) {
     import { runtimeSchema, defineRuntimeService } from ${JSON.stringify(authoring)};
     import { input } from './schema';
     export const service = defineRuntimeService({ version: '1', methods: {
+      progress: { mode: 'stream', input: runtimeSchema({type:'null'}), output: runtimeSchema({type:'string'}), error: runtimeSchema({type:'null'}) },
       greet: { mode: 'unary', input: runtimeSchema(input), output: runtimeSchema({type:'string'}), error: runtimeSchema({type:'null'}) },
     }});
     export const v1Contract = service.v1Contract;
@@ -62,7 +63,7 @@ async function fixture(source?: string) {
     join(root, "lenso.engine.ts"),
     `
     import { runtimeContractPlugin } from ${JSON.stringify(runtimeEngine)};
-    export default { plugins: [runtimeContractPlugin({source:'src/contracts.ts',watch:['dynamic']})] };
+    export default { plugins: [runtimeContractPlugin({source:'src/contracts.ts',watch:['dynamic'],bindings:{name:'greeting'}})] };
   `,
   );
   await mkdir(join(root, "dynamic"));
@@ -90,14 +91,43 @@ test("Engine generates exact v1 JSON without setup and owns its tracked source g
   const bytes = await Bun.file(file).text();
   expect(JSON.parse(bytes)).toEqual(expected);
   validateContract(JSON.parse(bytes));
+  const bindings = ["greeting.ts", "greeting.rs"];
+  const generated = await Promise.all(
+    bindings.map((name) => Bun.file(join(root, ".lenso/runtime", name)).text()),
+  );
+  expect(generated[0]).toContain("AsyncIterableIterator<ProgressOutput>");
+  expect(generated[1]).toContain("runtime_sdk::ResponseStream<ProgressOutput>");
+  const stamps = await Promise.all(
+    bindings.map((name) => stat(join(root, ".lenso/runtime", name)).then((value) => value.mtimeMs)),
+  );
+  const ownership = await Bun.file(join(root, ".lenso/.engine-files.json")).json();
+  expect(
+    ownership.files
+      .filter((value: { plugin: string }) => value.plugin === "lenso/runtime-contract")
+      .map((value: { path: string }) => value.path)
+      .sort(),
+  ).toEqual(["runtime/greeting.rs", "runtime/greeting.ts", "runtime/v1.contract.json"]);
   const before = (await stat(file)).mtimeMs;
   await generate(root);
   expect(await Bun.file(file).text()).toBe(bytes);
   expect((await stat(file)).mtimeMs).toBe(before);
+  expect(
+    await Promise.all(
+      bindings.map((name) =>
+        stat(join(root, ".lenso/runtime", name)).then((value) => value.mtimeMs),
+      ),
+    ),
+  ).toEqual(stamps);
   // Raw SDK contracts remain live even within an already imported module.
   expected.methods.greet.input.maxLength = 9;
   await generate(root);
   expect((await Bun.file(file).json()).methods.greet.input.maxLength).toBe(9);
+  expect(await Bun.file(join(root, ".lenso/runtime/greeting.ts")).text()).toContain(
+    '"maxLength": 9',
+  );
+  expect(await Bun.file(join(root, ".lenso/runtime/greeting.rs")).text()).toContain(
+    '"maxLength":9',
+  );
   await Bun.write(file, "user changes");
   const detail = diagnostic(await generate(root).catch((error: unknown) => error));
   expect(detail.code).toBe("generated-file-modified");
@@ -190,3 +220,44 @@ test("existing Engine dev watcher regenerates an imported schema and closes its 
     await dev.close();
   }
 }, 20_000);
+
+test("binding collisions, unsafe paths and edited binding bytes fail before any output is replaced", async () => {
+  for (const output of ["runtime/greeting.ts", "../outside.json"]) {
+    const root = await fixture();
+    await Bun.write(
+      join(root, "lenso.engine.ts"),
+      `
+      import {runtimeContractPlugin} from ${JSON.stringify(runtimeEngine)};
+      export default {plugins:[runtimeContractPlugin({source:'src/contracts.ts',output:${JSON.stringify(output)},bindings:{name:'greeting'}})]};
+    `,
+    );
+    const detail = diagnostic(await generate(root).catch((error: unknown) => error));
+    expect(["generated-file-conflict", "invalid-generated-file"]).toContain(detail.code);
+    expect(await Bun.file(join(root, ".lenso/runtime/greeting.rs")).exists()).toBe(false);
+  }
+  const root = await fixture();
+  await generate(root);
+  const json = await Bun.file(join(root, ".lenso/runtime/v1.contract.json")).text();
+  const rust = await Bun.file(join(root, ".lenso/runtime/greeting.rs")).text();
+  await Bun.write(join(root, ".lenso/runtime/greeting.ts"), "developer edits");
+  const detail = diagnostic(await generate(root).catch((error: unknown) => error));
+  expect(detail.code).toBe("generated-file-modified");
+  expect(await Bun.file(join(root, ".lenso/runtime/greeting.ts")).text()).toBe("developer edits");
+  expect(await Bun.file(join(root, ".lenso/runtime/greeting.rs")).text()).toBe(rust);
+  expect(await Bun.file(join(root, ".lenso/runtime/v1.contract.json")).text()).toBe(json);
+});
+
+test("omitting bindings keeps the existing JSON-only contract output", async () => {
+  const root = await fixture();
+  await Bun.write(
+    join(root, "lenso.engine.ts"),
+    `
+    import {runtimeContractPlugin} from ${JSON.stringify(runtimeEngine)};
+    export default {plugins:[runtimeContractPlugin({source:'src/contracts.ts'})]};
+  `,
+  );
+  await generate(root);
+  expect(await Bun.file(join(root, ".lenso/runtime/v1.contract.json")).exists()).toBe(true);
+  expect(await Bun.file(join(root, ".lenso/runtime/greeting.ts")).exists()).toBe(false);
+  expect(await Bun.file(join(root, ".lenso/runtime/greeting.rs")).exists()).toBe(false);
+});

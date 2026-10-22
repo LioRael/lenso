@@ -6,7 +6,7 @@ import { createCachePlugin } from "@lenso/cache/plugin";
 import { createLogger, type Logger } from "@lenso/log";
 import { createHash } from "node:crypto";
 import { aggregate } from "./aggregate";
-import type { AggregateInput, AggregateOutput } from "./generated/logs";
+import type { AggregateInput, AggregateOutput } from "../.lenso/runtime/logs";
 
 function cacheTtlMs(): number {
   const configured = process.env.LENSO_BATCH_CACHE_TTL_MS;

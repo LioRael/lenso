@@ -5,7 +5,7 @@ import { reportDevReady } from "@lenso/engine/dev-ready";
 import { setTimeout as delay } from "node:timers/promises";
 import { batch, batchPlugins } from "./batch-app";
 import { EmptyBatchError } from "./aggregate";
-import { logsContract, type AggregateInput, type ProgressInput } from "./generated/logs";
+import { logsContract, type AggregateInput, type ProgressInput } from "../.lenso/runtime/logs";
 
 const transport = createRuntimePlugin({
   id: "runtime",

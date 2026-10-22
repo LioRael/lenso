@@ -166,7 +166,12 @@ import { defineEngineConfig } from "@lenso/engine/authoring";
 import { runtimeContractPlugin } from "@lenso/runtime/engine";
 
 export default defineEngineConfig({
-  plugins: [runtimeContractPlugin({ source: "src/runtime-contract.ts" })],
+  plugins: [
+    runtimeContractPlugin({
+      source: "src/runtime-contract.ts",
+      bindings: { name: "greeting" },
+    }),
+  ],
 });
 ```
 
@@ -186,10 +191,23 @@ Engine retains generated-file ownership, unchanged-file timestamps, stale-output
 cleanup and protection against overwriting edited artifacts. A known invalid
 schema reports `invalid-runtime-contract` with its source file and schema path.
 
-Feed this JSON into the existing Runtime repository generator when cross-language
-clients are needed: `bun tools/generate.ts <app>/.lenso/runtime/v1.contract.json
-<output-dir> greeting`. That generator retains its own identifier/type-name
-restrictions; this package does not replace it or launch Rust builds.
+With `bindings: {name: "greeting"}`, the same `lenso generate` call also writes
+`.lenso/runtime/greeting.ts` and `.lenso/runtime/greeting.rs` from that exact
+contract. `bindings.directory` selects another directory relative to `.lenso`;
+its default is the JSON output's directory. Omitting `bindings` preserves JSON-only
+generation. All three files share the existing Engine ownership, conflict checks,
+input tracking and unchanged-byte behavior. Import TS bindings from `.lenso` and
+include Rust bindings directly with `#[path = "..."] mod greeting;` in the native
+consumer. Do not copy them into developer-owned sources. Cargo compilation remains
+an explicit native build step.
+
+The generator is the existing Runtime implementation, exposed as
+`generate(contract, name)` from `@lenso/runtime-sdk/generate`. Its identifier and
+type-name restrictions still apply. Use a matching SDK candidate exposing this
+subpath; older prepared snapshots need explicit candidate preparation before build.
+Application assembly must remain importable before the first generation: use
+source contracts for declarations, type-only imports for generated types, and load
+runtime clients inside setup. The Runtime example uses that pattern.
 
 `@lenso/runtime/engine` imports the optional Engine peer, never the runtime entry.
 `runtimeEnginePlugin` registers a `beforeStart` hook in `lenso.engine.ts`.
