@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate": "lenso generate",
+    "generate": "bun --eval \"import {generate} from '@lenso/engine'; await generate(process.cwd())\"",
     "dev": "lenso dev --workspace lenso.workspace.ts",
     "dev:companions": "LENSO_RUNTIME_EXTERNAL=1 bun src/dev.ts",
     "offline": "bun src/offline.ts",
     "start": "bun src/server.ts",
-    "test": "bun test src",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "bun build src/server.ts --outdir dist --target bun --packages external"
+    "test": "bun run generate && bun test src",
+    "typecheck": "bun run generate && tsc --noEmit -p tsconfig.json",
+    "build": "bun run generate && bun build src/server.ts --outdir dist --target bun --packages external"
   },
   "dependencies": {
     "@lenso/cache": "workspace:^",
