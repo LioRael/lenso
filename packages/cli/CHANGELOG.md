@@ -1,5 +1,12 @@
 # @lenso/cli
 
+## 0.22.1
+
+### Patch Changes
+
+- Updated dependencies [29b4e93]
+  - @lenso/engine@0.9.0
+
 ## 0.22.0
 
 ### Minor Changes
