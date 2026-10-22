@@ -23,9 +23,7 @@ export function createPrivateFileRoutes(options: {
         ? notesAudiences.create
         : request.method === "DELETE"
           ? notesAudiences.fileDelete
-          : request.method === "HEAD"
-            ? notesAudiences.fileMetadata
-            : notesAudiences.read;
+          : notesAudiences.read;
     return options.auth.for(audience).required(evidence.evidence, evidence);
   };
   const upload = createFileUploadHandler({
