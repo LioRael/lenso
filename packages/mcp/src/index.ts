@@ -21,6 +21,7 @@ import {
 } from "@lenso/engine/operations";
 import { environmentSecrets, redact, stableJson } from "@lenso/engine/diagnostics";
 import { acquireStdioOwnership } from "./borrowed-stdio";
+import { diagnosticResult } from "./result";
 
 export { createMcpAdapter, type McpAdapterOptions, type McpRequestContext } from "./adapter";
 export { createHttpMcp, type HttpMcpOptions, type McpIdentity } from "./http";
@@ -58,12 +59,15 @@ function result(data: unknown, maxBytes: number): CallToolResult {
   if (Buffer.byteLength(text) > maxBytes)
     throw failure("output-too-large", "output", "Operation output exceeds the host limit.");
   const finite = JSON.parse(text);
+  const structuredContent =
+    finite !== null && typeof finite === "object" && !Array.isArray(finite)
+      ? finite
+      : { result: finite };
+  if (Buffer.byteLength(stableJson(structuredContent)) > maxBytes)
+    throw failure("output-too-large", "output", "Operation output exceeds the host limit.");
   return {
     content: [{ type: "text", text }],
-    structuredContent:
-      finite !== null && typeof finite === "object" && !Array.isArray(finite)
-        ? finite
-        : { result: finite },
+    structuredContent,
   };
 }
 
@@ -73,7 +77,7 @@ const oversizedDiagnostic = stableJson({
   message: "Diagnostic exceeds the host limit.",
 });
 
-function errorResult(error: unknown, maxBytes: number): CallToolResult {
+function errorResult(error: unknown, maxBytes: number, structured: boolean): CallToolResult {
   let text: string;
   try {
     const detail = diagnostic(error);
@@ -99,7 +103,7 @@ function errorResult(error: unknown, maxBytes: number): CallToolResult {
     });
   }
   if (Buffer.byteLength(text) > maxBytes) text = oversizedDiagnostic;
-  return { isError: true, content: [{ type: "text", text }] };
+  return diagnosticResult(text, structured);
 }
 
 /**
@@ -200,7 +204,10 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
     const { app, configPath } = await readApplication(root, join(root, "lenso.config.ts"));
     const selected = validateOperations(app.plugins, app.mcpOperations ?? app.operations ?? []);
     const tools: Tool[] = [];
-    const bindings = new Map<string, { pluginId: string; method: string }>();
+    const bindings = new Map<
+      string,
+      { pluginId: string; method: string; structuredErrors: boolean }
+    >();
     const seen = new Set<string>();
     for (const allowed of options.allow) {
       const key = stableJson([allowed.pluginId, allowed.method]);
@@ -262,7 +269,11 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
           "Operation schema cannot be represented as an MCP tool.",
         );
       tools.push(tool);
-      bindings.set(name, { pluginId: allowed.pluginId, method: allowed.method });
+      bindings.set(name, {
+        pluginId: allowed.pluginId,
+        method: allowed.method,
+        structuredErrors: !tool.outputSchema,
+      });
     }
     server = new Server({ name: "lenso", version: "0.1.0" }, { capabilities: { tools: {} } });
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
@@ -278,6 +289,7 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
         return errorResult(
           failure("adapter-closed", "invoke", "Adapter is shutting down."),
           maxOutput,
+          binding.structuredErrors,
         );
       if (active)
         return errorResult(
@@ -287,6 +299,7 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
             "One operation is already running; no request was queued.",
           ),
           maxOutput,
+          binding.structuredErrors,
         );
       const execute = async (): Promise<CallToolResult> => {
         try {
@@ -313,7 +326,7 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
             );
           return result(data, maxOutput);
         } catch (error) {
-          return errorResult(error, maxOutput);
+          return errorResult(error, maxOutput, binding.structuredErrors);
         }
       };
       active = execute();

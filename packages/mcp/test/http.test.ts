@@ -269,6 +269,10 @@ test("official HTTP SDK negotiates, discovers real schema and reuses borrowed ap
       arguments: { amount: -1, tenant: "two", actor: "admin", root: "/" },
     });
     expect(text(invalid)).toContain("invalid-input");
+    expect(invalid.structuredContent).toMatchObject({ code: "invalid-input", phase: "input" });
+    expect(invalid.structuredContent).toEqual(
+      JSON.parse((invalid.content as Array<{ text: string }>)[0]!.text),
+    );
     expect(f.starts()).toBe(1);
     expect(f.stops()).toBe(0);
     expect(new Set(f.requests.map((request) => request.requestId)).size).toBe(f.requests.length);

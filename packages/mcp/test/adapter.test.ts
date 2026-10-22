@@ -247,12 +247,52 @@ test("structured content uses bounded redacted finite output and wraps non-objec
     }
     const oversized = await f.adapter.callTool(name, { value: "wrapperLimit" }, request());
     expect(text(oversized)).toContain("output-too-large");
-    expect(oversized.structuredContent).toBeUndefined();
+    expect(oversized.structuredContent).toEqual(JSON.parse(text(oversized)));
   } finally {
     await f.adapter.close();
     await f.running.stop();
   }
 });
+
+test.each([false, true])(
+  "structured failures locate invalid fields and permit corrected calls (output contract: %s)",
+  async (declaredOutput) => {
+    const f = await harness((calls) => {
+      const plugin = makePlugin(calls);
+      return {
+        plugin,
+        operations: makeOperations(plugin).map((operation) => ({
+          ...operation,
+          ...(declaredOutput ? { output: z.object({ value: z.string() }) } : {}),
+        })),
+      };
+    });
+    try {
+      const tool = (await f.adapter.listTools(request())).tools[0]!;
+      const invalid = await f.adapter.callTool(tool.name, { value: 123 }, request());
+      const { _meta: failureMetadata } = invalid;
+      expect(invalid.isError).toBe(true);
+      expect(failureMetadata?.["lenso/diagnostic"]).toMatchObject({
+        code: "invalid-input",
+        phase: "input",
+        operation: "adapter-test.read",
+        details: { paths: [["value"]] },
+        effectState: "not-started",
+      });
+      expect(failureMetadata?.["lenso/diagnostic"]).toEqual(JSON.parse(text(invalid)));
+      if (declaredOutput) expect(invalid.structuredContent).toBeUndefined();
+      else expect(invalid.structuredContent).toEqual(JSON.parse(text(invalid)));
+      expect(f.calls.read).toBe(0);
+      const corrected = await f.adapter.callTool(tool.name, { value: "fixed" }, request());
+      expect(corrected.isError).not.toBe(true);
+      expect(corrected.structuredContent).toEqual({ value: "fixed" });
+      expect(f.calls.read).toBe(1);
+    } finally {
+      await f.adapter.close();
+      await f.running.stop();
+    }
+  },
+);
 
 test("starts the app once and invokes real read and write services", async () => {
   const { calls, adapter, running } = await harness();

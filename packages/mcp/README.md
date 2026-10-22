@@ -290,6 +290,17 @@ without raw input, arbitrary exception text, or stacks. Unknown tool names
 produce a protocol `InvalidParams` error; malformed messages are SDK-owned.
 Explicit application `CliError` messages must themselves be safe.
 
+All entries expose the same redacted, bounded failure diagnostic to clients at
+`_meta["lenso/diagnostic"]`, including code, phase, declared field paths, source
+and effect state when available. Without a declared output schema, failures also
+return it as `structuredContent`. With an output schema, failures omit
+`structuredContent`: SDK 1.32.1 validates it against the successful output
+contract even on errors. This preserves the contract and lets official clients
+receive failures without a protocol validation exception. Hosts may keep `_meta`
+out of model context; the text block still carries the identical diagnostic.
+Each JSON representation, including non-object success wrappers, obeys the host
+output budget.
+
 Descriptions come from canonical operation metadata. MCP hints default
 conservatively: read-only only for an explicit read effect, destructive unless
 explicitly false, idempotent only for declared safe retry, open-world true.

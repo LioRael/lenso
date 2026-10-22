@@ -55,6 +55,7 @@ async function invocationFixture(
           async mcpOnly(value) {
             console.error("bound side-effect");
             if (value.name === "BIG!") return "z".repeat(1536 * 1024);
+            if (value.name === "WRAP!") return "z".repeat(244);
             return { name: value.name, marker: this.marker };
           },
           async secure(value, context) {
@@ -183,6 +184,15 @@ test("official SDK stdio lists only allowed operations and calls shared validati
       arguments: { value: "hello", root: "/", module: "evil", method: "hidden", shell: "sh" },
     });
     expect(JSON.stringify(invalid)).toContain("invalid-input");
+    const { _meta: failureMetadata } = invalid;
+    expect(invalid.structuredContent).toBeUndefined();
+    expect(failureMetadata?.["lenso/diagnostic"]).toMatchObject({
+      code: "invalid-input",
+      phase: "input",
+    });
+    expect(failureMetadata?.["lenso/diagnostic"]).toEqual(
+      JSON.parse((invalid.content as Array<{ text: string }>)[0]!.text),
+    );
     expect(session.logs().match(/fixture setup/g)?.length).toBe(before);
     await expect(
       session.client.callTool({
@@ -207,6 +217,9 @@ test("auth, runtime, serialization and size failures are safe tool results", asy
     ]) {
       const result = await session.client.callTool({ name: name!, arguments: { value: "hello" } });
       expect(result.isError).toBe(true);
+      expect(result.structuredContent).toEqual(
+        JSON.parse((result.content as Array<{ text: string }>)[0]!.text),
+      );
       expect(JSON.stringify(result)).toContain(code!);
       expect(JSON.stringify(result)).not.toContain("private-secret");
     }
@@ -463,6 +476,25 @@ test("only explicit MCP launch binding supplies identity, validated input and re
     expect(session.logs().match(/bound closed/g)).toHaveLength(1);
     expect(session.logs()).not.toContain("CLI binding borrowed");
     expect(JSON.stringify(result)).not.toContain("private-result");
+  } finally {
+    await session.client.close();
+  }
+});
+
+test("stdio bounds structured scalar wrappers as well as JSON text", async () => {
+  const fixture = await invocationFixture("separate", undefined, ["mcpOnly"], 256);
+  const session = await connect(fixture.launcher);
+  try {
+    const result = await session.client.callTool({
+      name: "operation_0",
+      arguments: { name: "wrap" },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ code: "output-too-large", phase: "output" });
+    const diagnostic = (result.content as Array<{ text: string }>)[0]!.text;
+    expect(result.structuredContent).toEqual(JSON.parse(diagnostic));
+    expect(Buffer.byteLength(diagnostic)).toBeLessThanOrEqual(256);
+    expect(session.logs()).toContain("bound closed");
   } finally {
     await session.client.close();
   }

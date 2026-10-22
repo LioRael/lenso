@@ -56,7 +56,13 @@ const runtimeInput = {
 const declaredOperations = (
   ["echo", "slow", "denied", "failed", "unsupported", "big", "hidden"] as const
 ).map((method) =>
-  defineOperation({ plugin: fixture, method, input, description: `Fixture ${method}.` }),
+  defineOperation({
+    plugin: fixture,
+    method,
+    input,
+    description: `Fixture ${method}.`,
+    ...(method === "echo" ? { output: z.object({ value: z.string(), token: z.string() }) } : {}),
+  }),
 );
 
 // The runtime-only case is selected by a trusted test process, not tool input.
