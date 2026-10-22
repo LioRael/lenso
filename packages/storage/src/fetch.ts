@@ -55,20 +55,13 @@ export function createFileDownloadHandler<TAccess>(options: {
         await options.files.delete(access, fileId);
         return new Response(null, { status: 204 });
       }
-      if (request.method === "HEAD") {
-        const file = await options.files.metadata(access, fileId);
-        if (file.state !== "ready") throw new StorageError("conflict", "File is not ready");
-        return new Response(null, {
-          headers: {
-            ...privateDownloadHeaders,
-            "content-type": file.contentType,
-            "content-length": String(file.size),
-            ...(file.etag ? { etag: file.etag } : {}),
-          },
-        });
-      }
       const object = await options.files.read(access, fileId, { signal: request.signal });
-      return new Response(object.body, {
+      // HEAD is a download operation too: metadata visibility does not grant
+      // read permission. Open the same authorized snapshot, then release it
+      // without pulling payload bytes.
+      const head = request.method === "HEAD";
+      if (head) await object.body.cancel();
+      return new Response(head ? null : object.body, {
         headers: {
           ...privateDownloadHeaders,
           "content-type": object.metadata.contentType,

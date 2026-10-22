@@ -1,0 +1,26 @@
+bun test v1.4.3 (c6da4a4d3)
+
+packages/realtime/test/hosts.test.ts:
+51 |       });
+52 |       return connection.response();
+53 |     },
+54 |   });
+55 |   const app = await startApp(defineApp({ plugins: [realtime, web] }));
+56 |   const server = Bun.serve({
+                          ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at <anonymous> (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/test/hosts.test.ts:56:22)
+(fail) raw Web stream works through real Bun Fetch; cancellation and app stop release the connection [4.27ms]
+(pass) oRPC beta.42 consumes the same async iterable without provider/router changes [6.34ms]
+(pass) portable entry builds for browser and does not import bun/Redis [3.20ms]
+(pass) Workers adapter retains a memory stream until cancellation, no upgrade invented [1.07ms]
+(pass) Notes ordinary async adapter authorizes, snapshots and broadcasts a committed update [1.47ms]
+
+ 4 pass
+ 1 fail
+ 17 expect() calls
+Ran 5 tests across 1 file. [48.00ms]
