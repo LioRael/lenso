@@ -1,0 +1,16 @@
+bun.lock
+  h_9d56aba080c170 570
+packages/realtime/package.json
+  h_9d56aba080c170 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bda3d3904109337c331a4f665e5974b6fcf0b246",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
