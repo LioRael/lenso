@@ -1,0 +1,14 @@
+examples/runtime/package.json
+  h_9d56aba080c170 7,12-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c16c9c112bf6ed6dbadc0877eb3f88067bf016ac",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
