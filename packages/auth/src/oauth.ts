@@ -210,8 +210,12 @@ export function createOAuthAuthorizationServer<E>(options: {
   }
   async function save(r: OAuthRecord, signal: AbortSignal) {
     signal.throwIfAborted();
+    // Permission IO and store acknowledgement can both cross the deadline.
+    // A late acknowledgement must never trigger another, possibly committed CAS.
+    if (r.expiresAt <= now()) fail("invalid_grant");
     if (!(await options.store.replace(r, r.revision))) fail("invalid_grant");
     signal.throwIfAborted();
+    if (r.expiresAt <= now()) fail("invalid_grant");
   }
   function redirect(p: Pending, values: Record<string, string>) {
     const url = new URL(p.redirect);
@@ -259,15 +263,17 @@ export function createOAuthAuthorizationServer<E>(options: {
         ...g,
         accessHash: await oauthDigest(access),
         refreshHash: await oauthDigest(refresh),
-        accessExpiresAt: now() + 300_000,
+        accessExpiresAt: Math.min(g.expiresAt, now() + 300_000),
       },
     };
   }
   function tokenResponse(value: Awaited<ReturnType<typeof tokens>>) {
+    const remaining = value.value.accessExpiresAt - now();
+    if (remaining <= 0) fail("invalid_grant");
     return {
       access_token: value.access,
       token_type: "Bearer",
-      expires_in: 300,
+      expires_in: Math.floor(remaining / 1000),
       refresh_token: value.refresh,
       scope: value.value.scopes.join(" "),
     };
