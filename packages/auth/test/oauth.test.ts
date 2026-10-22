@@ -10,7 +10,11 @@ import { createOAuthHttpBinding } from "@lenso/auth/oauth-http";
 async function fixture() {
   const db = new Database(":memory:");
   const io = { grantReads: 0, scopeReads: 0 };
-  db.exec(await Bun.file(new URL("../migrations/oauth/0000_oauth.sql", import.meta.url)).text());
+  db.exec(
+    await Bun.file(
+      new URL(import.meta.resolve("@lenso/auth/migrations/oauth/0000_oauth.sql")),
+    ).text(),
+  );
   const store = createSqlOAuthStore(
     {
       async query(sql, values) {
@@ -116,6 +120,27 @@ async function fixture() {
       db.close();
     },
   };
+}
+
+async function revoke(
+  f: Awaited<ReturnType<typeof fixture>>,
+  credential: string,
+  clientId = f.client.client_id,
+) {
+  const http = createOAuthHttpBinding({
+    server: f.server,
+    consentPage: "/console/oauth",
+    evidence: () => "human",
+    admitHuman() {},
+    admitPublic() {},
+  });
+  return (await http.fetch(
+    new Request("http://127.0.0.1:31415/oauth/revoke", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, token: credential }),
+    }),
+  ))!;
 }
 
 test("DCR, consent, PKCE and resource binding; code and decision are one-shot", async () => {
@@ -425,6 +450,134 @@ test("HTTP separates exchange expiry from temporary CAS storage failure without 
       expect(writes).toBe(failure === "expiry" ? 0 : 1);
       const [grant] = await f.store.list("grant", "alice");
       expect(grant!.value).toMatchObject({ accessHash: "", refreshHash: "" });
+    } finally {
+      await f.close();
+    }
+  }
+});
+
+test("RFC7009 revocation returns the same success for live, missing, expired and revoked grants", async () => {
+  for (const state of [
+    "live",
+    "missing",
+    "expired",
+    "revoked",
+    "invalid",
+    "wrong-secret",
+    "other-client",
+  ]) {
+    const f = await fixture();
+    try {
+      const { tokens } = await f.issue();
+      const [grant] = await f.store.list("grant", "alice");
+      if (state === "missing") f.db.exec("DELETE FROM auth_oauth_records WHERE kind = 'grant'");
+      if (state === "expired") f.state.now = grant!.expiresAt;
+      if (state === "revoked")
+        await f.server.revokeToken(f.client.client_id, tokens.refresh_token, f.signal);
+      const clientId =
+        state === "other-client"
+          ? (
+              await f.server.register(
+                { redirect_uris: ["http://127.0.0.1/callback/other"] },
+                f.signal,
+              )
+            ).client_id
+          : f.client.client_id;
+      const credential =
+        state === "invalid"
+          ? "invalid"
+          : state === "wrong-secret"
+            ? tokens.refresh_token.slice(0, -1) + (tokens.refresh_token.endsWith("A") ? "B" : "A")
+            : tokens.refresh_token;
+      const replace = f.store.replace.bind(f.store);
+      let writes = 0;
+      f.store.replace = async (record, revision) => {
+        writes++;
+        return replace(record, revision);
+      };
+      const response = await revoke(f, credential, clientId);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({});
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(writes).toBe(state === "live" ? 1 : 0);
+      if (["live", "missing", "expired", "revoked"].includes(state))
+        await expect(f.server.verify(tokens.access_token, f.signal)).rejects.toThrow(
+          "invalid_grant",
+        );
+      else expect((await f.server.verify(tokens.access_token, f.signal)).subjectId).toBe("alice");
+    } finally {
+      await f.close();
+    }
+  }
+});
+
+test("revocation confirmed after the grant deadline remains successful with one CAS", async () => {
+  const f = await fixture();
+  try {
+    const { tokens } = await f.issue();
+    const replace = f.store.replace.bind(f.store);
+    let writes = 0;
+    f.store.replace = async (record, revision) => {
+      writes++;
+      const changed = await replace(record, revision);
+      f.state.now = record.expiresAt;
+      return changed;
+    };
+    const response = await revoke(f, tokens.refresh_token);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({});
+    expect(writes).toBe(1);
+    const [grant] = await f.store.list("grant", "alice");
+    expect(grant!.value).toMatchObject({ revoked: true });
+  } finally {
+    await f.close();
+  }
+});
+
+test("revocation reconciles a concurrent success or lost acknowledgement without replay", async () => {
+  for (const outcome of ["conflict", "lost-acknowledgement"]) {
+    const f = await fixture();
+    try {
+      const { tokens } = await f.issue();
+      const replace = f.store.replace.bind(f.store);
+      let writes = 0;
+      f.io.grantReads = 0;
+      f.store.replace = async (record, revision) => {
+        writes++;
+        await replace(record, revision);
+        if (outcome === "lost-acknowledgement") throw new Error("private lost acknowledgement");
+        return false;
+      };
+      const response = await revoke(f, tokens.refresh_token);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({});
+      expect(writes).toBe(1);
+      expect(f.io.grantReads).toBe(2);
+      await expect(f.server.verify(tokens.access_token, f.signal)).rejects.toThrow("invalid_grant");
+    } finally {
+      await f.close();
+    }
+  }
+});
+
+test("revocation stays unavailable when authoritative state cannot confirm an effect", async () => {
+  for (const outcome of ["conflict", "storage-failure"]) {
+    const f = await fixture();
+    try {
+      const { tokens } = await f.issue();
+      let writes = 0;
+      f.io.grantReads = 0;
+      f.store.replace = async () => {
+        writes++;
+        if (outcome === "storage-failure") throw new Error("private store failure");
+        return false;
+      };
+      const response = await revoke(f, tokens.refresh_token);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: "server_error" });
+      expect(writes).toBe(1);
+      expect(f.io.grantReads).toBe(2);
+      expect((await f.server.verify(tokens.access_token, f.signal)).subjectId).toBe("alice");
     } finally {
       await f.close();
     }

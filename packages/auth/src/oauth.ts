@@ -210,11 +210,15 @@ export function createOAuthAuthorizationServer<E>(options: {
   }
   async function save(r: OAuthRecord, signal: AbortSignal) {
     signal.throwIfAborted();
+    if (!(await options.store.replace(r, r.revision))) fail("invalid_grant");
+    signal.throwIfAborted();
+  }
+  async function saveLive(r: OAuthRecord, signal: AbortSignal) {
+    signal.throwIfAborted();
     // Permission IO and store acknowledgement can both cross the deadline.
     // A late acknowledgement must never trigger another, possibly committed CAS.
     if (r.expiresAt <= now()) fail("invalid_grant");
-    if (!(await options.store.replace(r, r.revision))) fail("invalid_grant");
-    signal.throwIfAborted();
+    await save(r, signal);
     if (r.expiresAt <= now()) fail("invalid_grant");
   }
   function redirect(p: Pending, values: Record<string, string>) {
@@ -237,7 +241,7 @@ export function createOAuthAuthorizationServer<E>(options: {
     if (!r.subjectId || scopes.length !== r.value.scopes.length) {
       r.subjectId = actor.subjectId;
       r.value.scopes = scopes;
-      await save(r, signal);
+      await saveLive(r, signal);
       r.revision++;
     }
     const c = await client(r.value.clientId);
@@ -479,7 +483,7 @@ export function createOAuthAuthorizationServer<E>(options: {
     async decide(requestId: string, approve: boolean, evidence: E, signal: AbortSignal) {
       const { r, actor } = await readConsent(requestId, evidence, signal);
       r.value.used = true;
-      await save(r, signal);
+      await saveLive(r, signal);
       if (!approve) return { redirect: redirect(r.value, { error: "access_denied" }) };
       const c = await client(r.value.clientId),
         id = crypto.randomUUID(),
@@ -552,10 +556,10 @@ export function createOAuthAuthorizationServer<E>(options: {
         const permissions = await allowed(grant.subjectId, signal);
         if (!grant.value.scopes.every((s) => permissions.includes(s))) fail("invalid_scope");
         r.value.used = true;
-        await save(r, signal);
+        await saveLive(r, signal);
         const next = await tokens(grant.id, grant.value);
         grant.value = next.value;
-        await save(grant, signal);
+        await saveLive(grant, signal);
         return tokenResponse(next);
       }
       if (p.get("grant_type") !== "refresh_token") fail("unsupported_grant_type");
@@ -591,7 +595,7 @@ export function createOAuthAuthorizationServer<E>(options: {
         usedRefresh: [...g.usedRefresh, hash],
       });
       r.value = next.value;
-      await save(r, signal);
+      await saveLive(r, signal);
       return tokenResponse(next);
     },
     verify,
@@ -618,17 +622,44 @@ export function createOAuthAuthorizationServer<E>(options: {
       await save(r, signal);
     },
     async revokeToken(clientId: string, credential: string, signal: AbortSignal) {
+      signal.throwIfAborted();
       await client(clientId);
+      signal.throwIfAborted();
       const m = tokenPattern.exec(credential);
       if (!m) return;
       const raw = await options.store.read("grant", m[2]);
+      signal.throwIfAborted();
       if (!raw) return;
-      const r = { ...raw, value: raw.value as Grant };
-      if (r.value.clientId !== clientId) return;
       const hash = await oauthDigest(credential);
-      if (!equal(hash, m[1] === "loa" ? r.value.accessHash : r.value.refreshHash)) return;
-      r.value.revoked = true;
-      await save(r, signal);
+      signal.throwIfAborted();
+      const inactive = (entry: OAuthRecord | null) => {
+        if (!entry) return true;
+        const g = entry.value as Grant;
+        return (
+          g.clientId !== clientId ||
+          g.revoked ||
+          entry.expiresAt <= now() ||
+          g.expiresAt <= now() ||
+          !equal(hash, m[1] === "loa" ? g.accessHash : g.refreshHash)
+        );
+      };
+      // RFC7009 success must not distinguish missing, expired or revoked tokens.
+      if (inactive(raw)) return;
+      const r = { ...raw, value: { ...(raw.value as Grant), revoked: true } };
+      let changed = false;
+      let failure: unknown;
+      try {
+        changed = (await options.store.replace(r, r.revision)) === true;
+      } catch (error) {
+        failure = error;
+      }
+      signal.throwIfAborted();
+      if (changed) return;
+      // A competing write or lost acknowledgement needs one authoritative read,
+      // never another CAS. Do not claim success while the token is still live.
+      const current = await options.store.read("grant", m[2]);
+      signal.throwIfAborted();
+      if (!inactive(current)) throw new AuthError("SERVICE_UNAVAILABLE", { cause: failure });
     },
     async close() {
       /* Store is borrowed; no background resources. */
