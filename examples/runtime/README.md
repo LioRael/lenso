@@ -123,14 +123,20 @@ starts `$LENSO_RUNTIME_ROOT/target/debug/lenso-runtime` and
 `LENSO_RUNTIME_KERNEL` and `LENSO_RUNTIME_BATCH`. Select an unoccupied loopback port
 with `LENSO_RUNTIME_PORT` (default 7331). TypeScript startup never compiles Rust.
 
-From this directory, `bun run generate` regenerates `src/generated/logs.ts` using
-the single contract source at
-`../../.runtime-deps/source/examples/contracts/logs.json` and the pinned generator
-at `../../.runtime-deps/source/tools/generate.ts`. SDK preparation and contract
-generation do not build Rust; `LENSO_RUNTIME_ROOT` is only needed for independently
-built binaries. The generator also emits Rust
-types; they are ignored here because the Rust batch service owns its own generated
-types. Do not edit the generated TypeScript client by hand.
+From this directory, `bun run generate` invokes the existing `lenso generate`.
+`runtimeContractPlugin` reads `src/runtime-contract.ts` and its imported
+`src/logs.contract.json`, then writes the exact v1 JSON plus TS/Rust bindings into
+`.lenso/runtime`. No Runtime checkout, companion binaries or running service is
+needed for generation. The application imports its own contract before generation
+and loads the generated client during setup. The workspace preparation and TS
+batch build use this same Engine path; neither shells out to a sibling generator
+nor copies generated files into `src`. A Rust consumer can include
+`.lenso/runtime/logs.rs` directly and build independently.
+
+Prepare the selected Runtime SDK candidate exposing `@lenso/runtime-sdk/generate`
+before building this adapter. The old pinned snapshot does not provide that new
+export. Preparation is explicit source selection, not publication. Do not edit
+Engine-owned outputs by hand.
 
 ## Independent development lifetimes
 

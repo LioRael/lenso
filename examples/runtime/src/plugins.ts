@@ -1,10 +1,11 @@
 import { definePlugin, type Plugin } from "@lenso/core/plugin";
 import { createRuntimePlugin, type RuntimeService, type RuntimeHandlers } from "@lenso/runtime";
 import type { CallOptions } from "@lenso/runtime-sdk";
-import { LogsClient, logsContract, type AggregateInput } from "./generated/logs";
+import type { LogsClient, AggregateInput } from "../.lenso/runtime/logs";
+import { v1Contract as logsContract } from "./runtime-contract";
 export { logsInput } from "./contracts";
 
-export const runtime: Plugin<RuntimeService<LogsClient>> = createRuntimePlugin({
+export const runtime: Plugin<RuntimeService<Promise<LogsClient>>> = createRuntimePlugin({
   id: "runtime",
   connection: {
     namespace: "demo",
@@ -13,11 +14,10 @@ export const runtime: Plugin<RuntimeService<LogsClient>> = createRuntimePlugin({
     port: Number(process.env.LENSO_RUNTIME_PORT ?? 7331),
     contract: logsContract,
   },
-  clients: (host) =>
-    new LogsClient(host, {
-      namespace: "demo",
-      service: "batch",
-    }),
+  clients: async (host) => {
+    const { LogsClient } = await import("../.lenso/runtime/logs");
+    return new LogsClient(host, { namespace: "demo", service: "batch" });
+  },
   exports(running): RuntimeHandlers {
     const native = running.get(logs);
     return {
@@ -56,9 +56,9 @@ export const local = definePlugin({
 export const logs = definePlugin({
   id: "logs",
   requires: [runtime, local],
-  setup(context) {
+  async setup(context) {
     console.error(JSON.stringify({ event: "plugin_initialized", plugin: "logs", count: 1 }));
-    const batch = context.get(runtime).clients;
+    const batch = await context.get(runtime).clients;
     const journal = context.get(local);
     return {
       async aggregate(input: AggregateInput, options?: CallOptions) {

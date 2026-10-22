@@ -1,7 +1,11 @@
-import { defineWorkspace, EngineError, type WorkspaceProcessContext } from "@lenso/engine";
+import {
+  defineWorkspace,
+  generate,
+  EngineError,
+  type WorkspaceProcessContext,
+} from "@lenso/engine";
 import { RuntimeError, RuntimeHost } from "@lenso/runtime-sdk";
 import { createServer } from "node:net";
-import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export interface RuntimeWorkspaceOptions {
@@ -10,25 +14,6 @@ export interface RuntimeWorkspaceOptions {
   appRoot?: string;
   port?: number;
   implementation?: "rust" | "ts";
-}
-
-async function run(command: string[], cwd: string, signal: AbortSignal) {
-  signal.throwIfAborted();
-  const child = Bun.spawn(command, { cwd, stdout: "inherit", stderr: "inherit" });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const cancel = () => {
-    child.kill("SIGTERM");
-    timer ??= setTimeout(() => child.kill("SIGKILL"), 5000);
-  };
-  signal.addEventListener("abort", cancel, { once: true });
-  if (signal.aborted) cancel();
-  try {
-    if (await child.exited) throw new Error(`Workspace preparation failed: ${command[1]}`);
-    signal.throwIfAborted();
-  } finally {
-    clearTimeout(timer);
-    signal.removeEventListener("abort", cancel);
-  }
 }
 
 export function runtimeWorkspace(options: RuntimeWorkspaceOptions) {
@@ -170,51 +155,8 @@ export function runtimeWorkspace(options: RuntimeWorkspaceOptions) {
         );
       });
       signal.throwIfAborted();
-      // Generate from Runtime's one contract, but retain consumer mtime when bytes match.
-      const generated = resolve(appRoot, ".lenso/workspace-contract");
-      await mkdir(generated, { recursive: true });
-      const contract = resolve(runtimeRoot, "examples/contracts/logs.json");
-      const generator = resolve(runtimeRoot, "tools/generate.ts");
-      const fingerprint = new Bun.CryptoHasher("sha256")
-        .update(await Bun.file(contract).arrayBuffer())
-        .update(await Bun.file(generator).arrayBuffer())
-        .digest("hex");
-      const marker = Bun.file(resolve(generated, "source-hash"));
-      const target = resolve(appRoot, "src/generated/logs.ts");
-      if (
-        !(await Bun.file(target).exists()) ||
-        !(await marker.exists()) ||
-        (await marker.text()) !== fingerprint
-      ) {
-        await run([process.execPath, generator, contract, generated, "logs"], runtimeRoot, signal);
-        const formatter = Bun.spawn(
-          [process.execPath, "x", "--no-install", "oxfmt", "--stdin-filepath", "logs.ts"],
-          {
-            cwd: resolve(appRoot, "../.."),
-            stdin: Bun.file(resolve(generated, "logs.ts")),
-            stdout: "pipe",
-            stderr: "inherit",
-          },
-        );
-        const cancel = () => formatter.kill("SIGKILL");
-        signal.addEventListener("abort", cancel, { once: true });
-        if (signal.aborted) cancel();
-        let output: string;
-        try {
-          const [text, code] = await Promise.all([
-            new Response(formatter.stdout).text(),
-            formatter.exited,
-          ]);
-          signal.throwIfAborted();
-          if (code !== 0) throw new Error("Contract binding formatting failed.");
-          output = text;
-        } finally {
-          signal.removeEventListener("abort", cancel);
-        }
-        if (!(await Bun.file(target).exists()) || (await Bun.file(target).text()) !== output)
-          await Bun.write(target, output);
-        await Bun.write(marker, fingerprint);
-      }
+      await generate(appRoot);
+      signal.throwIfAborted();
     },
     services: [
       {
@@ -268,7 +210,7 @@ export function runtimeWorkspace(options: RuntimeWorkspaceOptions) {
               builder,
               resolve(rustRoot, "scripts/stage-native.ts"),
               resolve(runtimeRoot, "examples/contracts"),
-              resolve(runtimeRoot, "tools/generate.ts"),
+              resolve(runtimeRoot, "sdk/typescript/generate.ts"),
               resolve(runtimeRoot, "crates/sdk"),
               resolve(runtimeRoot, "crates/protocol"),
             ],
@@ -283,15 +225,17 @@ export function runtimeWorkspace(options: RuntimeWorkspaceOptions) {
             dependsOn: ["runtime"],
             cwd: appRoot,
             env: environment,
-            build: [process.execPath, resolve(appRoot, "src/build-ts-batch.ts"), runtimeRoot],
+            build: [process.execPath, resolve(appRoot, "src/build-ts-batch.ts")],
             command: [process.execPath, resolve(appRoot, ".lenso/ts-batch/server.js")],
             watch: [
               resolve(appRoot, "src/aggregate.ts"),
               resolve(appRoot, "src/batch-app.ts"),
               resolve(appRoot, "src/ts-batch.ts"),
               resolve(appRoot, "src/build-ts-batch.ts"),
-              resolve(runtimeRoot, "examples/contracts"),
-              resolve(runtimeRoot, "tools/generate.ts"),
+              resolve(appRoot, "src/runtime-contract.ts"),
+              resolve(appRoot, "src/logs.contract.json"),
+              resolve(appRoot, "lenso.engine.ts"),
+              resolve(runtimeRoot, "sdk/typescript/generate.ts"),
             ],
             ready,
             activate,

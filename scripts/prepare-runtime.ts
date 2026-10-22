@@ -265,8 +265,20 @@ export async function prepareRuntime(
     }
     const execute = dependencies.run ?? runRuntimeCommand;
     options.signal?.throwIfAborted();
-    await execute(["install", "--frozen-lockfile", "--ignore-scripts"], source, options.signal);
     const sdkSource = join(source, "sdk/typescript");
+    const sdkManifest = JSON.parse(await readFile(join(sdkSource, "package.json"), "utf8"));
+    if (
+      sdkManifest.name !== "@lenso/runtime-sdk" ||
+      sdkManifest.version !== pin.version ||
+      sdkManifest.private
+    ) {
+      throw new Error("Built Runtime SDK does not match the public package pin");
+    }
+    const generator = sdkManifest.exports?.["./generate"];
+    if (generator?.import !== "./dist/generate.js" || generator?.types !== "./dist/generate.d.ts") {
+      throw new Error("Runtime SDK snapshot does not provide the required generator export");
+    }
+    await execute(["install", "--frozen-lockfile", "--ignore-scripts"], source, options.signal);
     // Run both tools through this Bun executable, including TypeScript's Node-shebang
     // entry. The runner needs no implicit Node installation or package build script.
     await execute(
@@ -274,6 +286,7 @@ export async function prepareRuntime(
         "build",
         "index.ts",
         "schema.ts",
+        "generate.ts",
         "--outdir",
         "dist",
         "--target",
@@ -291,21 +304,20 @@ export async function prepareRuntime(
       options.signal,
     );
     options.signal?.throwIfAborted();
-    const sdkManifest = JSON.parse(await readFile(join(sdkSource, "package.json"), "utf8"));
-    if (
-      sdkManifest.name !== "@lenso/runtime-sdk" ||
-      sdkManifest.version !== pin.version ||
-      sdkManifest.private
-    ) {
-      throw new Error("Built Runtime SDK does not match the public package pin");
-    }
     const sdk = join(temporary, "sdk");
     await mkdir(sdk);
     delete sdkManifest.scripts;
     await writeFile(join(sdk, "package.json"), `${JSON.stringify(sdkManifest, null, 2)}\n`);
     await cp(join(sdkSource, "dist"), join(sdk, "dist"), { recursive: true, dereference: false });
     const hashes = await fileHashes(sdk);
-    for (const file of ["dist/index.js", "dist/index.d.ts", "dist/schema.js", "dist/schema.d.ts"]) {
+    for (const file of [
+      "dist/index.js",
+      "dist/index.d.ts",
+      "dist/schema.js",
+      "dist/schema.d.ts",
+      "dist/generate.js",
+      "dist/generate.d.ts",
+    ]) {
       if (!hashes[file]) throw new Error(`Built Runtime SDK is missing ${file}`);
     }
     await writeFile(

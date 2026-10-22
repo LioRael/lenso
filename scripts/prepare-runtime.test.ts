@@ -12,18 +12,26 @@ const sdkManifest = {
   version: "0.1.0",
   type: "module",
   files: ["dist"],
-  exports: { ".": "./dist/index.js" },
+  exports: {
+    ".": "./dist/index.js",
+    "./generate": { import: "./dist/generate.js", types: "./dist/generate.d.ts" },
+  },
   scripts: { build: "fixture" },
 };
-const archive = Bun.gzipSync(
-  await new Bun.Archive({
-    [`${prefix}package.json`]: JSON.stringify({ private: true }),
-    [`${prefix}bun.lock`]: "{}",
-    [`${prefix}sdk/typescript/package.json`]: JSON.stringify(sdkManifest),
-    [`${prefix}tools/generate.ts`]: "// pinned generator fixture\n",
-    [`${prefix}examples/contracts/logs.json`]: "{}",
-  }).bytes(),
-);
+async function snapshotArchive(
+  manifest: Omit<typeof sdkManifest, "exports"> & { exports: object } = sdkManifest,
+) {
+  return Bun.gzipSync(
+    await new Bun.Archive({
+      [`${prefix}package.json`]: JSON.stringify({ private: true }),
+      [`${prefix}bun.lock`]: "{}",
+      [`${prefix}sdk/typescript/package.json`]: JSON.stringify(manifest),
+      [`${prefix}tools/generate.ts`]: "// pinned generator fixture\n",
+      [`${prefix}examples/contracts/logs.json`]: "{}",
+    }).bytes(),
+  );
+}
+const archive = await snapshotArchive();
 const pin = { ...snapshot, hash: createHash("sha256").update(archive).digest("hex") };
 const fetchFixture = (async (url, options) => {
   expect(String(url)).toBe(
@@ -52,10 +60,56 @@ async function buildFixture(args: string[], cwd: string) {
   if (args[0] !== "build") return;
   const dist = join(cwd, "dist");
   await mkdir(dist, { recursive: true });
-  for (const file of ["index.js", "index.d.ts", "schema.js", "schema.d.ts"]) {
+  for (const file of [
+    "index.js",
+    "index.d.ts",
+    "schema.js",
+    "schema.d.ts",
+    "generate.js",
+    "generate.d.ts",
+  ]) {
     await writeFile(join(dist, file), `// built fixture ${file}\n`);
   }
 }
+
+test("a same-version snapshot without generator exports fails before commands and preserves ready state", async () => {
+  const root = await fixture();
+  await prepareRuntime(root, { fetch: fetchFixture, run: buildFixture, pin });
+  const ready = await readFile(join(root, ".runtime-deps/provenance.json"), "utf8");
+  const legacy = await snapshotArchive({ ...sdkManifest, exports: { ".": "./dist/index.js" } });
+  let commands = 0;
+  await expect(
+    prepareRuntime(root, {
+      pin: { ...pin, hash: createHash("sha256").update(legacy).digest("hex") },
+      fetch: (async () => new Response(legacy)) as ArchiveFetcher,
+      run: async () => {
+        commands++;
+      },
+    }),
+  ).rejects.toThrow("required generator export");
+  expect(commands).toBe(0);
+  expect(await readFile(join(root, ".runtime-deps/provenance.json"), "utf8")).toBe(ready);
+});
+
+test.each(["generate.js", "generate.d.ts"])(
+  "missing built generator artifact %s cannot replace ready state",
+  async (file) => {
+    const root = await fixture();
+    await prepareRuntime(root, { fetch: fetchFixture, run: buildFixture, pin });
+    const ready = await readFile(join(root, ".runtime-deps/provenance.json"), "utf8");
+    await expect(
+      prepareRuntime(root, {
+        fetch: fetchFixture,
+        pin,
+        run: async (args, cwd) => {
+          await buildFixture(args, cwd);
+          if (args[0] === "build") await rm(join(cwd, "dist", file));
+        },
+      }),
+    ).rejects.toThrow(`missing dist/${file}`);
+    expect(await readFile(join(root, ".runtime-deps/provenance.json"), "utf8")).toBe(ready);
+  },
+);
 
 // These cases protect the preparation transaction and command boundary; adapter tests
 // cannot observe checksum gating, pre-install bootstrap, or prior-artifact preservation.
@@ -109,6 +163,7 @@ test("only frozen script-free install and SDK-only build execute; repeated prep 
       "build",
       "index.ts",
       "schema.ts",
+      "generate.ts",
       "--outdir",
       "dist",
       "--target",
@@ -123,6 +178,7 @@ test("only frozen script-free install and SDK-only build execute; repeated prep 
       "build",
       "index.ts",
       "schema.ts",
+      "generate.ts",
       "--outdir",
       "dist",
       "--target",
@@ -297,7 +353,7 @@ test("bootstrap runs from a clean consuming fixture using only Bun and standard 
         if (args[0] === "install") return;
         const dist = join(cwd, "dist");
         await mkdir(dist, { recursive: true });
-        for (const name of ["index.js", "index.d.ts", "schema.js", "schema.d.ts"]) {
+        for (const name of ["index.js", "index.d.ts", "schema.js", "schema.d.ts", "generate.js", "generate.d.ts"]) {
           await writeFile(join(dist, name), "// clean bootstrap");
         }
       },

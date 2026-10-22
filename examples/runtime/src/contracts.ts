@@ -1,6 +1,7 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
 import { validateValue } from "@lenso/runtime-sdk/schema";
-import { logsContract, type AggregateInput } from "./generated/logs";
+import type { AggregateInput } from "../.lenso/runtime/logs";
+import { v1Contract as logsContract } from "./runtime-contract";
 
 // CLI discovery and validation share the generated wire contract, not a second schema.
 export const logsInput: StandardSchemaV1<AggregateInput, AggregateInput> &
