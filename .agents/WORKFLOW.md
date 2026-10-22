@@ -2,7 +2,6 @@
 
 Tools: bun 1.4.3.
 
-
 Delta invokes executable `prepare` at checkout root when mounting a new managed
 checkout, before the agent and before cloud `setup`. Existing adopted or already
 mounted checkouts may skip preparation. It performs fast checkout-local work only.
