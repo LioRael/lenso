@@ -1,0 +1,20 @@
+.changeset/auth-oauth-exchange-deadlines.md
+  h_9d56aba080c170 1-7
+packages/auth/README.md
+  h_9d56aba080c170 530-545
+packages/auth/src/oauth.ts
+  h_9d56aba080c170 216-223,244,270,275-276,280,486,559,562,598,625,627,631,634-662
+packages/auth/test/oauth.test.ts
+  h_9d56aba080c170 13-17,86,100-105,113,125-145,296-586
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e377c98d91e0390fb97a502e4ea84a0a1c7a5df",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
