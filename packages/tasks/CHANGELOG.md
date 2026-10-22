@@ -1,5 +1,11 @@
 # @lenso/tasks
 
+## 0.4.1
+
+### Patch Changes
+
+- Abort cooperative sibling task handlers and await cleanup when a worker lane fails. Observe initial Scheduler driver rejections immediately while preserving the original failure for hosts.
+
 ## 0.4.0
 
 ### Minor Changes

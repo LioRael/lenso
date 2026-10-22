@@ -234,6 +234,16 @@ cooperative timeout/stop is retriable failure, not a durable user cancellation.
 An in-flight fetch returning after stop is acknowledged as an aborted attempt
 without starting business work; that claim has already consumed an attempt.
 
+A fetch or settlement failure stops claiming and sends cooperative abort to all
+active sibling handlers. `worker.done` rejects with `provider-unavailable` only
+after handlers, cleanup and heartbeat loops drain. An unconfirmed settlement
+still recovers through the provider's lease rules. Observe `done`; persist business
+idempotency separately before retrying side effects. See the isolated
+[recovery demonstration](examples/recovery.ts):
+`bun packages/tasks/examples/recovery.ts`. It runs native Bun processes with a
+simulated D1 binding over a disposable SQLite database, kills only its own child,
+and verifies crash recovery, bounded failure, retry, cancellation and receipts.
+
 Lease loss or `expireInSeconds` can permit another process to retry while the
 old handler is still unwinding. The old process holds its own local slot and
 cannot acknowledge over the new attempt; business effects still need idempotency.

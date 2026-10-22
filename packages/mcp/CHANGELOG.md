@@ -1,5 +1,19 @@
 # @lenso/mcp
 
+## 0.7.0
+
+### Minor Changes
+
+- 29b4e93: Observe the actual operation span through an optional trusted invocation callback, forward it explicitly through Manage, and expose bounded redacted MCP execution metadata without changing business output contracts or authorization.
+
+### Patch Changes
+
+- 1779f5e: Expose bounded redacted failure diagnostics in result metadata, with structured content when no successful output schema is declared. Preserve official SDK output validation and bound dedicated stdio scalar result wrappers.
+- Updated dependencies [29b4e93]
+  - @lenso/engine@0.9.0
+  - @lenso/manage@0.6.0
+  - @lenso/cli@0.22.1
+
 ## 0.6.0
 
 ### Minor Changes

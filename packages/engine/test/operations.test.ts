@@ -434,6 +434,24 @@ test("throwing telemetry cannot replace success or original service failure", as
     fail = true;
     expect(await executeOperation(running, operation, {}).catch((error) => error)).toBe(original);
     expect(calls).toBe(2);
+    let observed = 0;
+    const onExecutionEvidence = () => {
+      observed++;
+      throw new Error("observer");
+    };
+    fail = false;
+    expect(await invokeValidatedOperation(running, operation, {}, { onExecutionEvidence })).toBe(7);
+    fail = true;
+    const failure = await invokeValidatedOperation(
+      running,
+      operation,
+      {},
+      { onExecutionEvidence },
+    ).catch((error) => error);
+    expect(failure).toBeInstanceOf(EngineError);
+    expect((failure as EngineError).cause).toBe(original);
+    expect(observed).toBe(2);
+    expect(calls).toBe(4);
   } finally {
     meter.mockRestore();
     tracer.mockRestore();

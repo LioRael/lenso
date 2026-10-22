@@ -146,6 +146,18 @@ URLs are temporary bearer credentials and are not logged by this plugin. Do not 
 
 `createFileUploadHandler({ files, authenticate, input })` and `createFileDownloadHandler({ files, authenticate, fileId })` return raw Fetch-context handlers usable through `createWebPlugin({ fetch: context => handler, ... })`. Applications choose routes, supply authentication and server-controlled upload limits/owner/tenant inputs. Downloads default to attachment, `nosniff` and `private, no-store`; custom inline serving needs application policy. File bytes stay `ReadableStream`s; metadata, direct-upload initiation/completion and business commands can use the existing typed RPC router. Nothing starts an HTTP server or automatically exposes a private route.
 
+Both `GET` and `HEAD` require the `read` action. `HEAD` opens the same authorized object snapshot and cancels its body without pulling bytes, so metadata visibility alone cannot grant download access. This also verifies provider availability and the saved ETag before returning download headers.
+
+Run the isolated recovery exercise after building Core and Storage:
+
+```sh
+bun run --cwd packages/lenso build
+bun run --cwd packages/storage build
+bun packages/storage/examples/file-recovery.ts
+```
+
+It uses a temporary SQLite database and real local object directory, removes both on completion, and asserts explicit migration feedback, typed Drizzle access, transaction rollback, filtered/sorted pagination, upload size compensation, separate metadata/read permissions, download failure/retry, permission revocation and idempotent deletion. The one transient provider failure is deliberately injected; successful storage operations use the local adapter. No server, user database, credentials or deployment is involved.
+
 Object write and database commit are separate operations. File states and conditional transitions keep incomplete uploads unpublished; compensation first claims an unpublished failed state, so an ambiguous DB response cannot delete an already committed ready object. Failed deletions remain retryable, including partial local removal. Cleanup/database/provider failures are retained rather than converted to success. Process termination, ambiguous provider writes or an unavailable DB can leave incomplete work for application reconciliation; there is no implicit background worker or cross-resource transaction.
 
 Local roots must be dedicated, application-controlled directories, not upload-selected paths. Traversal and symlinks are rejected, but this is not a sandbox against a hostile process concurrently modifying the filesystem. Do not modify the adapter's on-disk object files manually.

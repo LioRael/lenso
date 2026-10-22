@@ -1,0 +1,36 @@
+bun test v1.4.3 (c6da4a4d3)
+
+packages/realtime/test/delivery-boundary.test.ts:
+45 |       realtime.revokeSubject("app", "reader");
+46 |       const next = await pending;
+47 |       const received = transport === "iterator"
+48 |         ? JSON.stringify(next.value)
+49 |         : new TextDecoder().decode(next.value as Uint8Array);
+50 |       expect(received).not.toContain("PRIVATE-MARKER");
+                                ^
+error: expect(received).not.toContain(expected)
+
+Expected to not contain: "PRIVATE-MARKER"
+Received: "{\"version\":1,\"kind\":\"update\",\"subscription\":\"587b1fa4-f231-419a-9bde-1afaa43e1e0a\",\"cursor\":\"2bc56c28-c45c-4586-ab7e-07f2168b77fd.1.1792658956962\",\"type\":\"note.updated\",\"data\":{\"secret\":\"PRIVATE-MARKER\"}}"
+
+      at <anonymous> (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/test/delivery-boundary.test.ts:50:28)
+(fail) iterator does not emit a pending private update after synchronous subject revocation [2.03ms]
+45 |       realtime.revokeSubject("app", "reader");
+46 |       const next = await pending;
+47 |       const received = transport === "iterator"
+48 |         ? JSON.stringify(next.value)
+49 |         : new TextDecoder().decode(next.value as Uint8Array);
+50 |       expect(received).not.toContain("PRIVATE-MARKER");
+                                ^
+error: expect(received).not.toContain(expected)
+
+Expected to not contain: "PRIVATE-MARKER"
+Received: "id: 581c0f12-b78d-4886-a960-2383c72e5866.1.1792658956963\nevent: update\ndata: {\"version\":1,\"kind\":\"update\",\"subscription\":\"0b6690a6-6d85-4cc5-81a9-58f5ee6741f3\",\"cursor\":\"581c0f12-b78d-4886-a960-2383c72e5866.1.1792658956963\",\"type\":\"note.updated\",\"data\":{\"secret\":\"PRIVATE-MARKER\"}}\n\n"
+
+      at <anonymous> (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/test/delivery-boundary.test.ts:50:28)
+(fail) sse does not emit a pending private update after synchronous subject revocation [0.35ms]
+
+ 0 pass
+ 2 fail
+ 2 expect() calls
+Ran 2 tests across 1 file. [9.00ms]

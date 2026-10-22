@@ -15,6 +15,7 @@ export {
   type Operation,
   type OperationBinding,
   type OperationInvocationOptions,
+  type OperationExecutionEvidence,
   type OperationContext,
   type OperationBoundOptions,
 } from "./operations";

@@ -1,0 +1,62 @@
+bun test v1.4.3 (c6da4a4d3)
+
+packages/realtime/integration/redis.test.ts:
+18 |     await Bun.sleep(10);
+19 |   }
+20 | }
+21 |
+22 | function freePort(): number {
+23 |   const socket = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+                          ^
+error: Failed to listen at 127.0.0.1
+ syscall: "listen",
+   errno: 1,
+ address: "127.0.0.1",
+    port: 0,
+    code: "EPERM"
+
+      at freePort (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:23:22)
+      at server (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:31:16)
+      at async <anonymous> (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:131:25)
+(fail) owned standalone Redis integration > independent Realtime instances broadcast updates and resource revocation through Redis [1.27ms]
+18 |     await Bun.sleep(10);
+19 |   }
+20 | }
+21 |
+22 | function freePort(): number {
+23 |   const socket = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+                          ^
+error: Failed to listen at 127.0.0.1
+ syscall: "listen",
+   errno: 1,
+ address: "127.0.0.1",
+    port: 0,
+    code: "EPERM"
+
+      at freePort (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:23:22)
+      at server (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:31:16)
+      at async <anonymous> (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:258:25)
+(fail) owned standalone Redis integration > metadata expires, resets generation, and never replays events [0.44ms]
+18 |     await Bun.sleep(10);
+19 |   }
+20 | }
+21 |
+22 | function freePort(): number {
+23 |   const socket = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+                          ^
+error: Failed to listen at 127.0.0.1
+ syscall: "listen",
+   errno: 1,
+ address: "127.0.0.1",
+    port: 0,
+    code: "EPERM"
+
+      at freePort (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:23:22)
+      at server (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:31:16)
+      at async <anonymous> (/Users/leosouthey/Documents/Codex/2026-10-22/task-7/lenso-data/packages/realtime/integration/redis.test.ts:307:25)
+(fail) owned standalone Redis integration > server termination fails once and rejects future commands [0.30ms]
+
+ 0 pass
+ 9 filtered out
+ 3 fail
+Ran 3 tests across 1 file. [13.00ms]

@@ -1,5 +1,18 @@
 # @lenso/manage
 
+## 0.6.0
+
+### Minor Changes
+
+- 29b4e93: Observe the actual operation span through an optional trusted invocation callback, forward it explicitly through Manage, and expose bounded redacted MCP execution metadata without changing business output contracts or authorization.
+
+### Patch Changes
+
+- Updated dependencies [c490be2]
+- Updated dependencies [29b4e93]
+  - @lenso/auth@0.5.5
+  - @lenso/engine@0.9.0
+
 ## 0.5.4
 
 ### Patch Changes

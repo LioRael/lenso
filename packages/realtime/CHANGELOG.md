@@ -1,5 +1,11 @@
 # @lenso/realtime
 
+## 0.2.1
+
+### Patch Changes
+
+- Apply download authorization to HEAD and release its unread stream. Recheck Realtime grants across iterator and SSE delivery boundaries before disclosing buffered events.
+
 ## 0.2.0
 
 ### Minor Changes

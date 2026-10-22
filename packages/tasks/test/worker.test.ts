@@ -295,3 +295,75 @@ test("stop during the initial lease check drains the claim without starting busi
   expect(entered).toBe(false);
   expect(settled).toBe(true);
 });
+
+for (const failure of ["fetch", "settle"] as const) {
+  test(`${failure} failure aborts sibling handlers, drains cleanup, and rejects safely`, async () => {
+    const entered = Promise.withResolvers<void>();
+    const cleanup = Promise.withResolvers<void>();
+    const aborted = Promise.withResolvers<void>();
+    const first = claim();
+    let fetched = 0;
+    let cleaned = false;
+    let completed = false;
+    const outcomes: unknown[] = [];
+    const backend: WorkerBackend = {
+      async fetch() {
+        if (++fetched === 1) return first;
+        await entered.promise;
+        if (failure === "fetch") throw new Error("PRIVATE-provider-failure");
+        return claim();
+      },
+      async pulse() {
+        return { owned: true, cancelRequested: false };
+      },
+      async settle(job, result) {
+        if (job.jobId !== first.jobId) throw new Error("PRIVATE-provider-failure");
+        expect(cleaned).toBe(true);
+        outcomes.push(result);
+      },
+    };
+    const worker = createTaskWorker(
+      backend,
+      async (job) => {
+        if (job.jobId !== first.jobId) return { ok: true, result: null };
+        job.signal.addEventListener("abort", () => aborted.resolve(), { once: true });
+        entered.resolve();
+        try {
+          await aborted.promise;
+          return { ok: true, result: null };
+        } finally {
+          await cleanup.promise;
+          cleaned = true;
+        }
+      },
+      { concurrency: 2 },
+      10000,
+    );
+    void worker.done.then(
+      () => {
+        completed = true;
+      },
+      () => {
+        completed = true;
+      },
+    );
+    try {
+      await entered.promise;
+      expect(
+        await Promise.race([aborted.promise.then(() => true), Bun.sleep(100).then(() => false)]),
+      ).toBe(true);
+      expect(completed).toBe(false);
+      cleanup.resolve();
+      await expect(worker.done).rejects.toMatchObject({
+        code: "provider-unavailable",
+        message: "Task queue operation failed",
+      });
+      expect(outcomes).toEqual([{ ok: false, error: "aborted" }]);
+      expect(fetched).toBe(2);
+      expect(worker.stop()).toBe(worker.done);
+    } finally {
+      cleanup.resolve();
+      await worker.stop({ abort: true }).catch(() => {});
+    }
+  });
+}

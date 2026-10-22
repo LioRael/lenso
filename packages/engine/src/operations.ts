@@ -1,6 +1,6 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
 import type { Plugin, RunningApp } from "@lenso/core";
-import { metrics, SpanStatusCode, trace } from "@opentelemetry/api";
+import { isSpanContextValid, metrics, SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   EngineError,
   environmentSecrets,
@@ -53,6 +53,7 @@ async function executeWithErrorMapping(
   input: unknown,
   context: unknown,
   mapError: (error: unknown) => unknown,
+  onExecutionEvidence?: (evidence: OperationExecutionEvidence) => void,
 ): Promise<unknown> {
   const attributes = {
     "lenso.instance.id": running.instanceId,
@@ -69,6 +70,21 @@ async function executeWithErrorMapping(
     }
   };
   const execute = async (span?: import("@opentelemetry/api").Span) => {
+    collect(() => {
+      if (!onExecutionEvidence) return;
+      const actual = span?.spanContext();
+      const evidence: OperationExecutionEvidence = Object.freeze({
+        instanceId: running.instanceId,
+        operation: Object.freeze({ pluginId: operation.plugin.id, method: operation.method }),
+        trace:
+          actual && isSpanContextValid(actual)
+            ? Object.freeze({ traceId: actual.traceId, spanId: actual.spanId })
+            : null,
+      });
+      // Observers are advisory. Even an accidentally async observer must neither
+      // delay dispatch nor produce an unhandled rejection or repeated execution.
+      void Promise.resolve(onExecutionEvidence(evidence)).catch(() => {});
+    });
     try {
       const service = running.get(operation.plugin);
       if (
@@ -172,6 +188,14 @@ export function defineOperation(operation: Operation): Operation {
 
 export type OperationContext<O extends Operation> = O extends Operation<infer C> ? C : never;
 
+export interface OperationExecutionEvidence {
+  readonly instanceId: string;
+  readonly operation: { readonly pluginId: string; readonly method: string };
+  /** Valid context of this operation span; null with no-op/unavailable telemetry.
+   * This identifies an execution, not an exported span or durable business effect. */
+  readonly trace: { readonly traceId: string; readonly spanId: string } | null;
+}
+
 export interface OperationInvocationOptions<C = unknown> {
   readonly context?: C;
   readonly signal?: AbortSignal;
@@ -181,6 +205,8 @@ export interface OperationInvocationOptions<C = unknown> {
   readonly approve?: () => boolean | Promise<boolean>;
   /** Revalidate entry admission after asynchronous gates, immediately before service dispatch. */
   readonly beforeExecute?: () => void | Promise<void>;
+  /** Trusted entry observer after admission; never business input or an authorization gate. */
+  readonly onExecutionEvidence?: (evidence: OperationExecutionEvidence) => void;
 }
 
 export type OperationBoundOptions<O extends Operation> = [O] extends [never]
@@ -464,6 +490,7 @@ export async function invokeValidatedOperation<O extends Operation>(
         const observed = observedCancellation(running, operation, options.signal, error);
         return Object.is(observed, error) ? operationError(operation, error) : observed;
       },
+      options.onExecutionEvidence,
     );
     checkCancellation(running, operation, options.signal);
     if (operation.output) {

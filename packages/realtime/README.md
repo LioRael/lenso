@@ -88,6 +88,11 @@ Use either one iterator or one Response per connection, not both.
   abort pending work, purge private queued events and settle blocked readers.
   Only fixed lifecycle diagnostics are emitted; no token, identity, private topic,
   backend exception or business payload is logged.
+- A waiting reader is woken without receiving a private event directly. Its continuation
+  rechecks the grant before removing an event from the bounded queue. SSE checks again
+  before encoding a frame, so revocation between wake/dequeue and continuation cannot
+  produce a new private frame. This does not recall data already returned to a caller
+  or bytes already emitted.
 - Authorization/snapshot callbacks must cooperate with their signal and release their
   own resources. Their default deadline is 5 s. Timed-out underlying work retains a
   pending slot until it settles; the package cannot forcibly stop arbitrary JS/DB work.

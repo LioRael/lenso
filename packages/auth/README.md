@@ -527,6 +527,22 @@ using the application's current permission service. `null` denies an inactive or
 unassigned subject. The SQL adapter needs an explicit namespace, driver and
 migration; it never acquires a connection or migrates on requests.
 
+Code and grant expiry are checked again before and after CAS acknowledgements,
+including after awaited current-permission reads. Access-token expiry is capped
+by the grant deadline, and `expires_in` reports the remaining lifetime when the
+response is created. An exchange that crosses its deadline returns
+`invalid_grant` without disclosing tokens. A write may already have committed:
+the code or refresh token can be consumed even though no successor is returned.
+The server never rolls back or replays that write; the client must begin a new
+authorization flow rather than automatically retry the consumed credential.
+
+Token revocation uses its own success semantics: `/revoke` returns the same
+200 response for missing, expired, already revoked or invalid tokens. Revocation
+does not require a live grant, and crossing its deadline after a successful CAS
+does not turn success into an error. A conflicting CAS or lost acknowledgement
+triggers one authoritative read, never another write. Confirmed invalidation is
+success; an unconfirmed effect while the token remains live returns an opaque 503. Client validation and host admission still apply to every request.
+
 `server.source` verifies identity only. `server.sourceForScopes(["users.read"])`
 also requires every selected scope to appear in both the consented grant and
 current permissions, in the same verification. Configure scopes in trusted

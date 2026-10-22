@@ -149,7 +149,11 @@ export function createTaskWorker(
     lane().catch((error: unknown) => {
       failures.push(error);
       stopping = true;
+      // A failed lane must release cooperative siblings before awaiting their drain.
+      // Settlement is still fenced by each backend; unknown claims recover by lease.
+      abortOnStop = true;
       wake.abort();
+      for (const controller of active) controller.abort();
     }),
   );
   const done = Promise.all(lanes).then(() => {

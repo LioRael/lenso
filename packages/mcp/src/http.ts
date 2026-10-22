@@ -8,6 +8,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { Operation } from "@lenso/engine/operations";
 import { createMcpAdapter, type McpAdapterOptions } from "./adapter";
+import { maxExecutionEvidenceBytes } from "./result";
 import { bindMcpServer } from "./protocol";
 
 /** Verified by the host's signature/introspection and current revocation policy, not decoded JSON. */
@@ -135,7 +136,9 @@ async function protocolResponse(
       signal.throwIfAborted();
       if (done) break;
       size += value.byteLength;
-      if (size > maxBytes) return reply(500, "response-too-large");
+      // Allow bounded optional evidence to be removed after SDK framing. It must
+      // not turn a previously fitting business result into an apparent failure.
+      if (size > maxBytes + maxExecutionEvidenceBytes + 64) return reply(500, "response-too-large");
       chunks.push(value);
     }
     const bytes = new Uint8Array(size);
@@ -155,6 +158,13 @@ async function protocolResponse(
       : [text];
     if (frames.length !== 1) return reply(500, "invalid-protocol-response");
     const payload = JSON.parse(frames[0]!);
+    if (size > maxBytes || Buffer.byteLength(JSON.stringify(payload)) > maxBytes) {
+      const { _meta: metadata } = payload?.result ?? {};
+      if (!metadata || !Object.hasOwn(metadata, "lenso/execution"))
+        return reply(500, "response-too-large");
+      delete metadata["lenso/execution"];
+      if (Object.keys(metadata).length === 0) Reflect.deleteProperty(payload.result, "_meta");
+    }
     if (payload && typeof payload === "object" && payload.error)
       payload.error = { code: payload.error.code, message: "MCP request rejected." };
     const headers = new Headers(response.headers);
