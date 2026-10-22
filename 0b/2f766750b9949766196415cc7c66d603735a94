@@ -1,0 +1,44 @@
+.changeset/mcp-safe-failure-results.md
+  h_9d56aba080c170 1-5
+.changeset/operation-execution-evidence.md
+  h_9d56aba080c170 1-7
+packages/engine/src/index.ts
+  h_9d56aba080c170 18
+packages/engine/src/operations.ts
+  h_9d56aba080c170 3,56,73-87,191-198,208-209,493
+packages/engine/test/operations.test.ts
+  h_9d56aba080c170 437-454
+packages/manage/src/adapter.ts
+  h_9d56aba080c170 13,22,222-224
+packages/mcp/README.md
+  h_9d56aba080c170 293-319
+packages/mcp/src/adapter.ts
+  h_9d56aba080c170 9,12,100,108-115,328-332,336,342-343,360-363,381,383,397-401,403
+packages/mcp/src/http.ts
+  h_9d56aba080c170 11,139-141,161-167
+packages/mcp/src/index.ts
+  h_9d56aba080c170 21,25,63-68,71,81,107,208-211,273-277,293,303,306,318-330,338,340-344
+packages/mcp/src/result.ts
+  h_9d56aba080c170 1-48
+packages/mcp/test/adapter.test.ts
+  h_9d56aba080c170 250,257-296
+packages/mcp/test/fixtures/lenso.config.ts
+  h_9d56aba080c170 59-65
+packages/mcp/test/http.test.ts
+  h_9d56aba080c170 272-275,293-306
+packages/mcp/test/stdio.test.ts
+  h_9d56aba080c170 58,187-195,220-222,484-502
+packages/otel/test/mcp-evidence.test.ts
+  h_9d56aba080c170 1-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b2f766750b9949766196415cc7c66d603735a94",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
