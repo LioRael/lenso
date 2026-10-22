@@ -1,0 +1,36 @@
+.agents/skills/lenso-develop/SKILL.md
+  h_9d56aba080c170 1-30
+.agents/skills/lenso-develop/references/data.md
+  h_9d56aba080c170 1-25
+.agents/skills/lenso-develop/references/engine-cli.md
+  h_9d56aba080c170 1-37
+.agents/skills/lenso-develop/references/lifecycle.md
+  h_9d56aba080c170 1-18
+.agents/skills/lenso-develop/references/platform.md
+  h_9d56aba080c170 1-21
+.agents/skills/lenso-develop/references/web-auth.md
+  h_9d56aba080c170 1-18
+.agents/skills/lenso-diagnose/SKILL.md
+  h_9d56aba080c170 1-40
+.agents/skills/lenso-diagnose/references/auth.md
+  h_9d56aba080c170 1-13
+.agents/skills/lenso-diagnose/references/engine-config-dev.md
+  h_9d56aba080c170 1-22
+.agents/skills/lenso-diagnose/references/observe-platform.md
+  h_9d56aba080c170 1-24
+.agents/skills/lenso-diagnose/references/tasks.md
+  h_9d56aba080c170 1-20
+README.md
+  h_9d56aba080c170 8,31,62-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e4bd59ab699ad9bb579cf97d59f7587f8ef699ce",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

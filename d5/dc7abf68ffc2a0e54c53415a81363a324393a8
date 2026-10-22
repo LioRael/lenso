@@ -1,0 +1,36 @@
+.changeset/deferred-dependencies-693247b3c186.md
+  h_9d56aba080c170 2-22,25-26
+bun.lock
+  h_9d56aba080c170 292,318,340,379,402
+packages/cli/CHANGELOG.md
+  h_9d56aba080c170 3-24
+packages/cli/package.json
+  h_9d56aba080c170 3
+packages/engine/CHANGELOG.md
+  h_9d56aba080c170 3-21
+packages/engine/package.json
+  h_9d56aba080c170 3
+packages/lenso/CHANGELOG.md
+  h_9d56aba080c170 3-14
+packages/lenso/package.json
+  h_9d56aba080c170 3
+packages/manage/CHANGELOG.md
+  h_9d56aba080c170 3-14
+packages/manage/package.json
+  h_9d56aba080c170 3
+packages/mcp/CHANGELOG.md
+  h_9d56aba080c170 3-20
+packages/mcp/package.json
+  h_9d56aba080c170 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5dc7abf68ffc2a0e54c53415a81363a324393a8",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

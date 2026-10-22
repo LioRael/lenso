@@ -1,0 +1,56 @@
+.changeset/workspace-service-development.md
+  h_9d56aba080c170 1-10
+examples/runtime/README.md
+  h_9d56aba080c170 11-89,120-121
+examples/runtime/lenso.config.ts
+  h_9d56aba080c170 3,6-19,26-27,30-33
+examples/runtime/lenso.workspace.ts
+  h_9d56aba080c170 1-16
+examples/runtime/package.json
+  h_9d56aba080c170 8-10
+examples/runtime/src/aggregate.ts
+  h_9d56aba080c170 1-19
+examples/runtime/src/batch-app.ts
+  h_9d56aba080c170 1-23
+examples/runtime/src/build-ts-batch.ts
+  h_9d56aba080c170 1-62
+examples/runtime/src/contracts.test.ts
+  h_9d56aba080c170 1-66
+examples/runtime/src/offline.ts
+  h_9d56aba080c170 1-18
+examples/runtime/src/plugins.ts
+  h_9d56aba080c170 12,46,60
+examples/runtime/src/ts-batch.ts
+  h_9d56aba080c170 1-79
+examples/runtime/src/workspace.ts
+  h_9d56aba080c170 1-309
+examples/runtime/tsconfig.json
+  h_9d56aba080c170 3
+package.json
+  h_9d56aba080c170 13
+packages/engine/src/workspace.ts
+  h_9d56aba080c170 499-501,512-513,515-518,521-532
+packages/engine/test/workspace.test.ts
+  h_9d56aba080c170 119-158
+scripts/dev-runtime-workspace.ts
+  h_9d56aba080c170 1-74
+scripts/prepare-runtime.test.ts
+  h_9d56aba080c170 131-158
+scripts/prepare-runtime.ts
+  h_9d56aba080c170 2,22,79-81,83-84,86-113,190,192,261-264,288
+scripts/runtime-sdk.json
+  h_9d56aba080c170 3-4
+scripts/tsconfig.json
+  h_9d56aba080c170 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b21dc1f55133e0c458c8cc4706961c6beabb9a64",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

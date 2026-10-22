@@ -1,0 +1,28 @@
+bun.lock
+  h_9d56aba080c170 79,82
+examples/runtime/README.md
+  h_9d56aba080c170 67-84,115-117
+examples/runtime/package.json
+  h_9d56aba080c170 16,19
+examples/runtime/src/batch-app.test.ts
+  h_9d56aba080c170 1-50
+examples/runtime/src/batch-app.ts
+  h_9d56aba080c170 3-7,9-46,50-51,53-58,60-63,65-76,80,87-88
+examples/runtime/src/offline.ts
+  h_9d56aba080c170 8
+examples/runtime/src/ts-batch.ts
+  h_9d56aba080c170 6,26,49
+scripts/dev-runtime-workspace.ts
+  h_9d56aba080c170 63-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "584d1639e7fb751197993ffc60f48d438d89d8e3",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

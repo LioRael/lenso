@@ -1,0 +1,22 @@
+docs/CLI.md
+  h_9d56aba080c170 363-381
+package.json
+  h_9d56aba080c170 29
+scripts/pack-dev-combination.test.ts
+  h_9d56aba080c170 1-32
+scripts/pack-dev-combination.ts
+  h_9d56aba080c170 1-169
+scripts/tsconfig.json
+  h_9d56aba080c170 3-5,11-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "750b5d1163b31aac766f21313fa6ba9c273f15b9",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

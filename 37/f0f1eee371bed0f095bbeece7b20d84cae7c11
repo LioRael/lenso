@@ -1,0 +1,72 @@
+.changeset/media-storage-derivatives.md
+  h_9d56aba080c170 1-5
+bun.lock
+  h_9d56aba080c170 357-378,845,847,849,851,853,855,857,859,861,863,865,867,869,871,873,875,877,879,881,883,885,887,889,891,893,895,937-938,1519,1623-1624,1683-1732,1836-1839
+packages/media/LICENSE
+  h_9d56aba080c170 1-21
+packages/media/README.md
+  h_9d56aba080c170 1-227
+packages/media/examples/notes-attachment.ts
+  h_9d56aba080c170 1-21
+packages/media/migrations/d1/0001_media.sql
+  h_9d56aba080c170 1-14
+packages/media/migrations/sqlite/0001_media.sql
+  h_9d56aba080c170 1-14
+packages/media/package.json
+  h_9d56aba080c170 1-68
+packages/media/scripts/benchmark-native.ts
+  h_9d56aba080c170 1-112
+packages/media/src/bun.ts
+  h_9d56aba080c170 1-301
+packages/media/src/contracts.ts
+  h_9d56aba080c170 1-151
+packages/media/src/d1.ts
+  h_9d56aba080c170 1-103
+packages/media/src/errors.ts
+  h_9d56aba080c170 1-50
+packages/media/src/files.ts
+  h_9d56aba080c170 1-248
+packages/media/src/index.ts
+  h_9d56aba080c170 1-517
+packages/media/src/processor.ts
+  h_9d56aba080c170 1-72
+packages/media/src/sharp-child.ts
+  h_9d56aba080c170 1-255
+packages/media/src/sqlite.ts
+  h_9d56aba080c170 1-73
+packages/media/src/tasks.ts
+  h_9d56aba080c170 1-74
+packages/media/test/integration.test.ts
+  h_9d56aba080c170 1-420
+packages/media/test/native-fixtures.ts
+  h_9d56aba080c170 1-35
+packages/media/test/native.test.ts
+  h_9d56aba080c170 1-307
+packages/media/test/notes-fixture.ts
+  h_9d56aba080c170 1-255
+packages/media/test/package.test.ts
+  h_9d56aba080c170 1-13
+packages/media/test/service.test.ts
+  h_9d56aba080c170 1-676
+packages/media/test/store.test.ts
+  h_9d56aba080c170 1-131
+packages/media/test/worker-entry.ts
+  h_9d56aba080c170 1-17
+packages/media/test/workers.test.ts
+  h_9d56aba080c170 1-25
+packages/media/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/media/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37f0f1eee371bed0f095bbeece7b20d84cae7c11",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

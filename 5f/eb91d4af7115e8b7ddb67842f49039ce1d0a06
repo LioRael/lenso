@@ -1,0 +1,58 @@
+.changeset/bounded-realtime.md
+  h_9d56aba080c170 1-5
+.github/workflows/checks.yml
+  h_9d56aba080c170 27,30
+.github/workflows/release.yml
+  h_9d56aba080c170 46,49
+bun.lock
+  h_9d56aba080c170 483-498,923-924
+packages/realtime/README.md
+  h_9d56aba080c170 1-421
+packages/realtime/examples/notes.ts
+  h_9d56aba080c170 1-65
+packages/realtime/examples/run-notes.ts
+  h_9d56aba080c170 1-43
+packages/realtime/examples/tasks.ts
+  h_9d56aba080c170 1-10
+packages/realtime/integration/listener.ts
+  h_9d56aba080c170 1-19
+packages/realtime/integration/redis.test.ts
+  h_9d56aba080c170 1-469
+packages/realtime/package.json
+  h_9d56aba080c170 1-55
+packages/realtime/scripts/measure.ts
+  h_9d56aba080c170 1-161
+packages/realtime/src/config.ts
+  h_9d56aba080c170 1-39
+packages/realtime/src/contracts.ts
+  h_9d56aba080c170 1-136
+packages/realtime/src/index.ts
+  h_9d56aba080c170 1-580
+packages/realtime/src/memory.ts
+  h_9d56aba080c170 1-59
+packages/realtime/src/plugin.ts
+  h_9d56aba080c170 1-80
+packages/realtime/src/redis.ts
+  h_9d56aba080c170 1-277
+packages/realtime/src/wire.ts
+  h_9d56aba080c170 1-79
+packages/realtime/test/hosts.test.ts
+  h_9d56aba080c170 1-205
+packages/realtime/test/realtime.test.ts
+  h_9d56aba080c170 1-591
+packages/realtime/tsconfig.build.json
+  h_9d56aba080c170 1-11
+packages/realtime/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5feb91d4af7115e8b7ddb67842f49039ce1d0a06",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+docs/CLI.md
+  h_9d56aba080c170 202-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d99dc735ab1343b9598bcd74f94998953196b377",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
