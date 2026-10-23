@@ -1,5 +1,17 @@
 # @lenso/media
 
+## 0.1.3
+
+### Patch Changes
+
+- d5dc7ab: Retain dependency updates deferred by scoped preparation of @lenso/cli, @lenso/core, @lenso/engine, @lenso/manage, @lenso/mcp.
+  Review and publish these dependent packages separately; their versions were not advanced.
+- Updated dependencies [d5dc7ab]
+- Updated dependencies [f86cfae]
+- Updated dependencies [4586082]
+  - @lenso/storage@0.2.3
+  - @lenso/tasks@0.5.0
+
 ## 0.1.2
 
 ### Patch Changes

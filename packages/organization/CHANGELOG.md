@@ -1,5 +1,15 @@
 # @lenso/organization
 
+## 0.2.4
+
+### Patch Changes
+
+- d5dc7ab: Retain dependency updates deferred by scoped preparation of @lenso/cli, @lenso/core, @lenso/engine, @lenso/manage, @lenso/mcp.
+  Review and publish these dependent packages separately; their versions were not advanced.
+- Updated dependencies [4323bcd]
+- Updated dependencies [d5dc7ab]
+  - @lenso/auth@0.6.0
+
 ## 0.2.3
 
 ### Patch Changes

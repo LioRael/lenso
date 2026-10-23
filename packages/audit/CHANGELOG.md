@@ -1,5 +1,22 @@
 # @lenso/audit
 
+## 0.3.5
+
+### Patch Changes
+
+- d5dc7ab: Retain dependency updates deferred by scoped preparation of @lenso/cli, @lenso/core, @lenso/engine, @lenso/manage, @lenso/mcp.
+  Review and publish these dependent packages separately; their versions were not advanced.
+- 88fcd54: Retain dependency updates deferred by scoped preparation of @lenso/auth, @lenso/cli, @lenso/engine, @lenso/manage, @lenso/mcp, @lenso/realtime, @lenso/scheduler, @lenso/storage, @lenso/tasks.
+  Review and publish these dependent packages separately; their versions were not advanced.
+- 7664344: Accept Engine 0.6 and 0.7 in optional integrations after whole-workspace compatibility verification. Keep these packages pending for a separately reviewed release.
+- Updated dependencies [4323bcd]
+- Updated dependencies [d5dc7ab]
+- Updated dependencies [f86cfae]
+- Updated dependencies [7664344]
+  - @lenso/auth@0.6.0
+  - @lenso/tasks@0.5.0
+  - @lenso/manage@0.6.1
+
 ## 0.3.4
 
 ### Patch Changes
