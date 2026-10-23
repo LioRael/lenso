@@ -26,6 +26,7 @@ import {
   type ObjectStorage,
 } from "./index";
 import { checkedDownload, checkedUpload, validateUpload } from "./stream";
+import { headListedObjects } from "./list-heads";
 
 export interface S3StorageOptions {
   id: string;
@@ -365,13 +366,12 @@ export function createS3StoragePlugin(options: S3StorageOptions) {
               }),
               { abortSignal: input.signal },
             );
-            const objects: ObjectMetadata[] = [];
-            // ListObjectsV2 omits content type. Serial HEADs bound concurrency and report current metadata.
-            for (const item of page.Contents ?? []) {
-              if (!item.Key) continue;
-              const object = await service.head(item.Key, { signal: input.signal });
-              if (object) objects.push(object);
-            }
+            // ListObjectsV2 omits content type; bounded HEAD reads retain current metadata.
+            const objects = await headListedObjects(
+              page.Contents ?? [],
+              (key) => service.head(key, { signal: input.signal }),
+              input.signal,
+            );
             return { objects, cursor: page.IsTruncated ? page.NextContinuationToken : undefined };
           } catch (error) {
             throw failure(error, input.signal);

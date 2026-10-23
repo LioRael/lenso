@@ -1,9 +1,10 @@
-import { constants } from "node:fs";
+import { constants, type Dir } from "node:fs";
 import {
   lstat,
   mkdir,
   mkdtemp,
   open,
+  opendir,
   readdir,
   rename,
   rm,
@@ -26,6 +27,35 @@ import { checkedUpload } from "./stream";
 const objectName = (key: string) => createHash("sha256").update(key).digest("hex");
 const temporary = /^\.tmp-[A-Za-z0-9]+$/;
 const metadataLimit = 64 * 1024;
+
+// Keep the smallest keys in a max-heap, so one page never retains all matching metadata.
+function retainPageCandidate(
+  heap: ObjectMetadata[],
+  candidate: ObjectMetadata,
+  capacity: number,
+): void {
+  if (heap.length < capacity) {
+    heap.push(candidate);
+    let index = heap.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (heap[parent]!.key >= heap[index]!.key) break;
+      [heap[parent], heap[index]] = [heap[index]!, heap[parent]!];
+      index = parent;
+    }
+    return;
+  }
+  if (candidate.key >= heap[0]!.key) return;
+  heap[0] = candidate;
+  let index = 0;
+  while (index * 2 + 1 < heap.length) {
+    let child = index * 2 + 1;
+    if (child + 1 < heap.length && heap[child + 1]!.key > heap[child]!.key) child++;
+    if (heap[index]!.key >= heap[child]!.key) break;
+    [heap[index], heap[child]] = [heap[child]!, heap[index]!];
+    index = child;
+  }
+}
 
 function code(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException)?.code;
@@ -81,7 +111,7 @@ export function createLocalStoragePlugin(options: { id: string; root: string }) 
     async setup(context) {
       const root = resolve(options.root);
       const lifetime = new AbortController();
-      const handles = new Set<FileHandle>();
+      const handles = new Set<FileHandle | Dir>();
       const operations = new Set<Promise<unknown>>();
       context.onCleanup(async () => {
         lifetime.abort();
@@ -162,7 +192,7 @@ export function createLocalStoragePlugin(options: { id: string; root: string }) 
           throw error;
         }
       }
-      async function close(handle: FileHandle, failure?: unknown): Promise<void> {
+      async function close(handle: FileHandle | Dir, failure?: unknown): Promise<void> {
         try {
           await handle.close();
           handles.delete(handle);
@@ -507,20 +537,32 @@ export function createLocalStoragePlugin(options: { id: string; root: string }) 
             const limit = validateList(input);
             if (input.cursor !== undefined) validateKey(input.cursor);
             const objects: ObjectMetadata[] = [];
-            for (const name of await readdir(root)) {
-              signal.throwIfAborted();
-              await directory(join(root, name));
-              if (temporary.test(name) || /^\.delete-[a-f0-9]{64}$/.test(name)) continue;
-              if (!/^[a-f0-9]{64}$/.test(name))
-                throw new StorageError("forbidden", "Unexpected storage root entry");
-              const { metadata, payload } = await load(name);
-              await close(payload);
-              if (
-                metadata.key.startsWith(input.prefix ?? "") &&
-                (input.cursor === undefined || metadata.key > input.cursor)
-              )
-                objects.push(metadata);
+            const entries = await opendir(root);
+            handles.add(entries);
+            try {
+              while (true) {
+                signal.throwIfAborted();
+                const entry = await entries.read();
+                if (!entry) break;
+                signal.throwIfAborted();
+                const name = entry.name;
+                await directory(join(root, name));
+                if (temporary.test(name) || /^\.delete-[a-f0-9]{64}$/.test(name)) continue;
+                if (!/^[a-f0-9]{64}$/.test(name))
+                  throw new StorageError("forbidden", "Unexpected storage root entry");
+                const { metadata, payload } = await load(name);
+                await close(payload);
+                if (
+                  metadata.key.startsWith(input.prefix ?? "") &&
+                  (input.cursor === undefined || metadata.key > input.cursor)
+                )
+                  retainPageCandidate(objects, metadata, limit + 1);
+              }
+            } catch (error) {
+              await close(entries, error);
+              throw error;
             }
+            await close(entries);
             objects.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
             return {
               objects: objects.slice(0, limit),

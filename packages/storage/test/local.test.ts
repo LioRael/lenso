@@ -133,6 +133,31 @@ test("list key pagination, prefix and idempotent delete", async () => {
   await errorCode(storage.list({ cursor: "../a" }), "invalid-key");
 });
 
+test("small list pages preserve key order and cursors across unordered directory entries", async () => {
+  const { storage } = await fixture();
+  const keys = [
+    ...Array.from({ length: 9 }, (_, i) => `a/${(i * 5) % 9}`),
+    "a/é",
+    "a/\uE000",
+    "a/\u{1f7e0}",
+  ];
+  for (const key of [...keys, "b/outside"]) await storage.put({ key, body: chunks(key) });
+  const expected = [...keys].sort();
+  for (const limit of [1, 4, 1000]) {
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await storage.list({ prefix: "a/", limit, cursor });
+      const actual = page.objects.map((object) => object.key);
+      expect(actual).toEqual(expected.slice(seen.length, seen.length + limit));
+      seen.push(...actual);
+      expect(page.cursor).toBe(seen.length < expected.length ? seen.at(-1) : undefined);
+      cursor = page.cursor;
+    } while (cursor);
+    expect(seen).toEqual(expected);
+  }
+});
+
 test("deletion retries recover complete and partially removed per-key tombs", async () => {
   const { root, storage } = await fixture();
   for (const partial of [false, true]) {
@@ -228,6 +253,7 @@ test("rejects object/payload/metadata symlinks and untrusted list entries", asyn
   await errorCode(storage.head("a"), "forbidden");
   await errorCode(storage.delete("a"), "forbidden");
   await errorCode(storage.list(), "forbidden");
+  await errorCode(storage.list({ prefix: "outside/", limit: 1 }), "forbidden");
   await unlink(payload);
   await writeFile(payload, "value");
   const metadata = join(root, name("a"), "metadata.json");
@@ -242,6 +268,7 @@ test("rejects object/payload/metadata symlinks and untrusted list entries", asyn
   await unlink(join(root, name("a")));
   await writeFile(join(root, "unexpected"), "ignored?");
   await errorCode(storage.list(), "forbidden");
+  await errorCode(storage.list({ prefix: "outside/", limit: 1 }), "forbidden");
   await unlink(join(root, "unexpected"));
   await symlink(base, join(root, ".tmp-unsafe"));
   await errorCode(storage.list(), "forbidden");

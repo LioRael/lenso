@@ -131,6 +131,11 @@ Same-scope `inherits: ["reader"]` is supported. Graphs reject cycles, missing
 parents, cross-scope permissions/parents, duplicate keys and unknown actions.
 Limits are 512 roles, 4,096 bindings and 512 permissions per role.
 
+Permission expansion uses an exact-scope role index local to each computation,
+shared by eligible bindings. It does not cache authorization decisions across
+principals, requests, time or graph revisions; current snapshots and binding expiry
+are still checked on every evaluation.
+
 ### 2. RBAC plus resource/request constraints
 
 Replace the standalone RBAC policy with one conjunctive grant:

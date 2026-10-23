@@ -5,6 +5,7 @@ import type {
   Predicate,
   Principal,
   Resource,
+  Role,
   RoleGraph,
   RoleSnapshot,
   RoleStore,
@@ -133,11 +134,20 @@ export function validateRoleGraph<A extends string>(
   }
 }
 
-/** Call after graph validation; inheritance is confined to the exact role scope. */
-export function effectiveRolePermissions<A extends string>(
+function scopedRoles<A extends string>(
   graph: RoleGraph<A>,
-  roleId: string,
   scope: Scope,
+): ReadonlyMap<string, Role<A>> {
+  const roles = new Map<string, Role<A>>();
+  for (const role of graph.roles) {
+    if (sameScope(role.scope, scope) && !roles.has(role.id)) roles.set(role.id, role);
+  }
+  return roles;
+}
+
+function expandRolePermissions<A extends string>(
+  roles: ReadonlyMap<string, Role<A>>,
+  roleId: string,
 ): readonly Permission<A>[] {
   const pending = [roleId];
   const visited = new Set<string>();
@@ -147,7 +157,7 @@ export function effectiveRolePermissions<A extends string>(
     if (visited.has(id)) continue;
     if (visited.size >= MAX_ROLES) throw new RoleGraphError();
     visited.add(id);
-    const role = graph.roles.find((r) => r.id === id && sameScope(r.scope, scope));
+    const role = roles.get(id);
     if (!role || role.permissions.length > MAX_ITEMS || (role.inherits?.length ?? 0) > MAX_ROLES) {
       throw new RoleGraphError();
     }
@@ -155,6 +165,15 @@ export function effectiveRolePermissions<A extends string>(
     pending.push(...(role.inherits ?? []));
   }
   return [...permissions.values()];
+}
+
+/** Call after graph validation; inheritance is confined to the exact role scope. */
+export function effectiveRolePermissions<A extends string>(
+  graph: RoleGraph<A>,
+  roleId: string,
+  scope: Scope,
+): readonly Permission<A>[] {
+  return expandRolePermissions(scopedRoles(graph, scope), roleId);
 }
 
 export function effectivePermissions<A extends string>(
@@ -165,13 +184,15 @@ export function effectivePermissions<A extends string>(
 ): readonly Permission<A>[] {
   if (!Number.isFinite(now)) return [];
   const permissions = new Map<string, Permission<A>>();
+  let roles: ReadonlyMap<string, Role<A>> | undefined;
   for (const b of graph.bindings) {
     if (
       samePrincipal(b.principal, principal) &&
       sameScope(b.scope, scope) &&
       (b.expiresAt === undefined || b.expiresAt > now)
     ) {
-      for (const p of effectiveRolePermissions(graph, b.roleId, scope)) {
+      roles ??= scopedRoles(graph, scope);
+      for (const p of expandRolePermissions(roles, b.roleId)) {
         permissions.set(permissionKey(p), p);
       }
     }
