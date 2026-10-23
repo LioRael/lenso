@@ -58,6 +58,11 @@ try {
 
 Object services are **trusted internal APIs**, not public endpoints. Knowing a key grants no application permission. Even `publicAssets` stays private: names never enable public ACLs. All uploads create a new key; an existing key causes `conflict`, not overwrite. Keys are not original filenames. Metadata includes provider size, content type, ETag, timestamp, version and custom metadata where available. Listing cursors are backend-specific, not portable or snapshot guarantees.
 
+Local listing reads directory entries incrementally and retains at most `limit + 1`
+page candidates before sorting. It still validates every stored object,
+including entries outside the requested prefix/page; a small page does not avoid
+the full directory's integrity-check I/O. No persistent index is maintained.
+
 ## S3-compatible and R2
 
 ```ts
@@ -77,6 +82,12 @@ const r2S3 = createS3StoragePlugin({
 ```
 
 S3-compatible providers must honor conditional create (`If-None-Match: *`). Multipart mode additionally requires conditional `CompleteMultipartUpload`. AWS supports it; R2 does not document that condition on completion. Known R2 endpoints select single-PUT mode, which requires `size`; use `multipart: false` explicitly for other providers without conditional multipart completion. The SDK bounds multipart buffering rather than loading the whole object; `maxUploadBytes` exposes this adapter's limit (5 GiB single PUT; 10,000 × 5 MiB multipart parts). Supplied clients remain application-owned; single-PUT clients need `requestChecksumCalculation: "WHEN_REQUIRED"`. Never give an SDK client a payload-logging logger.
+
+S3 listing reads current metadata with at most two concurrent HEAD calls per list,
+keeping the provider's list order and opaque cursor. A failed HEAD stops queued reads;
+already-started calls settle before the first failure in list order is returned.
+Caller cancellation reaches each HEAD and prevents further scheduling. This
+changes concurrency, not the normal one-list-plus-N-HEAD SDK call count.
 
 ```ts
 import { createR2StoragePlugin } from "@lenso/storage/r2";

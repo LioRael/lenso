@@ -176,10 +176,16 @@ test("real AWS SDK over localhost: conditional create, metadata, ranges, list HE
   await expect(f.storage.get("file", { ifMatch: '"other"' })).rejects.toMatchObject({
     code: "conflict",
   });
-  expect((await f.storage.list({ cursor: "previous" })).objects[0]).toMatchObject({
+  await f.storage.put({ key: "other", body: body("xx"), contentType: "image/png" });
+  const headsBefore = f.requests.filter((request) => request.method === "HEAD").length;
+  const page = await f.storage.list({ cursor: "previous" });
+  expect(page.objects.map((object) => object.key)).toEqual(["file", "other"]);
+  expect(page.objects[0]).toMatchObject({
     contentType: "text/plain",
     customMetadata: { owner: "test" },
   });
+  expect(page.objects[1]).toMatchObject({ contentType: "image/png", size: 2 });
+  expect(f.requests.filter((request) => request.method === "HEAD")).toHaveLength(headsBefore + 2);
   expect((await f.storage.list()).cursor).toBe("opaque+/=");
   expect(f.requests.some((r) => r.url.searchParams.get("continuation-token") === "previous")).toBe(
     true,

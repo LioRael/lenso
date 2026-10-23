@@ -39,8 +39,8 @@ bun dev
 
 Source-workspace preparation downloads the Runtime SDK from the commit and
 checksum pinned in `scripts/runtime-sdk.json`, builds only its TS package, and
-keeps generated dependencies under ignored `.runtime-deps`. It requires Bun
-1.4.3, not Cargo or a sibling Runtime checkout.
+keeps generated dependencies under ignored `.runtime-deps`. It requires the Bun
+version pinned in [package.json](package.json), not Cargo or a sibling Runtime checkout.
 
 For explicitly authorized cross-repository development, use the same current
 Runtime checkout for Lenso and Console:
