@@ -1,5 +1,16 @@
 # @lenso/tasks
 
+## 0.5.0
+
+### Minor Changes
+
+- f86cfae: Prevent business execution when worker stop races the first lease check. Expose durable pending-attempt timing and fixed failure codes in bounded task summaries and Scheduler Manage. Preserve authorized occurrence visibility during queue read outages with an explicit job-read state.
+
+### Patch Changes
+
+- d5dc7ab: Retain dependency updates deferred by scoped preparation of @lenso/cli, @lenso/core, @lenso/engine, @lenso/manage, @lenso/mcp.
+  Review and publish these dependent packages separately; their versions were not advanced.
+
 ## 0.4.1
 
 ### Patch Changes

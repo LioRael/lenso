@@ -1,5 +1,14 @@
 # @lenso/mcp
 
+## 0.7.1
+
+### Patch Changes
+
+- 7664344: Retain dependency updates deferred by scoped preparation of @lenso/cli, @lenso/engine.
+  Review and publish these dependent packages separately; their versions were not advanced.
+- Updated dependencies [7664344]
+  - @lenso/manage@0.6.1
+
 ## 0.7.0
 
 ### Minor Changes
