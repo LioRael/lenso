@@ -242,8 +242,8 @@ bun scripts/prepare-runtime.ts
 bun install --frozen-lockfile
 ```
 
-Preparation needs the exact Bun version in the root manifest (1.4.3), but no
-existing `node_modules`, Rust toolchain or sibling checkout. The reviewed source
+Preparation needs the exact Bun version in the [root manifest](../../package.json),
+but no existing `node_modules`, Rust toolchain or sibling checkout. The reviewed source
 archive is pinned by commit and SHA256 in `scripts/runtime-sdk.json`. Preparation
 checks the bounded download before extracting it, installs snapshot dependencies
 with frozen lockfile and lifecycle scripts disabled, and runs only `build:sdk`.

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  effectivePermissions,
   effectiveRolePermissions,
   memoryRoleStore,
   rbacPolicy,
@@ -47,9 +48,87 @@ describe("scoped RBAC", () => {
     expect(effectiveRolePermissions(graph, "member", scope)).toEqual([read]);
   });
 
+  test("role indexes keep repeated role IDs separated by exact scope", () => {
+    const write = { action: "write" as const, resourceType: "document", scope: other };
+    const scoped: RoleGraph<"read" | "write"> = {
+      roles: [
+        ...graph.roles,
+        { id: "reader", scope: other, permissions: [write] },
+        { id: "member", scope: other, permissions: [], inherits: ["reader"] },
+      ],
+      bindings: [
+        ...graph.bindings,
+        { id: "other-binding", principal, roleId: "member", scope: other },
+      ],
+    };
+    validateRoleGraph(scoped, actions);
+    expect(effectiveRolePermissions(scoped, "member", scope)).toEqual([read]);
+    expect(effectiveRolePermissions(scoped, "member", other)).toEqual([write]);
+    expect(effectivePermissions(scoped, principal, scope, 100)).toEqual([read]);
+    expect(effectivePermissions(scoped, principal, other, 100)).toEqual([write]);
+    expect(effectivePermissions(scoped, principal, scope, 200)).toEqual([]);
+  });
+
+  test("indexes roles once per permission calculation across inheritance and bindings", () => {
+    const roles: RoleGraph<"read">["roles"] = Array.from({ length: 16 }, (_, i) => ({
+      id: `role-${i}`,
+      scope,
+      permissions: [{ ...read, resourceId: `document-${i}` }],
+      inherits: i < 15 ? [`role-${i + 1}`] : [],
+    }));
+    let reads = 0;
+    const indexed: RoleGraph<"read"> = {
+      roles: new Proxy(roles, {
+        get(target, property, receiver) {
+          if (typeof property === "string" && /^(0|[1-9]\d*)$/.test(property)) reads++;
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+      bindings: [
+        { id: "first", principal, roleId: "role-0", scope },
+        { id: "second", principal, roleId: "role-3", scope },
+      ],
+    };
+    validateRoleGraph(indexed, ["read"]);
+    reads = 0;
+    expect(effectivePermissions(indexed, principal, scope, 100)).toEqual(
+      roles.flatMap((role) => role.permissions),
+    );
+    expect(reads).toBeLessThanOrEqual(roles.length);
+    reads = 0;
+    expect(
+      effectivePermissions(indexed, { ...principal, subjectId: "other-user" }, scope, 100),
+    ).toEqual([]);
+    expect(reads).toBe(0);
+  });
+
   test("reads current snapshot every evaluation, so revocation takes effect", async () => {
     const store = memoryRoleStore(graph, actions);
     const policy = rbacPolicy({ store, actions });
+    expect(await policy.evaluate(request, evaluation)).toBe("allow");
+    const initial = await store.read(evaluation);
+    expect(
+      await store.compareAndSwap(
+        initial.revision,
+        {
+          revision: crypto.randomUUID(),
+          graph: {
+            ...graph,
+            roles: graph.roles.map((role) => ({ ...role, permissions: [] })),
+          },
+        },
+        evaluation,
+      ),
+    ).toBe(true);
+    expect(await policy.evaluate(request, evaluation)).toBe("abstain");
+    const revokedRole = await store.read(evaluation);
+    expect(
+      await store.compareAndSwap(
+        revokedRole.revision,
+        { revision: crypto.randomUUID(), graph },
+        evaluation,
+      ),
+    ).toBe(true);
     expect(await policy.evaluate(request, evaluation)).toBe("allow");
     const before = await store.read(evaluation);
     expect(
