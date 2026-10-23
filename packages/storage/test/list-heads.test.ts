@@ -20,9 +20,9 @@ const metadata = (key: string): ObjectMetadata => ({
 
 test("a malformed provider list is not treated as an empty page", async () => {
   const malformed = {} as unknown as readonly { Key?: string }[];
-  await expect(
-    headListedObjects(malformed, async (key) => metadata(key)),
-  ).rejects.toBeInstanceOf(TypeError);
+  await expect(headListedObjects(malformed, async (key) => metadata(key))).rejects.toBeInstanceOf(
+    TypeError,
+  );
 });
 
 test("list HEADs overlap with bounded fan-out and retain provider order", async () => {
@@ -70,13 +70,10 @@ test("a failed HEAD stops queued reads and waits for the earlier in-flight resul
   const firstFailure = new Error("first key failed");
   const secondFailure = new Error("second key failed");
   let settled = false;
-  const listing = headListedObjects(
-    [{ Key: "a" }, { Key: "b" }, { Key: "c" }],
-    (key) => {
-      started.push(key);
-      return key === "a" ? first.promise : second.promise;
-    },
-  ).then(
+  const listing = headListedObjects([{ Key: "a" }, { Key: "b" }, { Key: "c" }], (key) => {
+    started.push(key);
+    return key === "a" ? first.promise : second.promise;
+  }).then(
     (result) => {
       settled = true;
       return result;
