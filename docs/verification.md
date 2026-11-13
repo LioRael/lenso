@@ -71,3 +71,7 @@ The [review](browser-consumer-sdk-review-2026-11-13.md) records ten new client c
 These runs establish the browser host workflows only in the specifically verified local engines and viewports. They do not establish Firefox, actual Safari or iPhone execution, other JavaScript runtimes, other operating systems, Rust minimum-version compatibility, performance gains or production identity-provider readiness. Lease recovery tests reopen explicitly persisted expired worker state; they do not claim an exhaustive operating-system crash or storage-failure test.
 
 The tables above record local verification. Remote workflow results are tracked separately in [GitHub Actions](https://github.com/LioRael/lenso/actions). GitHub source delivery does not constitute an npm/crates.io release, application deployment or external email delivery. CLI Framework, Official Registry and the full Official Console product remain separate work; the new browser host is a tested reference consumer.
+
+## Registry release verification
+
+Commit `410d6a305ea4d0793ce1e63c9f310797ba733151` passed all three [remote CI jobs](https://github.com/LioRael/lenso/actions/runs/43432814111), including the Chromium browser suite. Both jobs in the [Trusted Publishing workflow](https://github.com/LioRael/lenso/actions/runs/43432833493) passed, publishing all five SDK packages through GitHub OIDC. The [publishing record](publishing.md#verified-release) records the versions and registry evidence separately from the earlier local runs.

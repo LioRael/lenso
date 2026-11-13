@@ -16,6 +16,20 @@ This repository implements the first SDK baseline described in the [Lenso produc
 
 The SDKs use MIT. See [publishing](docs/publishing.md) for registry delivery and Trusted Publishing. `@lenso/console` 3.x provides this headless client; 2.x is the previous Console host with a different API.
 
+Install the core and the optional packages your application needs:
+
+```sh
+npm install @lenso/app@^0.1.1
+npm install @lenso/sqlite@^0.1.1 @lenso/console@^3.0.0
+```
+
+```sh
+cargo add lenso-app@0.1.1
+cargo add lenso-sqlite@0.1.1
+```
+
+The SQLite examples use Node.js 26 or Rust 1.99. The SQLite crate declares Rust 1.89 as its dependency-driven minimum; the core declares 1.85. Minimum-version builds are not yet verified.
+
 ## Run the private file library
 
 The examples provide actual registration, password verification, expiring bearer sessions, owner-protected file upload/download and SQLite persistence. File metadata and bytes live in the same database. Both languages implement the application independently.
