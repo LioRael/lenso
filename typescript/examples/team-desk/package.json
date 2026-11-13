@@ -1,0 +1,21 @@
+{
+  "name": "@lenso/example-team-desk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@lenso/app": "*",
+    "@lenso/sqlite": "*",
+    "zod": "^4.0.0"
+  },
+  "exports": {
+    "./contracts": {
+      "types": "./dist/contracts.d.ts",
+      "default": "./dist/contracts.js"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+[
+  { "subject": "alice", "team": "alpha", "role": "admin", "token": "alice-local-secret-token" },
+  { "subject": "bob", "team": "alpha", "role": "editor", "token": "bob-local-secret-token" },
+  { "subject": "reader", "team": "alpha", "role": "viewer", "token": "reader-local-secret-token" },
+  { "subject": "eve", "team": "beta", "role": "admin", "token": "eve-local-secret-token" }
+]

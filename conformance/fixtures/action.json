@@ -1,0 +1,16 @@
+[
+  {"name":"owner can execute","input":{"owner":"alice","value":7},"subject":"alice","scopes":["files:read"],"mode":"ok","expected":"ok","runs":1},
+  {"name":"anonymous is denied","input":{"owner":"alice","value":7},"scopes":[],"mode":"ok","expected":"unauthenticated","runs":0},
+  {"name":"another owner is denied","input":{"owner":"alice","value":7},"subject":"bob","scopes":["files:read"],"mode":"ok","expected":"forbidden","runs":0},
+  {"name":"scope is required","input":{"owner":"alice","value":7},"subject":"alice","scopes":[],"mode":"ok","expected":"forbidden","runs":0},
+  {"name":"wildcard is not an implicit grant","input":{"owner":"alice","value":7},"subject":"alice","scopes":["*"],"mode":"ok","expected":"forbidden","runs":0},
+  {"name":"domain validation precedes access","input":{"owner":"alice","value":-1},"scopes":[],"mode":"ok","expected":"invalid_input","runs":0},
+  {"name":"malformed external input","input":{"owner":42},"subject":"alice","scopes":["files:read"],"mode":"ok","expected":"invalid_input","runs":0},
+  {"name":"pre-cancelled call","input":{"owner":"alice","value":7},"subject":"alice","scopes":["files:read"],"mode":"cancel_before","expected":"cancelled","runs":0},
+  {"name":"cancellation during authorization","input":{"owner":"alice","value":7},"subject":"alice","scopes":["files:read"],"mode":"cancel_authorize","expected":"cancelled","runs":0},
+  {"name":"handler failure","input":{"owner":"alice","value":7},"subject":"alice","scopes":["files:read"],"mode":"fail","expected":"internal","runs":1},
+  {"name":"invalid output","input":{"owner":"alice","value":7},"subject":"alice","scopes":["files:read"],"mode":"invalid_output","expected":"internal","runs":1},
+  {"name":"late cancellation preserves successful effects","input":{"owner":"alice","value":7},"subject":"alice","scopes":["files:read"],"mode":"cancel_after_effect","expected":"ok","runs":1},
+  {"name":"cooperative handler cancellation","input":{"owner":"alice","value":7},"subject":"alice","scopes":["files:read"],"mode":"cancel_handler","expected":"cancelled","runs":1},
+  {"name":"output invariant failure is not an access denial","input":{"owner":"alice","value":7},"subject":"alice","scopes":["files:read"],"mode":"invalid_output_code","expected":"internal","runs":1}
+]

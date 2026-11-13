@@ -1,0 +1,20 @@
+{
+  "name": "@lenso/example-team-console",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "start": "vite --host 127.0.0.1",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@lenso/app": "*",
+    "@lenso/console": "*",
+    "@lenso/example-team-desk": "*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.8"
+  }
+}

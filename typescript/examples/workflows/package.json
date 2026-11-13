@@ -1,0 +1,7 @@
+{
+  "name": "@lenso/example-workflows",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "start": "node dist/main.js" },
+  "dependencies": { "@lenso/app": "*", "@lenso/sqlite": "*" }
+}

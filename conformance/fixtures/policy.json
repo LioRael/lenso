@@ -1,0 +1,12 @@
+[
+  {"mode":"all","first":"ok","second":"ok","expected":"ok","secondRuns":1},
+  {"mode":"all","first":"forbidden","second":"ok","expected":"forbidden","secondRuns":0},
+  {"mode":"all","first":"internal","second":"ok","expected":"internal","secondRuns":0},
+  {"mode":"any","first":"ok","second":"internal","expected":"ok","secondRuns":0},
+  {"mode":"any","first":"forbidden","second":"ok","expected":"ok","secondRuns":1},
+  {"mode":"any","first":"internal","second":"ok","expected":"internal","secondRuns":0},
+  {"mode":"any","first":"forbidden","second":"internal","expected":"internal","secondRuns":1},
+  {"mode":"any","first":"unauthenticated","second":"unauthenticated","expected":"unauthenticated","secondRuns":1},
+  {"mode":"any","first":"forbidden","second":"unauthenticated","expected":"forbidden","secondRuns":1},
+  {"mode":"any","first":"unauthenticated","second":"forbidden","expected":"forbidden","secondRuns":1}
+]

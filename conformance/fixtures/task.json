@@ -1,0 +1,9 @@
+[
+  {"name":"successful task","maxAttempts":3,"delayMs":0,"retryMs":10,"failures":0,"cancel":false,"steps":[{"now":1000,"state":"succeeded","attempts":1}]},
+  {"name":"delayed first attempt","maxAttempts":3,"delayMs":50,"retryMs":10,"failures":0,"cancel":false,"steps":[{"now":1000,"state":"idle","attempts":0},{"now":1049,"state":"idle","attempts":0},{"now":1050,"state":"succeeded","attempts":1}]},
+  {"name":"retry after failure","maxAttempts":3,"delayMs":0,"retryMs":10,"failures":1,"cancel":false,"steps":[{"now":1000,"state":"queued","attempts":1},{"now":1009,"state":"idle","attempts":1},{"now":1010,"state":"succeeded","attempts":2}]},
+  {"name":"attempt limit","maxAttempts":2,"delayMs":0,"retryMs":10,"failures":9,"cancel":false,"steps":[{"now":1000,"state":"queued","attempts":1},{"now":1010,"state":"failed","attempts":2},{"now":1020,"state":"idle","attempts":2}]},
+  {"name":"cancel queued work","maxAttempts":3,"delayMs":0,"retryMs":10,"failures":0,"cancel":true,"steps":[{"now":1000,"state":"idle","attempts":0}]},
+  {"name":"failed attempt with pending cancellation does not retry","maxAttempts":3,"delayMs":0,"retryMs":10,"failures":1,"cancel":false,"cancelDuring":true,"steps":[{"now":1000,"state":"cancelled","attempts":1},{"now":1010,"state":"idle","attempts":1}]},
+  {"name":"successful effect survives late cancellation","maxAttempts":3,"delayMs":0,"retryMs":10,"failures":0,"cancel":false,"cancelDuring":true,"steps":[{"now":1000,"state":"succeeded","attempts":1}]}
+]

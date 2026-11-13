@@ -1,0 +1,10 @@
+{
+  "name": "@lenso/console",
+  "version": "0.1.0",
+  "description": "Headless client for authorized Lenso Console extensions",
+  "type": "module",
+  "files": ["dist", "README.md"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": { "build": "tsc -p tsconfig.json", "prepack": "npm run build", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": { "@lenso/app": "^0.1.0", "zod": "^4.0.0" }
+}

@@ -1,0 +1,18 @@
+[package]
+name = "lenso-private-files"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+lenso-app = { path = "../../crates/lenso-app", features = ["json"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "signal"] }
+axum = "0.8"
+rusqlite = { version = "0.42", features = ["bundled"] }
+scrypt = "0.11"
+sha2 = "0.10"
+getrandom = "0.3"
+base64 = "0.22"
+subtle = "2"

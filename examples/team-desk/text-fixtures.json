@@ -1,0 +1,22 @@
+[
+  {
+    "name": "bom",
+    "input": "\ufeff Copied text \ufeff",
+    "expected": "Copied text"
+  },
+  {
+    "name": "nel",
+    "input": "\u0085Text\u0085",
+    "expected": "\u0085Text\u0085"
+  },
+  {
+    "name": "nbsp",
+    "input": "\u00a0Text\u3000",
+    "expected": "Text"
+  },
+  {
+    "name": "empty_bom",
+    "input": "\ufeff",
+    "expected": null
+  }
+]

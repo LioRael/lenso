@@ -1,0 +1,28 @@
+{
+  "name": "lenso-sdk-workspace",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "typescript/packages/*",
+    "typescript/examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run build --workspaces",
+    "test": "npm run build && node --test typescript/tests/*.test.mjs",
+    "lint": "oxlint --deny-warnings typescript/packages/*/src typescript/examples/*/src",
+    "private-files": "npm run start --workspace @lenso/example-private-files",
+    "workflows": "npm run start --workspace @lenso/example-workflows",
+    "test:integration": "node --test integration/*.test.mjs",
+    "test:package": "npm run build && node scripts/verify-packages.mjs",
+    "test:browser": "node --test browser/*.test.mjs",
+    "team-console": "node scripts/team-console.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "oxlint": "^1.0.0",
+    "playwright": "^1.65.0",
+    "typescript": "^6.0.0",
+    "vite": "^8.3.8"
+  }
+}

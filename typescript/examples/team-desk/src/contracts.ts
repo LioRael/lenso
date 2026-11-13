@@ -1,0 +1,22 @@
+import { z } from "zod";
+
+export const role = z.enum(["admin", "editor", "viewer"]);
+export const id = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/, "Use 1–64 letters, digits, underscores or hyphens.");
+export const revision = z.number().int().min(1).max(2_147_483_647);
+export const version = z.number().int().min(1).max(2_147_483_646);
+export const identitySchema = z.array(z.object({ token: z.string().min(16), subject: id, team: id, role })).min(1);
+export type Identity = z.infer<typeof identitySchema>[number];
+export const memberSchema = z.object({ subject: id, role });
+export const sessionSchema = memberSchema.extend({ team: id });
+export type Session = z.infer<typeof sessionSchema>;
+export const projectSchema = z.object({ id, name: z.string(), archived: z.number().int().min(0).max(1), version: revision });
+export const itemSchema = z.object({ id, project: id, title: z.string(), assignee: id, status: z.enum(["open", "doing", "done"]), version: revision });
+export type Item = z.infer<typeof itemSchema>;
+export type Project = z.infer<typeof projectSchema>;
+export const changeSchema = z.object({ team: id, recipient: id, item: id, actor: id, kind: z.enum(["created", "assigned", "status"]), version: revision });
+export type Change = z.infer<typeof changeSchema>;
+export const projectInput = z.object({ id, name: z.string().trim().min(1, "Enter a project name.").max(120) });
+export const itemInput = z.object({ id, project: id, title: z.string().trim().min(1, "Enter a work item title.").max(200), assignee: id });
+export const assignInput = z.object({ id, version, assignee: id });
+export const transitionInput = z.object({ id, version, status: itemSchema.shape.status });
+export const setRoleInput = memberSchema;
