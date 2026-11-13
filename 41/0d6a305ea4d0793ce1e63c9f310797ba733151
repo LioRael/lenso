@@ -1,0 +1,33 @@
+rust/crates/lenso-sqlite/src/queue.rs
+  s_f39ab5a4525c9d::t_5dfdb9799303dc 133
+package-lock.json
+  s_f39ab5a4525c9d::t_9e5389292d436a 1457,1465,1471,1474
+rust/Cargo.lock
+  s_f39ab5a4525c9d::t_9149764ab9662c 399,426
+rust/Cargo.toml
+  s_f39ab5a4525c9d::t_bb3ecc40eb3bfa 6
+rust/crates/lenso-sqlite/Cargo.toml
+  s_f39ab5a4525c9d::t_8572eff8b7c404 13
+typescript/packages/app/package.json
+  s_f39ab5a4525c9d::t_c5195fe895296c 3
+typescript/packages/console/package.json
+  s_f39ab5a4525c9d::t_69ead230fa4491 22
+typescript/packages/sqlite/package.json
+  s_f39ab5a4525c9d::t_9110939a1144fc 3,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "410d6a305ea4d0793ce1e63c9f310797ba733151",
+  "prompts": {},
+  "sessions": {
+    "s_f39ab5a4525c9d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d24b-3bc2-75a2-bc19-662014c23cfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
