@@ -1,0 +1,526 @@
+typescript/examples/team-desk/src/server.ts
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 9-10
+  s_f39ab5a4525c9d::t_1497b8191a2995 1-8,11-72
+  s_f39ab5a4525c9d::t_63702426089439 73
+README.md
+  s_f39ab5a4525c9d::t_17cff4a9340cae 80
+  s_f39ab5a4525c9d::t_3bc9edebe11f2c 15
+  s_f39ab5a4525c9d::t_c0ec7d8f7cec7c 65
+  s_f39ab5a4525c9d::t_423fc84bb47abe 104
+  s_f39ab5a4525c9d::t_e0d010688c327c 1-14,16-64,66-79,81-103
+rust/crates/lenso-app/src/access.rs
+  s_f39ab5a4525c9d::t_05724bf07af7c2 9-13,24-28,32-39,48-53
+  s_f39ab5a4525c9d::t_7d4a853b35a2c4 2-8,14-23,29-31,40-47,54-57,90,123,135
+  s_f39ab5a4525c9d::t_f4c4b377b07594 58-89,91-92,100,103-104,108,111-112,124,127-128,136
+  s_f39ab5a4525c9d::t_467acc474712a7 1,93-99,101-102,105-107,109-110,113-122,125-126,129-134
+rust/crates/lenso-app/src/module.rs
+  s_f39ab5a4525c9d::t_24792eb4954d41 15-18
+  s_f39ab5a4525c9d::t_f4c4b377b07594 28,33-34,39-40,42-54,56,59-60,64-66,71,76,89,126,131,152
+  s_f39ab5a4525c9d::t_820c6ac9d9989c 1-14,19-27,29-32,35-38,41,55,57-58,61-63,67-70,72-75,77-88,90-125,127-130,132-151,153
+typescript/packages/app/src/task.ts
+  s_f39ab5a4525c9d::t_ba9ccd8d0f14c6 10-16
+  s_f39ab5a4525c9d::t_4d07ee7f2b8c2e 6-9,17-22,42-43
+  s_f39ab5a4525c9d::t_36dabfdd3c3a12 4,29,31-35,41
+  s_f39ab5a4525c9d::t_09fdc98ecb4825 1-3,5,23-28,30,36-40
+typescript/examples/private-files/package.json
+  s_f39ab5a4525c9d::t_0c72ebacab49ed 10
+  s_c5695907fe744f::t_aba722a1d8c7c1 1-9,11
+typescript/tests/module-events-console.test.mjs
+  s_f39ab5a4525c9d::t_cbd2fd55fef269 6
+  s_f39ab5a4525c9d::t_8fff510ab17faa 1-5,7-47
+rust/crates/lenso-app/README.md
+  s_f39ab5a4525c9d::t_d008ec3bc2055c 40-43
+  s_f39ab5a4525c9d::t_17cff4a9340cae 46-47
+  s_f39ab5a4525c9d::t_9629c57ca990c9 1-39,44-45
+rust/examples/team-desk/src/main.rs
+  s_f39ab5a4525c9d::t_a13349549d8299 255
+  s_f39ab5a4525c9d::t_d2cb1bc15ad558 191-199,292,294
+  s_f39ab5a4525c9d::t_deec971a7c5a9b 186-188,234-247,249-252,254,256-258,260,267-273,276-286,289-291,293,295-305
+  s_f39ab5a4525c9d::t_3d70796e0c9dd2 261-266
+  s_f39ab5a4525c9d::t_7e88401a8caf46 1-24,27-107,109-111,113-116,118-121,123-126,128-144,146-150,152-167,169-185,189-190,200-209,211-233,306
+  s_f39ab5a4525c9d::t_ad601bad7006cf 25-26
+  s_f39ab5a4525c9d::t_98b5f374c34e16 108,112,117,122,127,145,151,168,210,248,253,259,274-275,287-288
+docs/post-team-sdk-review-2026-11-13.md
+  s_f39ab5a4525c9d::t_06f6f083343e0c 1-73
+.github/workflows/ci.yml
+  s_f39ab5a4525c9d::t_51ab244af5445b 49-50
+  s_f39ab5a4525c9d::t_aaa341cf50706f 1-48
+typescript/tests/console-consumer-review.test.mjs
+  s_f39ab5a4525c9d::t_132a1f0c667870 18
+  s_f39ab5a4525c9d::t_9a6637ef865845 17,65-75
+  s_f39ab5a4525c9d::t_41c4f3fdf66190 1-16,19-64
+typescript/packages/sqlite/src/index.ts
+  s_f39ab5a4525c9d::t_15b95d3bcf6cc5 4-74,82,94-116,119,121-141,146,154,160-174,177,184,190-231,235,240-241
+  s_f39ab5a4525c9d::t_3bfe56e9e5d147 86-89,117-118,120
+  s_f39ab5a4525c9d::t_0dc73c6cc8a71d 77,157
+  s_f39ab5a4525c9d::t_610458d03e1577 78-81,178-183
+  s_c5695907fe744f::t_09c3e8233d61cb 1-3,75-76,83-85,90-93,142-145,147-153,155-156,158-159,175-176,185-189,232-234,236-239
+typescript/packages/app/src/events.ts
+  s_f39ab5a4525c9d::t_4d07ee7f2b8c2e 3-36,38,46-51
+  s_f39ab5a4525c9d::t_0dc73c6cc8a71d 37
+  s_f39ab5a4525c9d::t_3bfe56e9e5d147 39,43-45
+  s_f39ab5a4525c9d::t_d89c204ab3a880 40-42
+  s_c5695907fe744f::t_ed0d5a204a02e7 1-2
+docs/ergonomics-2026-11-13.md
+  s_f39ab5a4525c9d::t_66b197be7350da 32
+  s_f39ab5a4525c9d::t_2582a4cdb1bbab 1-4,7-31,33-41
+  s_f39ab5a4525c9d::t_06f6f083343e0c 5
+  s_f39ab5a4525c9d::t_ed86f640520416 6
+typescript/examples/team-desk-console/vite.config.ts
+  s_f39ab5a4525c9d::t_c00f8b0be8ff74 1-9
+typescript/examples/private-files/src/store.ts
+  s_f39ab5a4525c9d::t_1838d575ca804f 3-95
+  s_fc9d04ec742532::t_30ca9f7566e899 1-2,96-106
+docs/review-2026-11-13.md
+  s_f39ab5a4525c9d::t_1baeaa47548a84 31
+  s_f39ab5a4525c9d::t_3bc9edebe11f2c 1-30,32-45
+docs/verification.md
+  s_f39ab5a4525c9d::t_ebbe0288272bf5 10,24-25,29-31,37-39
+  s_f39ab5a4525c9d::t_423fc84bb47abe 1-6,8,13-16,20-23,26-28,32-36,40-41,54,69-70,72
+  s_f39ab5a4525c9d::t_bc55eccc85d68e 9,17-18,57-67
+  s_f39ab5a4525c9d::t_06f6f083343e0c 11,48-52
+  s_f39ab5a4525c9d::t_e403a2b521b432 19,45,53
+  s_f39ab5a4525c9d::t_54ba075c3d95db 7,12,42-44,46-47,55-56,68,71,73
+rust/crates/lenso-app/src/resource.rs
+  s_f39ab5a4525c9d::t_f4c4b377b07594 1-23,25-41,43-91,93-96,101-113
+  s_f39ab5a4525c9d::t_7632234ba860f2 24,42,92,97-100
+conformance/fixtures/policy.json
+  s_f39ab5a4525c9d::t_dd772333f0987d 1-12
+examples/team-desk/identities.example.json
+  s_f39ab5a4525c9d::t_3a53bf2c907ba5 1-6
+docs/browser-consumer-sdk-review-2026-11-13.md
+  s_f39ab5a4525c9d::t_bc55eccc85d68e 1-15,17-32
+  s_f39ab5a4525c9d::t_4b0518d9267abc 16
+rust/crates/lenso-app/src/lib.rs
+  s_f39ab5a4525c9d::t_24792eb4954d41 7,13,21-22,24,30
+  s_f39ab5a4525c9d::t_05724bf07af7c2 16-19
+  s_f39ab5a4525c9d::t_f4c4b377b07594 12,29
+  s_f39ab5a4525c9d::t_cddc989db86e91 1-6,8-11,14-15,20,23,25-28,31-32
+typescript/examples/team-desk/src/store.ts
+  s_f39ab5a4525c9d::t_1497b8191a2995 29,31,34
+  s_f39ab5a4525c9d::t_111954df5de26f 1-7,10-22,24-28,30,32-33,35-67
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 8-9
+  s_f39ab5a4525c9d::t_2704275806bbb2 23
+typescript/packages/console/src/index.ts
+  s_f39ab5a4525c9d::t_0c037ed15fb67d 60
+  s_f39ab5a4525c9d::t_e22a05c3a01e33 2-3,62-70,77-90,92-111,118
+  s_f39ab5a4525c9d::t_9a6637ef865845 71-76
+  s_f39ab5a4525c9d::t_e9636dcd6c3d18 4-35,116,119
+  s_f39ab5a4525c9d::t_132a1f0c667870 91
+  s_f39ab5a4525c9d::t_962c028d25d8c0 1,36-59,61,112-115,117
+typescript/packages/app/README.md
+  s_f39ab5a4525c9d::t_5a0fde9b8b3109 7,9,12,14,19,23-24
+  s_f39ab5a4525c9d::t_d008ec3bc2055c 6,8,10,13,16-18,21-22,26,30
+  s_f39ab5a4525c9d::t_17cff4a9340cae 33-34
+  s_f39ab5a4525c9d::t_216dd43cbda212 28-29
+  s_f39ab5a4525c9d::t_bc55eccc85d68e 35-36
+  s_f39ab5a4525c9d::t_4b2fcb0f0c69f5 1-5,11,15,20,25,27,31-32
+rust/examples/team-desk/src/notifications.rs
+  s_f39ab5a4525c9d::t_d2cb1bc15ad558 77-78,80-81,83
+  s_f39ab5a4525c9d::t_f9febed921970c 4,7
+  s_f39ab5a4525c9d::t_7e88401a8caf46 2-3,6,8-16,20-48,50-65,68-76,84
+  s_f39ab5a4525c9d::t_33a9f9331fe8f8 1,5,17-19,49,66-67,79,82,85-86
+rust/crates/lenso-sqlite/tests/review.rs
+  s_f39ab5a4525c9d::t_692831fc0b1e00 216-219,223-228,230-235,241-244,248-264,269-272,274-281,290,296,308
+  s_f39ab5a4525c9d::t_b033e0b61649f6 189-192,198-199,209
+  s_f39ab5a4525c9d::t_4db9478eea007e 210-215,220-222,229,236-240,245-247,317
+  s_f39ab5a4525c9d::t_216dd43cbda212 265-268,273,282-289,291-295,297-307,309-316
+  s_f39ab5a4525c9d::t_ba9ccd8d0f14c6 36-37,46-50,54,60-63,150-163
+  s_f39ab5a4525c9d::t_f8046b7cac7b4f 38-45,51-53,55-59
+  s_f39ab5a4525c9d::t_05724bf07af7c2 193-197,200-208
+  s_f39ab5a4525c9d::t_cbd2fd55fef269 1-5,7,9-24,26-32,34-35,64-67,69,71-140,142,144-149,164-188
+  s_f39ab5a4525c9d::t_5af6cc63c57e09 6,8,25,33,68,70,141,143
+typescript/examples/team-desk/package.json
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 2-20
+  s_f39ab5a4525c9d::t_111954df5de26f 1,21
+typescript/packages/app/src/index.ts
+  s_f39ab5a4525c9d::t_758df6261dbf00 14
+  s_f39ab5a4525c9d::t_36dabfdd3c3a12 16
+  s_f39ab5a4525c9d::t_e22a05c3a01e33 13
+  s_f39ab5a4525c9d::t_4d07ee7f2b8c2e 3-12,17-18
+  s_c5695907fe744f::t_d6ad27dd5d082d 1-2,15
+typescript/tests/console-browser.test.mjs
+  s_f39ab5a4525c9d::t_9f877dabf638e4 1-4,6-10,16-17
+  s_f39ab5a4525c9d::t_857d916107f8e3 5,11-15
+typescript/tests/action.test.mjs
+  s_f39ab5a4525c9d::t_9270be0ae46dc2 46
+  s_f39ab5a4525c9d::t_cf4e39b4b4be0d 1-45,47-102
+examples/team-desk/schema.sql
+  s_f39ab5a4525c9d::t_111954df5de26f 1-25
+docs/team-desk-assessment-2026-11-13.md
+  s_f39ab5a4525c9d::t_06f6f083343e0c 39-40,46,48,50
+  s_f39ab5a4525c9d::t_e403a2b521b432 31
+  s_f39ab5a4525c9d::t_bc55eccc85d68e 37,41-45,47,49,58-59
+  s_f39ab5a4525c9d::t_22210382454aae 1-6,8-30,32-36,38
+  s_f39ab5a4525c9d::t_f0109b4c14a33b 7,51-57
+rust/crates/lenso-sqlite/src/lib.rs
+  s_f39ab5a4525c9d::t_e9636dcd6c3d18 6,8
+  s_f39ab5a4525c9d::t_6c2baf2fa9684e 1-5,7,9
+rust/examples/private-files/src/console.rs
+  s_f39ab5a4525c9d::t_eade4f6b4db29c 2-98
+  s_f39ab5a4525c9d::t_145b164f70d516 1
+conformance/fixtures/task.json
+  s_f39ab5a4525c9d::t_ec15152725f8b6 6-8
+  s_f39ab5a4525c9d::t_495e05e1f5abde 1-5,9
+rust/examples/team-desk/src/store.rs
+  s_f39ab5a4525c9d::t_1497b8191a2995 15-26,28-30,41-61,63-71,73-74,80-87,89-94,96-101,103-104,110-119,121-126,128-132,134-135,141-150,152-160,162-167,169-171,174-177,179-182,185,187,190-195,197-199,201-203,205-206,208-212,214-226,228-237,239-242,244-255,257-262,264-275,277-289,291-296,298-301
+  s_f39ab5a4525c9d::t_2704275806bbb2 188
+  s_f39ab5a4525c9d::t_3d70796e0c9dd2 31-40
+  s_f39ab5a4525c9d::t_deec971a7c5a9b 136-138,140
+  s_f39ab5a4525c9d::t_f9febed921970c 1
+  s_f39ab5a4525c9d::t_dd2a0b1ae0726a 2-14,27,62,72,75-79,88,95,102,105-109,120,127,133,139,151,161,168,172-173,178,183-184,186,189,196,200,204,207,213,227,238,243,256,263,276,290,297
+integration/helpers/team-desk.mjs
+  s_f39ab5a4525c9d::t_c00f8b0be8ff74 1-50
+typescript/examples/private-files/src/app.ts
+  s_f39ab5a4525c9d::t_1838d575ca804f 8
+  s_f39ab5a4525c9d::t_b367eecb4f8798 1-3,5-7,9-86,90-106
+  s_f39ab5a4525c9d::t_1dcd591f1c6436 4,87-89
+typescript/packages/app/src/console.ts
+  s_f39ab5a4525c9d::t_4657685187507f 31,33-36,43
+  s_f39ab5a4525c9d::t_5968c82a5ac5b7 3-10,12-14,17-19,23-29,47,49-53,55-56,60-66,70-71
+  s_f39ab5a4525c9d::t_24792eb4954d41 44-46,111,113
+  s_f39ab5a4525c9d::t_c3715ae01f9eb4 57,59
+  s_f39ab5a4525c9d::t_e22a05c3a01e33 58,75,81,85-105,114-118
+  s_f39ab5a4525c9d::t_758df6261dbf00 15-16,20-22,30,32,37-42,48,54
+  s_c5695907fe744f::t_61e6a04d2edb63 1-2,11,67-69,72-74,76-80,82-84,106-110,112
+typescript/packages/console/README.md
+  s_f39ab5a4525c9d::t_1baeaa47548a84 14-18
+  s_f39ab5a4525c9d::t_c0ec7d8f7cec7c 23
+  s_f39ab5a4525c9d::t_bc55eccc85d68e 24-27
+  s_f39ab5a4525c9d::t_d008ec3bc2055c 3-13,20-21
+  s_f39ab5a4525c9d::t_4a6b36db179d65 1-2,19,22
+typescript/examples/team-desk/src/projects.ts
+  s_f39ab5a4525c9d::t_ad601bad7006cf 2,44
+  s_f39ab5a4525c9d::t_1497b8191a2995 1,5-18,20-43,45-47
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 3-4,19
+typescript/tests/task.test.mjs
+  s_f39ab5a4525c9d::t_0173c720e0c6dd 127-128
+  s_f39ab5a4525c9d::t_e92e383a39e549 140-146
+  s_f39ab5a4525c9d::t_ec15152725f8b6 21-48,54,67,78,93,96-97,112-113,116-117,129-130,133-135,147-148,151-152,160-161
+  s_f39ab5a4525c9d::t_cdf040049a7e75 1-20,49-53,55-66,68-77,79-92,94-95,98-111,114-115,118-126,131-132,136-139,149-150,153-159
+typescript/packages/app/src/schema.ts
+  s_f39ab5a4525c9d::t_4d07ee7f2b8c2e 1-11
+integration/team-desk.test.mjs
+  s_f39ab5a4525c9d::t_c00f8b0be8ff74 2,5
+  s_f39ab5a4525c9d::t_a13349549d8299 103,129-147
+  s_f39ab5a4525c9d::t_deec971a7c5a9b 93-102,104-113
+  s_f39ab5a4525c9d::t_6406231911c8df 1,3-4,6-36,38,43-45,47-50,52,54-56,58-61,63-92
+  s_f39ab5a4525c9d::t_3a53bf2c907ba5 37,39-42,46,51,53,57,62,114-128
+  s_f39ab5a4525c9d::t_e2f79f22e243af 148-159
+examples/team-desk/text-fixtures.json
+  s_f39ab5a4525c9d::t_a13349549d8299 1-22
+rust/examples/team-desk/src/members.rs
+  s_f39ab5a4525c9d::t_d2cb1bc15ad558 119-120,125-128
+  s_f39ab5a4525c9d::t_7e88401a8caf46 3-7,9-10,15,19,24-25,27,30-52,54,56-61,63-82,84-89,91-104,106-113,115-118,121-123,129
+  s_f39ab5a4525c9d::t_deec971a7c5a9b 11-12,14
+  s_f39ab5a4525c9d::t_f867fe753717ae 1-2,8,13,16-18,20-23,26,28-29,53,55,62,83,90,105,114,124,130-147
+typescript/examples/team-desk-console/src/ui.ts
+  s_f39ab5a4525c9d::t_b4ec597143f611 41-43,84,119
+  s_f39ab5a4525c9d::t_b7a5c05d69667c 18-19,46
+  s_f39ab5a4525c9d::t_0b705a99872f1f 1-17,20-40,44-45,47,58-83,85-118,120-142
+  s_f39ab5a4525c9d::t_094fa2a22e42bf 48-57
+rust/examples/team-desk/src/projects.rs
+  s_f39ab5a4525c9d::t_d2cb1bc15ad558 158-159,165-168
+  s_f39ab5a4525c9d::t_deec971a7c5a9b 11-12,14,16-17,19
+  s_f39ab5a4525c9d::t_7e88401a8caf46 3,5-7,9-10,15,20-65,68-79,83-89,91-96,98-104,106-130,132-137,139-148,150-157,160-164,169
+  s_f39ab5a4525c9d::t_ad601bad7006cf 4
+  s_f39ab5a4525c9d::t_3d70796e0c9dd2 80-82,105
+  s_f39ab5a4525c9d::t_4b3ef35e2a84c2 1-2,8,13,18,66-67,90,97,131,138,149
+typescript/examples/team-desk-console/index.html
+  s_f39ab5a4525c9d::t_8bbb0cca063cd9 1-3
+rust/examples/private-files/src/main.rs
+  s_f39ab5a4525c9d::t_b74da0019e4f33 5-15,17-64,66-143,145-169,182,194
+  s_f39ab5a4525c9d::t_2b74c6e08a52af 1-4,16,65,144,170-181,183-193
+scripts/team-console.mjs
+  s_f39ab5a4525c9d::t_37967f27a54911 1-47
+scripts/verify-packages.mjs
+  s_f39ab5a4525c9d::t_cbd2fd55fef269 27,44-45,51-59,64-65
+  s_f39ab5a4525c9d::t_030c909dcd9cbc 31,70,73-83
+  s_f39ab5a4525c9d::t_b033e0b61649f6 28,46-50
+  s_f39ab5a4525c9d::t_5b5cc665128400 22-25,62-63
+  s_f39ab5a4525c9d::t_0dc73c6cc8a71d 60-61
+  s_f39ab5a4525c9d::t_010c5f3188cfa5 1-21,26,29-30,32-43,66-69,71-72,84-114
+typescript/packages/app/src/resource.ts
+  s_f39ab5a4525c9d::t_4d07ee7f2b8c2e 4-5,7-75
+  s_f39ab5a4525c9d::t_2b6102da9e4b90 1-3,6
+typescript/packages/console/package.json
+  s_f39ab5a4525c9d::t_5b5cc665128400 8
+  s_f39ab5a4525c9d::t_ff332db00fae3d 1-7,9-10
+typescript/tests/post-team-review.test.mjs
+  s_f39ab5a4525c9d::t_c401f126bbda70 1-67
+  s_f39ab5a4525c9d::t_692831fc0b1e00 68-93
+  s_f39ab5a4525c9d::t_c3715ae01f9eb4 94-109
+rust/examples/team-desk/Cargo.toml
+  s_f39ab5a4525c9d::t_1497b8191a2995 1-14
+typescript/examples/team-desk/src/members.ts
+  s_f39ab5a4525c9d::t_1497b8191a2995 1,5-6,8,18,20,22-23,25-33,37-38
+  s_f39ab5a4525c9d::t_ad601bad7006cf 2,35
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 3-4,7,9-17,24,34,36
+  s_f39ab5a4525c9d::t_4cc1929eb91601 19,21
+rust/crates/lenso-app/src/action.rs
+  s_f39ab5a4525c9d::t_3165eb11d45eb9 91
+  s_f39ab5a4525c9d::t_24792eb4954d41 32,51,73,100,111-113,117,130,162,203
+  s_f39ab5a4525c9d::t_36dabfdd3c3a12 157,179-185
+  s_f39ab5a4525c9d::t_b1cfd592743685 110,136
+  s_f39ab5a4525c9d::t_facf788ef37a1f 1-31,33-50,52-72,74-90,92-99,101-109,114-116,118-129,131-135,137-156,158-161,163-178,186-202,204
+rust/examples/workflows/src/main.rs
+  s_f39ab5a4525c9d::t_eade4f6b4db29c 13-36,38-46,110,125-130,132-135,148,178,225,228-230,232-239,241-250
+  s_f39ab5a4525c9d::t_0489c8daac6909 55,61,65-67,69-92,94-95,102,106,112,115,137-138,143,150,157,171-172,180,183,190-191,203-213,215,265,275,287,304
+  s_f39ab5a4525c9d::t_8a0ef5c501cdc5 1-12,37,47-54,56-60,62-64,68,93,96-101,103-105,107-109,111,113-114,116-124,131,136,139-142,144-147,149,151-156,158-170,173-177,179,181-182,184-189,192-202,214,216-224,226-227,231,240,251-264,266-274,276-286,288-303
+typescript/packages/sqlite/package.json
+  s_f39ab5a4525c9d::t_5b5cc665128400 11
+  s_f39ab5a4525c9d::t_f4b31af63b3309 1-10,12-15
+typescript/packages/sqlite/README.md
+  s_f39ab5a4525c9d::t_216dd43cbda212 33-34
+  s_f39ab5a4525c9d::t_d008ec3bc2055c 8-32
+  s_f39ab5a4525c9d::t_3d4bbd1e714c97 1-7
+examples/team-desk/README.md
+  s_f39ab5a4525c9d::t_3a53bf2c907ba5 1-2,4-24,26,28,33-61,63-69
+  s_f39ab5a4525c9d::t_66b197be7350da 25,62
+  s_f39ab5a4525c9d::t_17cff4a9340cae 3,27,29-32,70
+rust/crates/lenso-sqlite/src/queue.rs
+  s_f39ab5a4525c9d::t_0173c720e0c6dd 133,138
+  s_f39ab5a4525c9d::t_f2cc98e4fc9d7e 8-80,96-105,107-109,115,120-121,125,128,131,142-254,257,263,268-269,272,275,277,280-281,284,287,314,317,325,327-384,386-392,394-406,408-421,428-446,448-466,472,476-481,483-571,575-576,579,591,594,600,625,629,635,637-661
+  s_f39ab5a4525c9d::t_e9bffa1f42ab31 285-286,288,292-313,318-319,427,580
+  s_f39ab5a4525c9d::t_5e06229a2613f9 289-291
+  s_f39ab5a4525c9d::t_1baeaa47548a84 266-267
+  s_f39ab5a4525c9d::t_e9636dcd6c3d18 81-95,106,467-470
+  s_f39ab5a4525c9d::t_610458d03e1577 611
+  s_f39ab5a4525c9d::t_f8046b7cac7b4f 134-137,139-141
+  s_f39ab5a4525c9d::t_b033e0b61649f6 606-607
+  s_f39ab5a4525c9d::t_f9df52910cd115 616-621
+  s_f39ab5a4525c9d::t_6893c230029a89 1-7,110-114,116-119,122-124,126-127,129-130,132,255-256,258-262,264-265,270-271,273-274,276,278-279,282-283,315-316,320-324,326,385,393,407,422-426,447,471,473-475,482,572-574,577-578,581-590,592-593,595-599,601-605,608-610,612-615,622-624,626-628,630-634,636
+typescript/examples/team-desk-console/README.md
+  s_f39ab5a4525c9d::t_17cff4a9340cae 1-35,37-61,63-64
+  s_f39ab5a4525c9d::t_0c037ed15fb67d 62
+  s_f39ab5a4525c9d::t_bc55eccc85d68e 36,65-66
+rust/crates/lenso-app/src/durable_event.rs
+  s_f39ab5a4525c9d::t_f2cc98e4fc9d7e 16-23,25-28,30-31,33-36
+  s_f39ab5a4525c9d::t_f4c4b377b07594 1-15,37-40,42-46,48-63,65-90,92-97,99-100,103-119,121-125,127-129
+  s_f39ab5a4525c9d::t_053a5480e09fff 24,29,32,41,47,64,91,98,101-102,120,126
+typescript/examples/team-desk/src/app.ts
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 19
+  s_f39ab5a4525c9d::t_1497b8191a2995 1-18,20-26
+typescript/examples/private-files/src/server.ts
+  s_f39ab5a4525c9d::t_0c72ebacab49ed 2-61,79,91-92
+  s_f39ab5a4525c9d::t_ea4b930c28fe4f 1,62-78,80-90,93
+typescript/examples/workflows/src/main.ts
+  s_f39ab5a4525c9d::t_e8ad15daf87d0f 4-88,97-101,109
+  s_f39ab5a4525c9d::t_b74da0019e4f33 95
+  s_f39ab5a4525c9d::t_aba8edbec95524 1-3,89-94,96,102-108
+typescript/examples/team-desk/src/contracts.ts
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 1-22
+typescript/examples/team-desk/tsconfig.json
+  s_f39ab5a4525c9d::t_111954df5de26f 1-5
+docs/status.md
+  s_f39ab5a4525c9d::t_06f6f083343e0c 31-32
+  s_f39ab5a4525c9d::t_e3d2763bfe2f62 7-12,24-25
+  s_f39ab5a4525c9d::t_bc55eccc85d68e 38-39
+  s_f39ab5a4525c9d::t_326cac2d22c619 1-6,13-23,26-30,33-37
+typescript/packages/app/src/action.ts
+  s_f39ab5a4525c9d::t_61314b879171e3 13,54,99
+  s_f39ab5a4525c9d::t_b1cfd592743685 49-51,115
+  s_f39ab5a4525c9d::t_3bfe56e9e5d147 18-21,96,102
+  s_f39ab5a4525c9d::t_36dabfdd3c3a12 104
+  s_f39ab5a4525c9d::t_1838d575ca804f 26-32
+  s_f39ab5a4525c9d::t_0dc73c6cc8a71d 53,59-61
+  s_f39ab5a4525c9d::t_4d07ee7f2b8c2e 4,11,16-17,22,24-25,33-34,41,47,72,77-81,100,103,105-106,124-129,134
+  s_f39ab5a4525c9d::t_d83650921c8904 67-70,73,76,101
+  s_c5695907fe744f::t_7b2470a020c6e6 1-3,5-10,12,14-15,23,35-40,42-46,48,52,55-58,62-66,71,74-75,82-95,97-98,107-114,116-123,130-133
+browser/team-desk.test.mjs
+  s_f39ab5a4525c9d::t_c00f8b0be8ff74 1-11,13-38,40-42,44-53,55-75,77-87,89-116,118-121
+  s_f39ab5a4525c9d::t_51ab244af5445b 54,181-185
+  s_f39ab5a4525c9d::t_9fc84f5d67e89b 122-132,134-145,147-159,161-180,186,216-217,239,267
+  s_f39ab5a4525c9d::t_2fddd6fbb17fea 39,43,76,88,117,133,146,160,187-215,225,231,248,256
+  s_f39ab5a4525c9d::t_897e791259ed6c 12
+  s_f39ab5a4525c9d::t_e4339a50fba516 218-224,226-230,232-238,240-247,249-255,257-266
+rust/crates/lenso-app/src/console.rs
+  s_f39ab5a4525c9d::t_758df6261dbf00 52-65,93-95,129-131,157-159,183-185
+  s_f39ab5a4525c9d::t_24792eb4954d41 3-4,17-22,24-36,43-51,90-91,96,108-109,111,114-124,126-127,132-135,137-144,146-155,166-167,169,171-181,191-198,202-209,211-221,223,229-232,247,259,263-264,309
+  s_f39ab5a4525c9d::t_b1cfd592743685 23,37-39,41-42,97-99,101-102,104-106,113,162,188,199-201,224-228
+  s_f39ab5a4525c9d::t_d91766ba5bb434 66-70,79,84-89
+  s_f39ab5a4525c9d::t_d2cb1bc15ad558 71-78,80-83,161,187
+  s_f39ab5a4525c9d::t_d7bb176d4fb498 170,210,267-302,308
+  s_f39ab5a4525c9d::t_b74da0019e4f33 103,107,110
+  s_f39ab5a4525c9d::t_c87558b138f2ee 1-2,5-16,40,92,100,112,125,128,136,145,156,160,163-165,168,182,186,189-190,222,233-246,248-258,260-262,265-266,303-307,310-320
+package.json
+  s_f39ab5a4525c9d::t_5b5cc665128400 11
+  s_f39ab5a4525c9d::t_37967f27a54911 17-26
+  s_f39ab5a4525c9d::t_796da76a233275 1-10,12-16,27-28
+typescript/packages/app/src/access.ts
+  s_f39ab5a4525c9d::t_4d07ee7f2b8c2e 2-15,17-20,22-23,25-26,32,37,43,49
+  s_f39ab5a4525c9d::t_f4c4b377b07594 16,21,24
+  s_c5695907fe744f::t_2a92012f274b85 1,27-31,33-36,38-42,44-48
+rust/crates/lenso-sqlite/README.md
+  s_f39ab5a4525c9d::t_3165eb11d45eb9 22-40
+  s_f39ab5a4525c9d::t_d008ec3bc2055c 41-42
+  s_f39ab5a4525c9d::t_99aa947e817af7 1-21
+rust/crates/lenso-app/tests/review.rs
+  s_f39ab5a4525c9d::t_d2cb1bc15ad558 307-355
+  s_f39ab5a4525c9d::t_c3715ae01f9eb4 367
+  s_f39ab5a4525c9d::t_9270be0ae46dc2 1-6,8-11,13-22,24-30,32-64,95-96,98-108,110-134,136-141,143,145-154,156,158,160-192,194-263,265-266,268-306,395
+  s_f39ab5a4525c9d::t_7d4a853b35a2c4 65-66,69-70,91-94
+  s_f39ab5a4525c9d::t_05724bf07af7c2 67-68,71-90
+  s_f39ab5a4525c9d::t_9ad0da6f71b580 356-366,368-394
+  s_f39ab5a4525c9d::t_931575d88ec45e 7,12,23,31,97,109,135,142,144,155,157,159,193,264,267,396-398
+typescript/packages/app/src/module.ts
+  s_f39ab5a4525c9d::t_0dc73c6cc8a71d 9
+  s_f39ab5a4525c9d::t_4657685187507f 40
+  s_f39ab5a4525c9d::t_92c8d1954eceba 8
+  s_f39ab5a4525c9d::t_5968c82a5ac5b7 2-4
+  s_f39ab5a4525c9d::t_1838d575ca804f 7
+  s_f39ab5a4525c9d::t_42e6389d5d3d4b 1
+  s_f39ab5a4525c9d::t_03694a4232d276 5-6
+  s_f39ab5a4525c9d::t_454f7fe9a283f2 10-12,37-39
+  s_f39ab5a4525c9d::t_d878d7793c3246 41-43
+conformance/fixtures/action.json
+  s_f39ab5a4525c9d::t_9270be0ae46dc2 14-15
+  s_f39ab5a4525c9d::t_2d2de231d3303c 1-13,16
+rust/crates/lenso-app/tests/action.rs
+  s_f39ab5a4525c9d::t_9270be0ae46dc2 47,54,62,65,68,76-78,80-81,86,169
+  s_f39ab5a4525c9d::t_e8ae8d22a517c7 1-46,48-53,55-61,63-64,66-67,69-75,79,82-85,87-168,170-211
+typescript/examples/team-desk-console/src/pages.ts
+  s_f39ab5a4525c9d::t_887d0224ed2de4 1-11,13,15,18-34,36-48,50-67,69-72,74-89,91-96,98-111,113-120,124-150,152-155,158-176,178-184,186-206,208-209
+  s_f39ab5a4525c9d::t_b4ec597143f611 35,49,97,112,177
+  s_f39ab5a4525c9d::t_094fa2a22e42bf 68,151,185,207
+  s_f39ab5a4525c9d::t_b7a5c05d69667c 12,14,16-17,73,90,121-123,156-157
+rust/crates/lenso-sqlite/tests/queue.rs
+  s_f39ab5a4525c9d::t_14efc40cc46183 19,70,76,79-82,106,135-136,196,203,256,262,278,338,375,392,421,423,425-426,490,492,527
+  s_f39ab5a4525c9d::t_56ea82acebfe6c 83-105,107-134,147,153-155,157,163,205-206,208,210-214,216-217,219,222-225,232-233,240,255,324,326,329-330,337,350-353,355-358,372,399-402,404-409,412-415,431,485-489,507,509,522-523,526
+  s_f39ab5a4525c9d::t_e92e383a39e549 432-480
+  s_f39ab5a4525c9d::t_2a526e59cd8fe0 29-31,33-40,148-152,167,194,266-267,274,368,381-382
+  s_f39ab5a4525c9d::t_ec15152725f8b6 18,20-28,32,41-68,195,264-265,268,277,379-380,383,391
+  s_f39ab5a4525c9d::t_0173c720e0c6dd 418-420
+  s_f39ab5a4525c9d::t_3e636e6d228015 1-17,69,71-75,77-78,137-146,156,158-162,164-166,168-193,197-202,204,207,209,215,218,220-221,226-231,234-239,241-254,257-261,263,269-273,275-276,279-323,325,327-328,331-336,339-349,354,359-367,369-371,373-374,376-378,384-390,393-398,403,410-411,416-417,422,424,427-430,481-484,491,493-506,508,510-521,524-525
+rust/examples/team-desk/src/items.rs
+  s_f39ab5a4525c9d::t_3d70796e0c9dd2 146-148,166
+  s_f39ab5a4525c9d::t_d2cb1bc15ad558 259-262,269-272
+  s_f39ab5a4525c9d::t_deec971a7c5a9b 34-37,39,41-43,45,47-49,51-54
+  s_f39ab5a4525c9d::t_f9febed921970c 1,6,8-32
+  s_f39ab5a4525c9d::t_7e88401a8caf46 4,7,33,40,46,55-59,61-71,73-79,81-129,132-145,149-155,157-165,167-186,188-201,203-225,227-232,234-249,251-258,263-268,273
+  s_f39ab5a4525c9d::t_8f1d17aa0a1794 2-3,5,38,44,50,60,72,80,130-131,156,187,202,226,233,250
+typescript/examples/team-desk/src/notifications.ts
+  s_f39ab5a4525c9d::t_1497b8191a2995 1,4,7-18,20-31,33-35
+  s_f39ab5a4525c9d::t_f9febed921970c 3,6
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 5
+  s_f39ab5a4525c9d::t_deec971a7c5a9b 2,19
+  s_f39ab5a4525c9d::t_ad601bad7006cf 32
+docs/semantics.md
+  s_f39ab5a4525c9d::t_ed86f640520416 101
+  s_f39ab5a4525c9d::t_bc55eccc85d68e 104-105
+  s_f39ab5a4525c9d::t_06f6f083343e0c 11-12
+  s_f39ab5a4525c9d::t_1baeaa47548a84 68,80
+  s_f39ab5a4525c9d::t_216dd43cbda212 38-39,72-78,92,100
+  s_f39ab5a4525c9d::t_e3d2763bfe2f62 5-10,24-35,47-50,70-71,85-90,93-98
+  s_f39ab5a4525c9d::t_edfd5aeb0d28bc 1-4,13-23,36-37,40-46,51-67,69,79,81-84,91,99,102-103,106
+typescript/packages/app/package.json
+  s_f39ab5a4525c9d::t_5b5cc665128400 19
+  s_f39ab5a4525c9d::t_e4ad5e8b33df49 1-18,20-22
+typescript/tests/review-regressions.test.mjs
+  s_f39ab5a4525c9d::t_9270be0ae46dc2 63-67
+  s_f39ab5a4525c9d::t_d83650921c8904 15,26,28-35
+  s_f39ab5a4525c9d::t_dd772333f0987d 1-14,16-25,27,36-62,68-114,116-133,135-141,172-196
+  s_f39ab5a4525c9d::t_d89c204ab3a880 115
+  s_f39ab5a4525c9d::t_030c909dcd9cbc 197-213
+  s_f39ab5a4525c9d::t_ba9ccd8d0f14c6 159-171
+  s_f39ab5a4525c9d::t_610458d03e1577 142-158
+  s_f39ab5a4525c9d::t_0173c720e0c6dd 134
+typescript/examples/team-desk-console/src/main.ts
+  s_f39ab5a4525c9d::t_094fa2a22e42bf 41-50,64,92,99
+  s_f39ab5a4525c9d::t_b657f638ff253f 65-74
+  s_f39ab5a4525c9d::t_51ab244af5445b 18,59-60,98
+  s_f39ab5a4525c9d::t_f2c68b2e4ac2f4 11
+  s_f39ab5a4525c9d::t_8270a84dd046b3 8-10
+  s_f39ab5a4525c9d::t_4c45e8a1506b29 12-17
+  s_f39ab5a4525c9d::t_799084940a55e3 19-21,38-40
+  s_f39ab5a4525c9d::t_c23f159e414a32 51-53,56-58
+  s_f39ab5a4525c9d::t_d796eaae91cb0b 61-63
+  s_f39ab5a4525c9d::t_dbc2e53e58b067 75-77,89-91
+  s_f39ab5a4525c9d::t_29c68fb59bb646 93-97
+  s_f39ab5a4525c9d::t_6b90fc9f9a3b74 100
+rust/Cargo.toml
+  s_f39ab5a4525c9d::t_1497b8191a2995 3
+  s_f39ab5a4525c9d::t_262ba165c6254b 1-2,4-18
+typescript/examples/team-desk/src/items.ts
+  s_f39ab5a4525c9d::t_1497b8191a2995 1,3,7-26,28-40,42-54,56-69,71-73
+  s_f39ab5a4525c9d::t_ad601bad7006cf 2,70
+  s_f39ab5a4525c9d::t_6e8b2a87059d42 4-6,27,41,55
+integration/private-files.test.mjs
+  s_f39ab5a4525c9d::t_e94f300d408909 1-142
+integration/workflows.test.mjs
+  s_f39ab5a4525c9d::t_d854e5b87e7067 1-42
+package-lock.json
+  s_f39ab5a4525c9d::t_435a83470a1f87 1-1478
+rust/Cargo.lock
+  s_f39ab5a4525c9d::t_edbcdfaa316c0e 1-994
+rust/crates/lenso-app/Cargo.toml
+  s_f39ab5a4525c9d::t_a3408fcb55304c 1-24
+rust/crates/lenso-app/src/error.rs
+  s_f39ab5a4525c9d::t_f400b92999ad61 1-85
+rust/crates/lenso-app/src/events.rs
+  s_f39ab5a4525c9d::t_df2536671066a8 1-71
+rust/crates/lenso-app/src/task.rs
+  s_f39ab5a4525c9d::t_05798c53544dfc 1-36
+rust/crates/lenso-app/tests/module_events.rs
+  s_f39ab5a4525c9d::t_a57a6eaa209341 1-100
+rust/crates/lenso-sqlite/Cargo.toml
+  s_f39ab5a4525c9d::t_3af3b8c3a55412 1-21
+rust/examples/private-files/Cargo.toml
+  s_f39ab5a4525c9d::t_bd06e5c355bcbd 1-18
+rust/examples/private-files/src/actions.rs
+  s_f39ab5a4525c9d::t_8ed8203316a5b5 1-205
+rust/examples/private-files/src/store.rs
+  s_f39ab5a4525c9d::t_12f23e336fcc74 1-285
+rust/examples/workflows/Cargo.toml
+  s_f39ab5a4525c9d::t_ee86d961c04858 1-12
+typescript/examples/private-files/tsconfig.json
+  s_f39ab5a4525c9d::t_f66bf5294f5122 1-5
+typescript/examples/team-desk-console/src/style.css
+  s_f39ab5a4525c9d::t_2c9b5c2cb8e5fd 1-89
+typescript/examples/team-desk-console/tsconfig.json
+  s_f39ab5a4525c9d::t_3d235e81b3ed40 1-9
+typescript/examples/workflows/package.json
+  s_f39ab5a4525c9d::t_44c9aa50cf06e3 1-7
+typescript/examples/workflows/tsconfig.json
+  s_f39ab5a4525c9d::t_74b1c2cbd394b2 1-5
+typescript/packages/app/tsconfig.json
+  s_f39ab5a4525c9d::t_9106e76d11e654 1-21
+typescript/packages/console/tsconfig.json
+  s_f39ab5a4525c9d::t_6e84d2bd444906 1-5
+typescript/packages/sqlite/tsconfig.json
+  s_f39ab5a4525c9d::t_c09ce3c632ea38 1-5
+typescript/tests/resource.test.mjs
+  s_f39ab5a4525c9d::t_8660660a7083ef 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3d567c59f045829469614d93201312da8992ddd",
+  "prompts": {},
+  "sessions": {
+    "s_c5695907fe744f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d06d-149b-7062-aa67-3c0145df9d90",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    },
+    "s_f39ab5a4525c9d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d24b-3bc2-75a2-bc19-662014c23cfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    },
+    "s_fc9d04ec742532": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d132-30d4-7b91-ab51-ed03f8289424",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
