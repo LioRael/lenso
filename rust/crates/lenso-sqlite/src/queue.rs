@@ -130,7 +130,7 @@ fn lease_lost() -> ActionError {
     ActionError::new(ErrorCode::Conflict, "Task lease lost")
 }
 fn milliseconds(duration: Duration) -> Result<i64, ActionError> {
-    if duration.subsec_nanos() % 1_000_000 != 0 {
+    if !duration.subsec_nanos().is_multiple_of(1_000_000) {
         return Err(ActionError::new(
             ErrorCode::InvalidInput,
             "Task timing must use whole milliseconds",

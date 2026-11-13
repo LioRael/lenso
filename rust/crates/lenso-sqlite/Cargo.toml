@@ -10,7 +10,7 @@ homepage = "https://github.com/LioRael/lenso"
 exclude = ["tests/"]
 
 [dependencies]
-lenso-app = { path = "../lenso-app", version = "0.1.0", features = ["json"] }
+lenso-app = { path = "../lenso-app", version = "0.1.1", features = ["json"] }
 rusqlite = { version = "0.42", features = ["bundled"] }
 serde.workspace = true
 serde_json.workspace = true

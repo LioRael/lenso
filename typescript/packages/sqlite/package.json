@@ -1,6 +1,6 @@
 {
   "name": "@lenso/sqlite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SQLite durable task and event delivery for Lenso on Node.js",
   "type": "module",
   "engines": {
@@ -22,7 +22,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@lenso/app": "^0.1.0"
+    "@lenso/app": "^0.1.1"
   },
   "license": "MIT",
   "repository": {

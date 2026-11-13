@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/lenso-app", "crates/lenso-sqlite", "examples/private-files", "examples/workflows", "examples/team-desk"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 

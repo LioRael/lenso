@@ -1,6 +1,6 @@
 {
   "name": "@lenso/app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Native TypeScript application primitives for Lenso",
   "type": "module",
   "files": [
