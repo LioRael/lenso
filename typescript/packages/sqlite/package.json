@@ -3,13 +3,39 @@
   "version": "0.1.0",
   "description": "SQLite durable task and event delivery for Lenso on Node.js",
   "type": "module",
-  "engines": { "node": ">=24.14" },
-  "files": ["dist", "README.md"],
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "engines": {
+    "node": ">=24.14"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": { "@lenso/app": "^0.1.0" }
+  "dependencies": {
+    "@lenso/app": "^0.1.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "typescript/packages/sqlite"
+  },
+  "homepage": "https://github.com/LioRael/lenso#readme",
+  "bugs": {
+    "url": "https://github.com/LioRael/lenso/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

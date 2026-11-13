@@ -14,7 +14,7 @@ This repository implements the first SDK baseline described in the [Lenso produc
 | `@lenso/sqlite` / `lenso-sqlite` | Durable tasks and event fanout using SQLite, with retries, delays, leases, cancellation, persisted results and native transaction integration |
 | `@lenso/console` | Headless TypeScript client and compiled custom-page registration for authorized Console extensions |
 
-Package names and `0.1.0` versions are local development identifiers. Nothing has been published to npm or crates.io.
+The SDKs use MIT. See [publishing](docs/publishing.md) for registry delivery and Trusted Publishing. `@lenso/console` 3.x provides this headless client; 2.x is the previous Console host with a different API.
 
 ## Run the private file library
 

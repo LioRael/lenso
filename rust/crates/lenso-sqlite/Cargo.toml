@@ -3,7 +3,10 @@ name = "lenso-sqlite"
 description = "SQLite durable task and event delivery for Lenso"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+rust-version = "1.89"
+license = "MIT"
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
 exclude = ["tests/"]
 
 [dependencies]

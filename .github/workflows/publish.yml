@@ -1,0 +1,61 @@
+name: Publish SDKs
+on:
+  workflow_dispatch:
+    inputs:
+      registry:
+        description: Registry to publish
+        required: true
+        default: both
+        type: choice
+        options: [both, npm, crates]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-sdks
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    if: github.ref == 'refs/heads/main' && inputs.registry != 'crates'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:package
+      - run: node scripts/publish.mjs npm
+
+  crates:
+    if: github.ref == 'refs/heads/main' && inputs.registry != 'npm'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: clippy
+      - run: cargo check --manifest-path rust/Cargo.toml --workspace --all-targets --all-features --locked
+      - run: cargo test --manifest-path rust/Cargo.toml --workspace --all-features --locked
+      - run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features --locked -- -D warnings
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: node scripts/publish.mjs crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

@@ -4,6 +4,9 @@ description = "Native Rust application primitives for Lenso"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license = "MIT"
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
 exclude = ["tests/"]
 
 [dependencies]
