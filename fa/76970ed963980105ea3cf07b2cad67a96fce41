@@ -1,0 +1,50 @@
+docs/publishing.md
+  s_f39ab5a4525c9d::t_b701c79ba9169f 1-36
+rust/crates/lenso-sqlite/LICENSE
+  s_f39ab5a4525c9d::t_2593bbe12a911b 1-21
+LICENSE
+  s_f39ab5a4525c9d::t_2593bbe12a911b 1-21
+typescript/packages/app/LICENSE
+  s_f39ab5a4525c9d::t_2593bbe12a911b 1-21
+rust/crates/lenso-app/LICENSE
+  s_f39ab5a4525c9d::t_2593bbe12a911b 1-21
+typescript/packages/console/LICENSE
+  s_f39ab5a4525c9d::t_2593bbe12a911b 1-21
+scripts/publish.mjs
+  s_f39ab5a4525c9d::t_7a3272d4f76016 1-37
+typescript/packages/console/package.json
+  s_f39ab5a4525c9d::t_706ddb3d219a74 3
+  s_f39ab5a4525c9d::t_2593bbe12a911b 6-38
+rust/crates/lenso-sqlite/Cargo.toml
+  s_f39ab5a4525c9d::t_2593bbe12a911b 6-9
+README.md
+  s_f39ab5a4525c9d::t_b701c79ba9169f 17
+.github/workflows/publish.yml
+  s_f39ab5a4525c9d::t_7a3272d4f76016 1-61
+typescript/packages/app/package.json
+  s_f39ab5a4525c9d::t_2593bbe12a911b 6-9,11-42,48-61
+rust/crates/lenso-app/Cargo.toml
+  s_f39ab5a4525c9d::t_2593bbe12a911b 7-9
+typescript/packages/sqlite/LICENSE
+  s_f39ab5a4525c9d::t_2593bbe12a911b 1-21
+typescript/packages/sqlite/package.json
+  s_f39ab5a4525c9d::t_2593bbe12a911b 6-18,24-40
+package-lock.json
+  s_f39ab5a4525c9d::t_c473b27e4ebc33 1457-1458,1462-1463,1472
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa76970ed963980105ea3cf07b2cad67a96fce41",
+  "prompts": {},
+  "sessions": {
+    "s_f39ab5a4525c9d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d24b-3bc2-75a2-bc19-662014c23cfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
