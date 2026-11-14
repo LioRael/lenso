@@ -1,4 +1,7 @@
-use crate::{Action, ActionError, ErrorCode};
+use crate::{
+    Action, ActionDescription, ActionError, ActionMetadata, ErrorCode, ModuleMetadata,
+    describe_action,
+};
 
 /// Installed operations derived from their actual native handles.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,12 +12,25 @@ pub struct Module {
     tasks: Vec<String>,
     events: Vec<String>,
     resources: Vec<String>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
+    metadata: Option<ModuleMetadata>,
+    #[cfg_attr(
+        feature = "json",
+        serde(
+            rename = "actionMetadata",
+            skip_serializing_if = "std::collections::BTreeMap::is_empty"
+        )
+    )]
+    action_metadata: std::collections::BTreeMap<String, ActionMetadata>,
 }
 
 impl Module {
-    #[cfg(feature = "json")]
-    pub(crate) fn action_id(&mut self, id: String) {
-        self.actions.push(id);
+    pub(crate) fn action_description(&mut self, description: ActionDescription) {
+        if let Some(metadata) = description.metadata {
+            self.action_metadata
+                .insert(description.id.clone(), metadata);
+        }
+        self.actions.push(description.id);
     }
     /// Starts an explicitly assembled module; native handlers stay application-owned.
     pub fn new(id: impl Into<String>) -> Self {
@@ -24,13 +40,37 @@ impl Module {
             tasks: Vec::new(),
             events: Vec::new(),
             resources: Vec::new(),
+            metadata: None,
+            action_metadata: std::collections::BTreeMap::new(),
         }
     }
 
     /// Describes an operation using its native action identifier.
     pub fn action<R, A: Action<R>>(&mut self, action: &A) -> &mut Self {
-        self.actions.push(action.id().to_owned());
+        self.action_description(describe_action(action));
         self
+    }
+
+    /// Adds optional public module annotations without changing native exports.
+    pub fn with_metadata(mut self, metadata: ModuleMetadata) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+
+    /// Returns public metadata, or None for a legacy module.
+    pub fn metadata(&self) -> Option<&ModuleMetadata> {
+        self.metadata.as_ref()
+    }
+
+    /// Describes all installed Actions, marking undeclared metadata as unknown.
+    pub fn describe_actions(&self) -> Vec<ActionDescription> {
+        self.actions
+            .iter()
+            .map(|id| ActionDescription {
+                id: id.clone(),
+                metadata: self.action_metadata.get(id).cloned(),
+            })
+            .collect()
     }
 
     /// Declares a named resource requirement while retaining its native interface.
@@ -128,6 +168,14 @@ impl Catalog {
     /// Returns descriptions without constructing another execution registry.
     pub fn describe(&self) -> &[Module] {
         &self.modules
+    }
+
+    /// Shared Action descriptions for external consumers; this is not an execution registry.
+    pub fn describe_actions(&self) -> Vec<ActionDescription> {
+        self.modules
+            .iter()
+            .flat_map(Module::describe_actions)
+            .collect()
     }
 
     /// Checks explicit resource requirements before the host starts serving requests.

@@ -2,6 +2,8 @@
 
 Native application SDKs for TypeScript and Rust, developed together and built independently.
 
+Source addition: [optional Action/Module metadata and structured input errors](docs/action-metadata.md). Existing native contracts remain compatible; these APIs are not in the published package versions yet.
+
 Source: [LioRael/lenso](https://github.com/LioRael/lenso). The previous Bun-first framework is preserved in [lenso-previous](https://github.com/LioRael/lenso-previous).
 
 This repository implements the first SDK baseline described in the [Lenso product design](https://chatgpt.com/space/page_8d106197e7e08191b3a2ef80dee240e7). The SDKs do not require a CLI process, a Console process, a Rust host for TypeScript, or RPC for same-language calls.

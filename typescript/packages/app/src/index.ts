@@ -1,12 +1,14 @@
 export { ActionError } from "./error.js";
-export type { ErrorCode } from "./error.js";
+export type { ErrorCode, InputIssue, PublicError } from "./error.js";
+export { describeAction } from "./metadata.js";
+export type { ActionDescription, ActionMetadata, ModuleMetadata, JsonSchema } from "./metadata.js";
 export { requirePrincipal, requireScope, requireOwner, allOf, anyOf } from "./access.js";
 export type { Principal, Policy } from "./access.js";
 export { Executor, checkCancellation, defineAction } from "./action.js";
 export type { Action, Context, CallRecord, Codec } from "./action.js";
 export { withResource, withResources, defineResource } from "./resource.js";
 export type { Resource, ResourceDefinition } from "./resource.js";
-export { Module, Catalog } from "./module.js";
+export { Module, Catalog, describeActions } from "./module.js";
 export type { ModuleExports, ModuleInfo } from "./module.js";
 export { Event, DurableEvent } from "./events.js";
 export type { EventDelivery } from "./events.js";

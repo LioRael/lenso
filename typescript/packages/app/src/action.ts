@@ -1,7 +1,8 @@
 import type { Principal } from "./access.js";
-import { ActionError, actionError } from "./error.js";
+import { ActionError, actionError, inputError } from "./error.js";
 import type { ErrorCode } from "./error.js";
 import type { Parser } from "./schema.js";
+import type { ActionMetadata } from "./metadata.js";
 
 export interface Context<R> {
   readonly callId: string;
@@ -13,6 +14,7 @@ export interface Context<R> {
 /** Native values stay native; optional parsers validate and normalize them without serialization. */
 export interface Action<I, O, R> {
   readonly id: string;
+  readonly metadata?: ActionMetadata;
   readonly input?: Parser<I>;
   readonly output?: Parser<O>;
   validateInput?(input: I): void | Promise<void>;
@@ -51,7 +53,7 @@ export class Executor {
   constructor(private readonly record: (record: CallRecord) => void | Promise<void>) {}
 
   call<I, O, R>(action: Action<I, O, R>, context: Context<NoInfer<R>>, input: NoInfer<I>): Promise<O> {
-    return this.invoke(action, context, () => action.input ? parseInput(action.input, input) : input, (output) => output);
+    return this.invoke(action, context, () => action.input ? parseInput(action.input, input, action.metadata) : input, (output) => output);
   }
 
   callExternal<I, O, R>(
@@ -66,13 +68,13 @@ export class Executor {
       () => {
         if (!codec) {
           if (!action.input) throw new ActionError("internal", "Action needs an external input parser");
-          return parseInput(action.input, value);
+          return parseInput(action.input, value, action.metadata);
         }
         try {
           const input = codec.decode(value);
-          return action.input ? parseInput(action.input, input) : input;
+          return action.input ? parseInput(action.input, input, action.metadata) : input;
         } catch (cause) {
-          throw new ActionError("invalid_input", "Invalid input", { cause });
+          throw inputError(cause, action.metadata?.inputSchema);
         }
       },
       (output) => {
@@ -123,9 +125,9 @@ export class Executor {
   }
 }
 
-function parseInput<I>(parser: Parser<I>, value: unknown): I {
+function parseInput<I>(parser: Parser<I>, value: unknown, metadata?: ActionMetadata): I {
   try { return parser.parse(value); }
-  catch (cause) { throw new ActionError("invalid_input", "Invalid input", { cause }); }
+  catch (cause) { throw inputError(cause, metadata?.inputSchema); }
 }
 
 /** Cooperative cancellation does not undo committed effects or race a running handler. */

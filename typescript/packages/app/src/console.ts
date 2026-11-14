@@ -99,6 +99,11 @@ function makeManifest(catalog: Catalog, pages: readonly ConsolePage[], operation
 }
 
 function validateManifest({ modules, pages }: ConsoleManifest, operations: Iterable<string>): void {
+  for (const module of modules) {
+    for (const id of Object.keys(module.actionMetadata ?? {})) {
+      if (!module.actions.includes(id)) throw new ActionError("not_found", "Metadata references an uninstalled Action");
+    }
+  }
   for (const key of ["id", "actions", "tasks", "events"] as const) {
     const values = modules.flatMap((module) => module[key]);
     if (new Set(values).size !== values.length) throw new ActionError("conflict", `Duplicate module ${key}`);

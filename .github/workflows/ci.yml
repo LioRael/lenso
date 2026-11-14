@@ -45,6 +45,18 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: cargo build --manifest-path rust/Cargo.toml --workspace
-      - run: npm run test:integration
+      - name: Verify real application and shared metadata entrypoints
+        env:
+          LENSO_METADATA_REPORT_DIR: .local/sdk-metadata
+        run: npm run test:integration 2>&1 | tee sdk-integration.log
+      - name: Preserve SDK metadata acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-metadata-acceptance
+          path: |
+            .local/sdk-metadata/*.json
+            sdk-integration.log
+          include-hidden-files: true
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser

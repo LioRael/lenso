@@ -1,0 +1,15 @@
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "profile": { "type": "object", "properties": { "age": { "type": "integer" } } },
+      "rows": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" } } } },
+      "labels": { "type": "object", "additionalProperties": { "type": "integer" } }
+    }
+  },
+  "cases": [
+    { "name": "declared nested field", "input": { "profile": { "age": "private-parser-value" } }, "path": ["profile", "age"] },
+    { "name": "declared array item", "input": { "rows": [{ "id": 17 }] }, "path": ["rows", 0, "id"] },
+    { "name": "dynamic map key is private", "input": { "labels": { "private-map-key": "private-parser-value" } }, "path": ["labels"] }
+  ]
+}
