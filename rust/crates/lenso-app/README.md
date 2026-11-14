@@ -2,6 +2,8 @@
 
 Native Rust application primitives. No CLI, Console process, JSON round trip or cross-language host is needed for native execution.
 
+Source addition: [optional Action/Module metadata and structured input errors](../../../docs/action-metadata.md). Existing native contracts remain compatible; these APIs are not in the published package versions yet.
+
 ```rust
 use lenso_app::{Action, ActionError, CancellationToken, Context, Executor};
 

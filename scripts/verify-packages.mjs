@@ -24,7 +24,7 @@ try {
   await writeFile(join(directory, "package.json"), JSON.stringify({ private: true, type: "module" }));
   await run("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", ...archives], { cwd: directory });
   const consumer = `
-import { Executor, type Action, type Context, type Task, Module, Catalog, defineAction, defineResource, withResources } from '@lenso/app';
+import { Executor, ActionError, describeAction, describeActions, type ActionMetadata, type ModuleMetadata, type Action, type Context, type Task, Module, Catalog, defineAction, defineResource, withResources } from '@lenso/app';
 import { requireScope, allOf } from '@lenso/app/access';
 import { withResource } from '@lenso/app/resource';
 import { Event } from '@lenso/app/events';
@@ -49,12 +49,24 @@ const inferred = define({ id: 'inferred', input: number, output: number,
   }),
   run: (context, input) => context.resources.offset + input });
 const inferredValue: number = await executor.call(inferred, context, 2);
+const metadata: ActionMetadata = { inputSchema: {type:'number'}, outputSchema: {type:'number'}, capabilities: ['read'], effects: [] };
+const moduleMetadata: ModuleMetadata = { description:'Consumer', version:'1' };
+const described = {...inferred, metadata};
+const describedModule = new Module('described', {actions:{described}}, moduleMetadata);
+if (describeAction(described).metadata?.effects?.length !== 0) throw new Error('Metadata export failed');
+if (describeActions([describedModule.describe()])[0]?.id !== described.id) throw new Error('Module description failed');
+const inputFailure = new ActionError('invalid_input','Invalid input',{issues:[{path:['value'],code:'required'}],cause:new Error('private')});
+if (JSON.stringify(inputFailure).includes('private')) throw new Error('Private cause escaped');
 if (inferredValue !== 3) throw new Error('Inferred action failed');
 const nativeResource = defineResource({ id: 'native', config: number, open: value => new Map([['native', value]]), close() {} });
 await withResources({ db: nativeResource.configure(7) }, ({ db }) => { const value: number | undefined = db.get('native'); return value; });
 const value: number = await executor.call(action, context, { value: 2 });
 if (value !== 3) throw new Error('Invalid native result');
 if (false) {
+  // @ts-expect-error Metadata is optional but its effects remain a list, not an arbitrary value.
+  const invalidMetadata: ActionMetadata = {effects:'write'};
+  // @ts-expect-error Public issue classifications are fixed and do not accept arbitrary parser messages.
+  new ActionError('invalid_input','Invalid',{issues:[{path:['value'],code:'private message'}]});
   // @ts-expect-error Inputs remain inferred from their parser without manual DTO annotations.
   await executor.call(inferred, context, 'wrong');
   // @ts-expect-error A codec cannot widen the native input contract.

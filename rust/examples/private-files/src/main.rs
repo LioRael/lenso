@@ -40,13 +40,9 @@ impl IntoResponse for HttpError {
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         if code == ErrorCode::Internal {
-            eprintln!("{:?}", self.0);
+            eprintln!("{}", self.0);
         }
-        (
-            status,
-            Json(json!({"error": {"code": code.as_str(), "message": self.0.message()}})),
-        )
-            .into_response()
+        (status, Json(json!({"error": self.0.public()}))).into_response()
     }
 }
 
@@ -120,7 +116,12 @@ async fn read(
 }
 fn decode_body(body: &str) -> Result<Value, ActionError> {
     serde_json::from_str(body).map_err(|error| {
-        ActionError::new(ErrorCode::InvalidInput, "Invalid JSON").with_source(error)
+        ActionError::new(ErrorCode::InvalidInput, "Invalid JSON")
+            .with_issues(vec![lenso_app::InputIssue {
+                path: vec![],
+                code: lenso_app::InputIssueCode::InvalidFormat,
+            }])
+            .with_source(error)
     })
 }
 

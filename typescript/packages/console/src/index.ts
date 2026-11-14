@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { ActionError, validateConsoleManifest } from "@lenso/app";
-import type { ConsoleManifest, ConsolePage, Parser } from "@lenso/app";
+import { ActionError, describeActions, validateConsoleManifest } from "@lenso/app";
+import type { ActionDescription, ConsoleManifest, ConsolePage, Parser } from "@lenso/app";
 
 export interface ConsoleViewContext {
   readonly client: ConsoleClient;
@@ -34,11 +34,16 @@ export class ConsolePages<View> {
   }
 }
 
+const declarations = { description: z.string().optional(), capabilities: z.array(z.string()).optional(), effects: z.array(z.string()).optional() };
+const jsonSchema = z.union([z.boolean(), z.record(z.string(), z.json())]);
+const actionMetadataSchema = z.object({ ...declarations, inputSchema: jsonSchema.optional(), outputSchema: jsonSchema.optional() });
 const manifestSchema = z.object({
   version: z.literal(1),
   modules: z.array(z.object({
     id: z.string(), actions: z.array(z.string()), tasks: z.array(z.string()),
     events: z.array(z.string()), resources: z.array(z.string()),
+    metadata: z.object({ ...declarations, version: z.string().optional() }).optional(),
+    actionMetadata: z.record(z.string(), actionMetadataSchema).optional(),
   })),
   pages: z.array(z.object({
     id: z.string(), title: z.string(), list: z.string(),
@@ -48,7 +53,10 @@ const manifestSchema = z.object({
 });
 const errorSchema = z.object({ error: z.object({ code: z.enum([
   "invalid_input", "unauthenticated", "forbidden", "not_found", "conflict", "cancelled", "internal",
-]), message: z.string() }) });
+]), message: z.string(), issues: z.array(z.object({
+  path: z.array(z.union([z.string(), z.number().int().nonnegative()])),
+  code: z.enum(["invalid_value", "required", "out_of_range", "invalid_format"]),
+})).optional() }) });
 
 /** A UI-independent client. Management authorization is always enforced by the application. */
 export class ConsoleClient {
@@ -78,6 +86,11 @@ export class ConsoleClient {
       validateConsoleManifest(description);
       return description;
     } catch (cause) { throw new ActionError("internal", "Invalid Console manifest", { cause }); }
+  }
+
+  /** The same descriptors used by native Catalogs, read through the authorized manifest endpoint. */
+  async describeActions(signal?: AbortSignal): Promise<readonly ActionDescription[]> {
+    return describeActions((await this.manifest(signal)).modules);
   }
 
   /** Output remains unknown until the extension validates its own action's result. */
@@ -112,7 +125,8 @@ export class ConsoleClient {
     if (!response.ok) {
       const parsed = errorSchema.safeParse(value);
       if (!parsed.success) throw new ActionError("internal", `Management request failed (${response.status})`);
-      throw new ActionError(parsed.data.error.code, parsed.data.error.message);
+      const failure = parsed.data.error;
+      throw new ActionError(failure.code, failure.message, failure.issues === undefined ? undefined : { issues: failure.issues });
     }
     return value;
   }

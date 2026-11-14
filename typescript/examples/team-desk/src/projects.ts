@@ -7,6 +7,7 @@ export function projectsModule() {
   const action = defineAction<Store>();
   const list = action({
     id: "projects.list", input: emptyInput, output: z.array(projectSchema),
+    metadata: { description: "List projects in the caller's team", capabilities: ["team.read"], effects: [] },
     authorize(context) { context.resources.access(context); },
     run(context) { return z.array(projectSchema).parse(context.resources.db.prepare("SELECT id,name,archived,version FROM desk_projects WHERE team=? ORDER BY id").all(context.resources.team(context))); },
   });
@@ -17,6 +18,12 @@ export function projectsModule() {
   });
   const create = action({
     id: "projects.create", input: projectInput, output: projectSchema,
+    metadata: {
+      description: "Create a project in the caller's team",
+      inputSchema: z.toJSONSchema(projectInput, { io: "input" }),
+      outputSchema: z.toJSONSchema(projectSchema),
+      capabilities: ["team.write"], effects: ["write:projects"],
+    },
     authorize(context) { context.resources.access(context, "write"); },
     run(context, input) {
       const store = context.resources, team = store.team(context);
@@ -40,7 +47,9 @@ export function projectsModule() {
     },
   });
   return {
-    module: new Module("projects", { actions: { list, detail, create, archive }, resources: ["sqlite"] }),
+    module: new Module("projects", { actions: { list, detail, create, archive }, resources: ["sqlite"] }, {
+      description: "Team projects", version: "1", capabilities: ["sqlite"],
+    }),
     pages: [{ id: "projects", title: "Projects", list, detail, actions: [create, archive] }],
     actions: { list, detail, create, archive },
   };

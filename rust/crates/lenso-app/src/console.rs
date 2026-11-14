@@ -20,7 +20,7 @@ type Invoke<R> = Box<
 #[cfg(feature = "json")]
 pub struct ConsoleExtension<R> {
     pages: Vec<ConsolePage>,
-    operations: Vec<(String, Invoke<R>)>,
+    operations: Vec<(crate::ActionDescription, Invoke<R>)>,
 }
 
 #[cfg(feature = "json")]
@@ -72,10 +72,11 @@ impl<R: Sync + 'static> ConsoleExtension<R> {
             .pages
             .iter()
             .any(|page| self.pages.iter().any(|installed| installed.id == page.id))
-            || other
-                .operations
-                .iter()
-                .any(|(id, _)| self.operations.iter().any(|(installed, _)| installed == id))
+            || other.operations.iter().any(|(description, _)| {
+                self.operations
+                    .iter()
+                    .any(|(installed, _)| installed.id == description.id)
+            })
         {
             return Err(ActionError::new(
                 ErrorCode::Conflict,
@@ -93,8 +94,13 @@ impl<R: Sync + 'static> ConsoleExtension<R> {
         A::Input: serde::de::DeserializeOwned,
         A::Output: serde::Serialize,
     {
-        let id = action.id().to_owned();
-        if self.operations.iter().any(|(key, _)| key == &id) {
+        let description = crate::describe_action(&action);
+        let id = description.id.clone();
+        if self
+            .operations
+            .iter()
+            .any(|(description, _)| description.id == id)
+        {
             return Err(ActionError::new(
                 ErrorCode::Conflict,
                 "Duplicate Console action",
@@ -102,7 +108,7 @@ impl<R: Sync + 'static> ConsoleExtension<R> {
         }
         let action = std::sync::Arc::new(action);
         self.operations.push((
-            id.clone(),
+            description,
             Box::new(move |observer, context, input| {
                 let action = std::sync::Arc::clone(&action);
                 Box::pin(async move {
@@ -196,8 +202,8 @@ impl<R: Sync + 'static> ConsoleExtension<R> {
     /// Derives module operations from installed bindings instead of another handler directory.
     pub fn module(&self, id: impl Into<String>) -> Module {
         let mut module = Module::new(id);
-        for (id, _) in &self.operations {
-            module.action_id(id.clone());
+        for (description, _) in &self.operations {
+            module.action_description(description.clone());
         }
         module
     }
@@ -210,7 +216,9 @@ impl<R: Sync + 'static> ConsoleExtension<R> {
         ConsoleManifest::with_operations(
             catalog,
             self.pages.clone(),
-            self.operations.iter().map(|(id, _)| id.as_str()),
+            self.operations
+                .iter()
+                .map(|(description, _)| description.id.as_str()),
         )
     }
 
@@ -228,7 +236,7 @@ impl<R: Sync + 'static> ConsoleExtension<R> {
         let (_, operation) = self
             .operations
             .iter()
-            .find(|(key, _)| key == id)
+            .find(|(description, _)| description.id == id)
             .ok_or_else(|| ActionError::new(ErrorCode::NotFound, "Management action not found"))?;
         operation(executor.observer(), context, input).await
     }

@@ -42,6 +42,11 @@ pub trait Action<R>: Sync {
     /// Stable namespaced operation identifier.
     fn id(&self) -> &str;
 
+    /// Optional public annotations. Legacy Actions keep their original native contract.
+    fn metadata(&self) -> Option<crate::ActionMetadata> {
+        None
+    }
+
     /// Validates domain invariants after external decoding or native construction.
     ///
     /// # Errors
@@ -148,8 +153,28 @@ impl<O: Observer> Executor<O> {
             action,
             context,
             || {
-                serde_json::from_value(input).map_err(|error| {
-                    ActionError::new(ErrorCode::InvalidInput, "Invalid input").with_source(error)
+                use serde::de::IntoDeserializer;
+                serde_path_to_error::deserialize(input.into_deserializer()).map_err(|error| {
+                    let path = error.path().iter().map_while(|segment| match segment {
+                        serde_path_to_error::Segment::Map { key } => {
+                            Some(crate::InputSegment::Field(key.clone()))
+                        }
+                        serde_path_to_error::Segment::Seq { index } => {
+                            Some(crate::InputSegment::Index(*index))
+                        }
+                        _ => None,
+                    });
+                    let metadata = action.metadata();
+                    let path = crate::metadata::public_input_path(
+                        path,
+                        metadata.as_ref().and_then(|m| m.input_schema.as_ref()),
+                    );
+                    ActionError::new(ErrorCode::InvalidInput, "Invalid input")
+                        .with_issues(vec![crate::InputIssue {
+                            path,
+                            code: crate::InputIssueCode::InvalidValue,
+                        }])
+                        .with_source(error.into_inner())
                 })
             },
             |output| {

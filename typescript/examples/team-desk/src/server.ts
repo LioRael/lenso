@@ -24,7 +24,7 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
     chunks.push(chunk);
   }
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); }
-  catch (cause) { throw new ActionError("invalid_input", "Invalid JSON", { cause }); }
+  catch (cause) { throw new ActionError("invalid_input", "Invalid JSON", { cause, issues: [{ path: [], code: "invalid_format" }] }); }
 }
 
 export function serve(store: Store) {
@@ -52,9 +52,9 @@ export function serve(store: Store) {
       response.end(JSON.stringify(result));
     } catch (error) {
       const failure = error instanceof ActionError ? error : new ActionError("internal", "Request failed", { cause: error });
-      if (failure.code === "internal") console.error(failure);
+      if (failure.code === "internal") console.error(failure.toJSON());
       response.writeHead(status[failure.code], { "content-type": "application/json" });
-      response.end(JSON.stringify({ error: { code: failure.code, message: failure.message } }));
+      response.end(JSON.stringify({ error: failure.toJSON() }));
     }
   });
 }

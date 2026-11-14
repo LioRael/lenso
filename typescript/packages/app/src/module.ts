@@ -2,6 +2,8 @@ import { ActionError } from "./error.js";
 import type { Action } from "./action.js";
 import type { Task } from "./task.js";
 import type { Event, DurableEvent } from "./events.js";
+import type { ActionDescription, ActionMetadata, ModuleMetadata } from "./metadata.js";
+import { describeAction } from "./metadata.js";
 
 export interface ModuleExports {
   readonly actions: Readonly<Record<string, Action<unknown, unknown, never>>>;
@@ -16,19 +18,25 @@ export interface ModuleInfo {
   readonly tasks: readonly string[];
   readonly events: readonly string[];
   readonly resources: readonly string[];
+  readonly metadata?: ModuleMetadata | undefined;
+  readonly actionMetadata?: Readonly<Record<string, ActionMetadata>> | undefined;
 }
 
 /** Groups native exports without replacing them with a string-based invocation API. */
 export class Module<T extends ModuleExports> {
-  constructor(readonly id: string, readonly exports: T) {}
+  constructor(readonly id: string, readonly exports: T, readonly metadata?: ModuleMetadata) {}
 
   describe(): ModuleInfo {
+    const descriptions = Object.values(this.exports.actions).map(describeAction);
+    const actionMetadata = Object.fromEntries(descriptions.flatMap(({ id, metadata }) => metadata === null ? [] : [[id, metadata]]));
     return {
       id: this.id,
-      actions: Object.values(this.exports.actions).map((action) => action.id),
+      actions: descriptions.map(({ id }) => id),
       tasks: Object.values(this.exports.tasks ?? {}).map((task) => task.id),
       events: Object.values(this.exports.events ?? {}).map((event) => event.id),
       resources: [...(this.exports.resources ?? [])],
+      ...(this.metadata === undefined ? {} : { metadata: structuredClone(this.metadata) }),
+      ...(Object.keys(actionMetadata).length ? { actionMetadata } : {}),
     };
   }
 }
@@ -50,10 +58,10 @@ export class Catalog {
   }
 
   describe(): readonly ModuleInfo[] {
-    return this.modules.map((info) => ({
-      ...info, actions: [...info.actions], tasks: [...info.tasks], events: [...info.events], resources: [...info.resources],
-    }));
+    return structuredClone(this.modules);
   }
+
+  describeActions(): readonly ActionDescription[] { return describeActions(this.modules); }
 
   /** Checks explicit resource requirements before the host starts serving requests. */
   requireResources(available: readonly string[]): void {
@@ -64,4 +72,12 @@ export class Catalog {
       }
     }
   }
+}
+
+/** Shared by native Catalogs and clients consuming HTTP/Console module descriptions. */
+export function describeActions(modules: readonly ModuleInfo[]): ActionDescription[] {
+  return modules.flatMap((module) => module.actions.map((id) => {
+    const metadata = module.actionMetadata && Object.hasOwn(module.actionMetadata, id) ? module.actionMetadata[id] : undefined;
+    return { id, metadata: metadata === undefined ? null : structuredClone(metadata) };
+  }));
 }

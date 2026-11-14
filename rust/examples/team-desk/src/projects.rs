@@ -24,6 +24,14 @@ impl Action<Store> for List {
     fn id(&self) -> &str {
         "projects.list"
     }
+    fn metadata(&self) -> Option<lenso_app::ActionMetadata> {
+        Some(lenso_app::ActionMetadata {
+            description: Some("List projects in the caller's team".into()),
+            capabilities: Some(vec!["team.read".into()]),
+            effects: Some(vec![]),
+            ..Default::default()
+        })
+    }
 
     async fn authorize(&self, context: &Context<Store>, _: &()) -> Result<(), ActionError> {
         context.resources.access(context, Permission::Read)
@@ -75,12 +83,39 @@ impl Action<Store> for Create {
     fn id(&self) -> &str {
         "projects.create"
     }
+    fn metadata(&self) -> Option<lenso_app::ActionMetadata> {
+        Some(lenso_app::ActionMetadata {
+            description: Some("Create a project in the caller's team".into()),
+            input_schema: Some(serde_json::json!({
+                "$schema":"https://json-schema.org/draft/2020-12/schema", "type":"object",
+                "properties":{"id":{"type":"string","pattern":"^[a-zA-Z0-9_-]{1,64}$"},
+                    "name":{"type":"string","minLength":1,"maxLength":120,"description":"Project display name"}},
+                "required":["id","name"]
+            })),
+            output_schema: Some(serde_json::json!({
+                "$schema":"https://json-schema.org/draft/2020-12/schema", "type":"object",
+                "properties":{"id":{"type":"string","pattern":"^[a-zA-Z0-9_-]{1,64}$"},"name":{"type":"string"},
+                    "archived":{"type":"integer","minimum":0,"maximum":1},
+                    "version":{"type":"integer","minimum":1,"maximum":2147483647}},
+                "required":["id","name","archived","version"],"additionalProperties":false
+            })),
+            capabilities: Some(vec!["team.write".into()]),
+            effects: Some(vec!["write:projects".into()]),
+        })
+    }
     fn validate_input(&self, input: &CreateInput) -> Result<(), ActionError> {
         valid_id(&input.id)?;
         if store::trim_text(&input.name).is_empty()
             || store::trim_text(&input.name).encode_utf16().count() > 120
         {
-            return Err(fail(ErrorCode::InvalidInput, "Invalid project name"));
+            return Err(
+                fail(ErrorCode::InvalidInput, "Invalid project name").with_issues(vec![
+                    lenso_app::InputIssue {
+                        path: vec![lenso_app::InputSegment::Field("name".into())],
+                        code: lenso_app::InputIssueCode::InvalidValue,
+                    },
+                ]),
+            );
         }
         Ok(())
     }
@@ -162,7 +197,14 @@ pub fn install() -> Result<(Module, ConsoleExtension<Store>), ActionError> {
         .detail("projects", Detail)?
         .operation("projects", Create)?
         .operation("projects", Archive)?;
-    let mut module = console.module("projects");
+    let mut module = console
+        .module("projects")
+        .with_metadata(lenso_app::ModuleMetadata {
+            description: Some("Team projects".into()),
+            version: Some("1".into()),
+            capabilities: Some(vec!["sqlite".into()]),
+            ..Default::default()
+        });
     module.resource("sqlite");
 
     Ok((module, console))

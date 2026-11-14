@@ -8,6 +8,7 @@ mod console;
 mod durable_event;
 mod error;
 mod events;
+mod metadata;
 mod module;
 mod resource;
 #[cfg(feature = "json")]
@@ -23,8 +24,9 @@ pub use console::ConsoleExtension;
 pub use console::{ConsoleManifest, ConsolePage};
 #[cfg(feature = "json")]
 pub use durable_event::{DurableEvent, EventDelivery};
-pub use error::{ActionError, ErrorCode};
+pub use error::{ActionError, ErrorCode, InputIssue, InputIssueCode, InputSegment, PublicError};
 pub use events::Event;
+pub use metadata::{ActionDescription, ActionMetadata, ModuleMetadata, describe_action};
 pub use module::{Catalog, Module};
 pub use resource::{Resource, ResourceError, connect, with_resource};
 #[cfg(feature = "json")]
