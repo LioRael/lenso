@@ -2,7 +2,7 @@
 
 Native application SDKs for TypeScript and Rust, developed together and built independently.
 
-Source addition: [optional Action/Module metadata and structured input errors](docs/action-metadata.md). Existing native contracts remain compatible; these APIs are not in the published package versions yet.
+SDK metadata: [optional Action/Module metadata and structured input errors](docs/action-metadata.md). Existing native contracts remain compatible; these APIs require App 0.1.2 and Console client 3.1.0 or newer.
 
 Source: [LioRael/lenso](https://github.com/LioRael/lenso). The previous Bun-first framework is preserved in [lenso-previous](https://github.com/LioRael/lenso-previous).
 
@@ -21,12 +21,12 @@ The SDKs use MIT. See [publishing](docs/publishing.md) for registry delivery and
 Install the core and the optional packages your application needs:
 
 ```sh
-npm install @lenso/app@^0.1.1
-npm install @lenso/sqlite@^0.1.1 @lenso/console@^3.0.0
+npm install @lenso/app@^0.1.2
+npm install @lenso/sqlite@^0.1.1 @lenso/console@^3.1.0
 ```
 
 ```sh
-cargo add lenso-app@0.1.1
+cargo add lenso-app@0.1.2
 cargo add lenso-sqlite@0.1.1
 ```
 

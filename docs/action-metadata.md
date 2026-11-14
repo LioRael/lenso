@@ -1,6 +1,6 @@
 # Optional Action and Module metadata
 
-This source-development feature adds public descriptions and field-level input failures to the native SDK contract. Package versions are unchanged; the published App 0.1.1 and Console 3.0.0 APIs do not include these additions. Publish compatible App and Console packages together before using the new Console client against installed packages.
+This feature adds public descriptions and field-level input failures to the native SDK contract. It requires App 0.1.2 and Console client 3.1.0 or newer. App 0.1.1 and Console 3.0.0 do not include these APIs. SQLite packages retain version 0.1.1 and remain compatible.
 
 ## One description, native execution
 

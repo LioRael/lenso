@@ -2,7 +2,7 @@
 
 Native TypeScript application primitives for Lenso. No Rust host or CLI process is required.
 
-Source addition: [optional Action/Module metadata and structured input errors](../../../docs/action-metadata.md). Existing native contracts remain compatible; these APIs are not in the published package versions yet.
+SDK metadata: [optional Action/Module metadata and structured input errors](../../../docs/action-metadata.md). Existing native contracts remain compatible; these APIs require App 0.1.2 and Console client 3.1.0 or newer.
 
 ```ts
 import { z } from "zod";

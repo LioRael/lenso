@@ -2,7 +2,7 @@
 
 Native Rust application primitives. No CLI, Console process, JSON round trip or cross-language host is needed for native execution.
 
-Source addition: [optional Action/Module metadata and structured input errors](../../../docs/action-metadata.md). Existing native contracts remain compatible; these APIs are not in the published package versions yet.
+SDK metadata: [optional Action/Module metadata and structured input errors](../../../docs/action-metadata.md). Existing native contracts remain compatible; these APIs require App 0.1.2 and Console client 3.1.0 or newer.
 
 ```rust
 use lenso_app::{Action, ActionError, CancellationToken, Context, Executor};
