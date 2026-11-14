@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "repository": "LioRael/lenso",
+  "head_sha": "4227d18a62be1c66585e0d7210bb93e3dc369230",
+  "checkout_sha": "24a57d644ee61c4a9411a58875bb62f7b1647352",
+  "event": "pull_request",
+  "run_id": 43635054744,
+  "run_url": "https://github.com/LioRael/lenso/actions/runs/43635054744",
+  "artifact_id": 14130166030,
+  "artifact_name": "sdk-metadata-acceptance",
+  "artifact_digest": "sha256:660d1b745510888c4455ee333c50aeb57e5c20dce4c721b017645acbbacbc401",
+  "platform": {
+    "os": "Ubuntu 26.04.1 LTS",
+    "arch": "x86_64",
+    "node": "26.13.1",
+    "rust": "1.99.0"
+  },
+  "checks": {
+    "typescript": {
+      "status": "passed",
+      "tests": 96,
+      "packed_consumer": "passed",
+      "lint": "passed",
+      "typecheck": "passed"
+    },
+    "rust": {
+      "status": "passed",
+      "sdk_tests": 32,
+      "application_tests": 1,
+      "doc_examples": 2,
+      "no_default_features_tests": 11,
+      "no_default_features_doc_examples": 1,
+      "check": "passed",
+      "clippy": "passed",
+      "format": "passed",
+      "docs": "passed"
+    },
+    "integration": {
+      "status": "passed",
+      "tests": 21,
+      "metadata_runtimes": [
+        "typescript",
+        "rust"
+      ],
+      "chromium_tests": 8
+    }
+  },
+  "cross_platform_comparison": "TypeScript and Rust reports each match the corresponding macOS arm64 report after excluding only the platform object."
+}

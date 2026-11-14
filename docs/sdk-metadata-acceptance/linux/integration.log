@@ -1,0 +1,33 @@
+
+> test:integration
+> node --test integration/*.test.mjs
+
+✔ typescript: HTTP, Console and an Agent consume one description and one error contract (338.551993ms)
+✔ rust: HTTP, Console and an Agent consume one description and one error contract (50.236459ms)
+✔ typescript: real identity, file isolation, persistence and call records (668.385756ms)
+✔ rust: real identity, file isolation, persistence and call records (7441.161942ms)
+✔ TS-created data, credentials and sessions can be opened by the independent Rust process (1397.340435ms)
+✔ typescript: independent modules, Console writes, tenancy, live roles, versions and restart (529.046173ms)
+✔ typescript: native publication failure rolls back the Console domain write (189.111311ms)
+✔ rust: independent modules, Console writes, tenancy, live roles, versions and restart (83.553345ms)
+✔ rust: native publication failure rolls back the Console domain write (17.592474ms)
+✔ typescript -> rust: pending events and Console writes use the same persisted contract (136.741635ms)
+✔ rust -> typescript: pending events and Console writes use the same persisted contract (136.97069ms)
+✔ TypeScript: native module exports stay typed; modules can be installed without the notification module (15.654092ms)
+✔ live TS and Rust processes coordinate the same optimistic write and notification queue (136.106905ms)
+✔ typescript: Console text normalization agrees for copied Unicode whitespace (133.734434ms)
+✔ rust: Console text normalization agrees for copied Unicode whitespace (22.034584ms)
+✔ typescript: Console URL query parameters do not change operation routing (121.6761ms)
+✔ rust: Console URL query parameters do not change operation routing (14.746375ms)
+✔ typescript: domain transaction, invitation mail, registration notification and idempotent delivery (122.72249ms)
+✔ rust: domain transaction, invitation mail, registration notification and idempotent delivery (22.538586ms)
+✔ typescript -> rust: domain transaction, invitation mail, registration notification and idempotent delivery (75.33193ms)
+✔ rust -> typescript: domain transaction, invitation mail, registration notification and idempotent delivery (102.863019ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9604.283589

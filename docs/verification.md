@@ -1,6 +1,6 @@
 # Local verification
 
-For the 2026-11-15 P1 additions, see [SDK metadata acceptance](sdk-metadata-acceptance.md). The results below preserve the earlier baseline; the new record updates totals to 96 TypeScript tests, 32 Rust SDK tests plus one application test and two doc examples, and 21 HTTP integration cases.
+For the 2026-11-15 P1 additions, see [SDK metadata acceptance](sdk-metadata-acceptance.md). The new record also includes passing Linux CI and matching macOS/Linux TS/Rust HTTP evidence. The results below preserve the earlier baseline; the new record updates totals to 96 TypeScript tests, 32 Rust SDK tests plus one application test and two doc examples, and 21 HTTP integration cases.
 
 Verified on 2026-11-13 (UTC+8), macOS arm64, Node.js 26.13.1, npm 11.20.0 and Rust 1.99.0.
 

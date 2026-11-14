@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "runtime": "typescript",
+  "platform": {
+    "system": "linux",
+    "machine": "x64",
+    "node": "v26.13.1"
+  },
+  "module": {
+    "id": "projects",
+    "actions": [
+      "projects.list",
+      "projects.detail",
+      "projects.create",
+      "projects.archive"
+    ],
+    "tasks": [],
+    "events": [],
+    "resources": [
+      "sqlite"
+    ],
+    "metadata": {
+      "description": "Team projects",
+      "capabilities": [
+        "sqlite"
+      ],
+      "version": "1"
+    },
+    "actionMetadata": {
+      "projects.list": {
+        "description": "List projects in the caller's team",
+        "capabilities": [
+          "team.read"
+        ],
+        "effects": []
+      },
+      "projects.create": {
+        "description": "Create a project in the caller's team",
+        "capabilities": [
+          "team.write"
+        ],
+        "effects": [
+          "write:projects"
+        ],
+        "inputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "description": "Project display name"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ]
+        },
+        "outputSchema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+            },
+            "name": {
+              "type": "string"
+            },
+            "archived": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "archived",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "invalidInput": {
+    "code": "invalid_input",
+    "message": "Invalid input",
+    "issues": [
+      {
+        "path": [
+          "id"
+        ],
+        "code": "invalid_value"
+      }
+    ]
+  },
+  "checks": [
+    "shared native/HTTP/Console/Agent description",
+    "legacy unknown metadata",
+    "discovery does not invoke project Actions",
+    "private input/unknown-key/cause exclusion",
+    "structured JSON and field failures",
+    "metadata grants no authority",
+    "normalized real write and independent readback",
+    "one successful create recorded"
+  ],
+  "effects": {
+    "projects": 1,
+    "successfulCreates": 1
+  }
+}
