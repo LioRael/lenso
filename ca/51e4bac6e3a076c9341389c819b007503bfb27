@@ -1,0 +1,31 @@
+docs/sdk-metadata-acceptance/linux/typescript.json
+  s_0a36fa17311984::t_3fc890be78c150 1-125
+docs/verification.md
+  s_0a36fa17311984::t_3fc890be78c150 3
+docs/sdk-metadata-acceptance/linux/integration.log
+  s_0a36fa17311984::t_3fc890be78c150 1-33
+docs/sdk-metadata-acceptance/linux/rust.json
+  s_0a36fa17311984::t_3fc890be78c150 1-125
+docs/sdk-metadata-acceptance.md
+  s_0a36fa17311984::t_3fc890be78c150 3,5,26-41,60
+docs/status.md
+  s_0a36fa17311984::t_3fc890be78c150 43
+docs/sdk-metadata-acceptance/linux/run.json
+  s_0a36fa17311984::t_3fc890be78c150 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ca51e4bac6e3a076c9341389c819b007503bfb27",
+  "prompts": {},
+  "sessions": {
+    "s_0a36fa17311984": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1daa8-3fb7-7c03-beac-1e3b4a74162a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
