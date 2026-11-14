@@ -18,6 +18,10 @@ All five packages have a Trusted Publisher for `LioRael/lenso`, workflow `publis
 
 `@lenso/console` 3.x is the headless client and compiled page registry in this repository. Its 2.x releases belong to the previous Console host and have a different API. Existing host consumers should stay on 2.x until they explicitly migrate; installing 3.x does not provide the previous host application.
 
+## Metadata SDK release (2026-11-15)
+
+[Workflow 43639576110](https://github.com/LioRael/lenso/actions/runs/43639576110) published `@lenso/app` 0.1.2, `@lenso/console` 3.1.0 and `lenso-app` 0.1.2 from signed commit `13a83df807cbd6ca520954dc2c1b35c2b7d52107`. npm records SLSA provenance for both packages; crates.io records this run/source SHA in its trusted publishing data. SQLite packages remain 0.1.1 and were skipped by the resumable publisher. The optional metadata/error API is now available to registry consumers; legacy native Actions and unannotated Module payloads remain compatible. The Console client requires App `^0.1.2`.
+
 ## Release
 
 Update the intended package versions and internal dependency ranges, run the existing checks, then commit and push to `main`. Versions can advance independently. Dispatch **Publish SDKs** (`.github/workflows/publish.yml`) on `main`, choosing `npm`, `crates` or `both`. The workflow runs language checks before uploading packages in dependency order. Published versions are skipped so a partially completed release can be resumed; registry failures other than a missing version stop the release.

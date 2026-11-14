@@ -1,6 +1,6 @@
 # SDK metadata and input-error acceptance
 
-Verified on 2026-11-15 (UTC+8) on macOS arm64 locally and Ubuntu 26.04.1 x86_64 in GitHub Actions, with Node.js 26.13.1 and Rust 1.99.0. This batch is source-only and has not been published. [PR #1](https://github.com/LioRael/lenso/pull/1) contains the implementation and these acceptance records.
+Verified on 2026-11-15 (UTC+8) on macOS arm64 locally and Ubuntu 26.04.1 x86_64 in GitHub Actions, with Node.js 26.13.1 and Rust 1.99.0. These records describe the initial implementation acceptance. The APIs were subsequently [published as App 0.1.2 and Console 3.1.0](publishing.md#metadata-sdk-release-2026-11-15). [PR #1](https://github.com/LioRael/lenso/pull/1) contains the implementation and these acceptance records.
 
 ## macOS results
 
