@@ -1,0 +1,23 @@
+docs/publishing.md
+  s_0a36fa17311984::t_e92f08872ddff2 21-24
+docs/sdk-metadata-acceptance.md
+  s_0a36fa17311984::t_4a0b1c667af1fa 3
+docs/status.md
+  s_0a36fa17311984::t_0b2d772839a353 43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a34b3b1a15411b50c4d058e3347f13cce376c0ac",
+  "prompts": {},
+  "sessions": {
+    "s_0a36fa17311984": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1daa8-3fb7-7c03-beac-1e3b4a74162a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
